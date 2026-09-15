@@ -1,0 +1,10 @@
+# Copy to backend.hcl (gitignored) and fill in, or generate it:
+#   terraform -chdir=infra/bootstrap output -raw backend_hcl > infra/main/backend.hcl
+# Then:
+#   terraform -chdir=infra/main init -backend-config=backend.hcl
+
+bucket         = "progress-tracker-tfstate-<AWS_ACCOUNT_ID>"
+key            = "main/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "progress-tracker-tflock"
+encrypt        = true

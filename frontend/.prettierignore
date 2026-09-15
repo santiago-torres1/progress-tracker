@@ -1,0 +1,6 @@
+# Prettier 3 only reads ignore files from the directory it runs in, so the root
+# .prettierignore does not apply here.
+node_modules
+dist
+coverage
+package-lock.json

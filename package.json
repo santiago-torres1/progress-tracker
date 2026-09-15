@@ -1,0 +1,24 @@
+{
+  "name": "progress-tracker",
+  "version": "0.1.0-alpha",
+  "private": true,
+  "description": "Personal, minimalist life-tracking app — alpha infrastructure pass.",
+  "license": "UNLICENSED",
+  "engines": {
+    "node": ">=22.12"
+  },
+  "scripts": {
+    "setup": "npm install && npm ci --prefix frontend && npm ci --prefix backend",
+    "dev": "concurrently --kill-others-on-fail --names api,web --prefix-colors blue,magenta \"npm run dev --prefix backend\" \"npm run dev --prefix frontend\"",
+    "lint": "npm run lint --prefix frontend && npm run lint --prefix backend",
+    "typecheck": "npm run typecheck --prefix frontend && npm run typecheck --prefix backend",
+    "test": "npm run test --prefix frontend && npm run test --prefix backend",
+    "build": "npm run build --prefix frontend && npm run build --prefix backend",
+    "format": "npm run format --prefix frontend && npm run format --prefix backend",
+    "format:check": "npm run format:check --prefix frontend && npm run format:check --prefix backend",
+    "release:prepare": "node scripts/release-prepare.mjs"
+  },
+  "devDependencies": {
+    "concurrently": "^9.2.4"
+  }
+}

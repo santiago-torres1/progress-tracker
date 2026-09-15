@@ -1,0 +1,159 @@
+.health-panel {
+  display: flex;
+  flex-direction: column;
+  padding: var(--space-5);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-panel);
+}
+
+@media (min-width: 30rem) {
+  .health-panel {
+    padding: var(--space-6);
+  }
+}
+
+.health-panel__header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding-bottom: var(--space-4);
+  border-bottom: 1px solid var(--color-border);
+}
+
+.health-panel__title {
+  font-size: var(--font-size-lg);
+}
+
+/* Status pill: the text label always carries the meaning; color and dot reinforce it. */
+
+.health-panel__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-1) 0.625rem;
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-tight);
+  white-space: nowrap;
+  color: var(--color-neutral-fg);
+  background-color: var(--color-neutral-bg);
+  border-radius: var(--radius-full);
+  transition-property: color, background-color;
+  transition-duration: var(--motion-duration);
+  transition-timing-function: var(--motion-ease);
+}
+
+.health-panel__status::before {
+  content: '';
+  flex: none;
+  width: 0.4375rem;
+  height: 0.4375rem;
+  background-color: currentColor;
+  border-radius: 50%;
+}
+
+.health-panel__status[data-status='checking']::before {
+  animation: health-panel-pulse 900ms var(--motion-ease) infinite alternate;
+}
+
+.health-panel__status[data-status='pass'] {
+  color: var(--color-success-fg);
+  background-color: var(--color-success-bg);
+}
+
+.health-panel__status[data-status='fail'] {
+  color: var(--color-danger-fg);
+  background-color: var(--color-danger-bg);
+}
+
+@keyframes health-panel-pulse {
+  from {
+    opacity: 1;
+  }
+
+  to {
+    opacity: 0.3;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .health-panel__status[data-status='checking']::before {
+    animation: none;
+  }
+}
+
+/* Key/value rows with hairline dividers */
+
+.health-panel__details {
+  font-variant-numeric: tabular-nums;
+}
+
+.health-panel__row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: baseline;
+  gap: var(--space-4);
+  padding-block: var(--space-3);
+}
+
+.health-panel__row + .health-panel__row {
+  border-top: 1px solid var(--color-border);
+}
+
+.health-panel__row dt {
+  font-size: var(--font-size-sm);
+  white-space: nowrap;
+  color: var(--color-text-muted);
+}
+
+.health-panel__row dd {
+  text-align: end;
+}
+
+/* Quiet secondary action */
+
+.health-panel__retry {
+  align-self: flex-end;
+  min-height: 2.25rem;
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  font-size: var(--font-size-sm);
+  font-weight: var(--font-weight-medium);
+  line-height: var(--line-height-tight);
+  color: var(--color-text);
+  background-color: var(--color-surface);
+  border: 1px solid var(--color-border-strong);
+  border-radius: var(--radius-md);
+  cursor: pointer;
+  transition-property: color, background-color, border-color;
+  transition-duration: var(--motion-duration);
+  transition-timing-function: var(--motion-ease);
+}
+
+@media (hover: hover) {
+  .health-panel__retry:hover:not(:disabled) {
+    background-color: var(--color-surface-hover);
+    border-color: var(--color-border-hover);
+  }
+}
+
+.health-panel__retry:active:not(:disabled) {
+  background-color: var(--color-surface-active);
+}
+
+.health-panel__retry:disabled {
+  color: var(--color-text-muted);
+  background-color: var(--color-surface-hover);
+  border-color: var(--color-border);
+  cursor: default;
+}
+
+@media (pointer: coarse) {
+  .health-panel__retry {
+    min-height: 2.75rem;
+  }
+}

@@ -1,0 +1,64 @@
+/*
+ * Page shell: a single centered column.
+ * The column is anchored at a viewport-relative top offset rather than centered, so the
+ * header stays put when the health panel grows after the check resolves (no load jump).
+ */
+
+.app {
+  --mark-size: 1.125rem;
+
+  display: flex;
+  flex-direction: column;
+  min-height: 100vh;
+  min-height: 100dvh;
+  padding: clamp(var(--space-6), 18vh, 12rem) var(--space-4) var(--space-5);
+}
+
+.app__header,
+.app__main,
+.app__footer {
+  width: 100%;
+  max-width: var(--content-width);
+  margin-inline: auto;
+}
+
+.app__header {
+  margin-bottom: var(--space-6);
+}
+
+.app__title {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  font-size: var(--font-size-xl);
+  letter-spacing: -0.015em;
+}
+
+/* Small progress-ring mark echoing the favicon. Decorative, no text content. */
+.app__title::before {
+  content: '';
+  flex: none;
+  width: var(--mark-size);
+  height: var(--mark-size);
+  border: 0.1875rem solid var(--color-accent-soft);
+  border-top-color: var(--color-accent);
+  border-right-color: var(--color-accent);
+  border-bottom-color: var(--color-accent);
+  border-radius: 50%;
+  transform: rotate(45deg);
+}
+
+.app__tagline {
+  margin-top: var(--space-1);
+  padding-inline-start: calc(var(--mark-size) + var(--space-3));
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+}
+
+.app__footer {
+  margin-top: auto;
+  padding-top: var(--space-7);
+  font-size: var(--font-size-sm);
+  color: var(--color-text-muted);
+  font-variant-numeric: tabular-nums;
+}

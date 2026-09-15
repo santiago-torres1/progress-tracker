@@ -1,0 +1,19 @@
+# Keep the build context to what the Dockerfile actually copies.
+node_modules
+dist
+coverage
+
+# Secrets and local env files must never enter an image layer.
+.env
+.env.*
+
+# Tests, tooling, and local-only files are not needed to build or run the image.
+**/*.test.ts
+events
+eslint.config.js
+.prettierignore
+.dockerignore
+Dockerfile
+*.md
+.git
+*.log

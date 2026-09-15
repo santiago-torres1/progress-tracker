@@ -1,0 +1,31 @@
+{
+  // Used by `npm run typecheck`, ESLint's type-aware rules, and editors.
+  // Covers everything under src/, including co-located *.test.ts files.
+  // `npm run build` uses tsconfig.build.json, which extends this and drops the tests.
+  "compilerOptions": {
+    // Node 22 supports ES2024 natively; no down-levelling needed.
+    "target": "ES2024",
+    "lib": ["ES2024"],
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "types": ["node"],
+
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUnusedLocals": true,
+    "noUnusedParameters": true,
+
+    "verbatimModuleSyntax": true,
+    "isolatedModules": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "skipLibCheck": true,
+
+    "rootDir": "src",
+    "outDir": "dist",
+    "sourceMap": true
+  },
+  "include": ["src"]
+}

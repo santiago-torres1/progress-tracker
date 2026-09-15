@@ -1,0 +1,8 @@
+{
+  // Production build: emits dist/ from src/, excluding tests.
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "noEmit": false
+  },
+  "exclude": ["src/**/*.test.ts"]
+}

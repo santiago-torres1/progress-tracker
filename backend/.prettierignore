@@ -1,0 +1,6 @@
+# Prettier only reads .prettierignore from the working directory, so the root one
+# does not apply when running `npm run format:check` inside backend/.
+node_modules
+dist
+coverage
+package-lock.json

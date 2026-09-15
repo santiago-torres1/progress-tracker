@@ -1,0 +1,16 @@
+# Copy to terraform.tfvars (gitignored) only if you need to override defaults.
+# Every value below is the default. Nothing here is secret.
+
+# aws_region                  = "us-east-1"
+# project_name                = "progress-tracker"
+# environment                 = "alpha"
+# github_repository           = "santiago-torres1/progress-tracker"
+# github_branch               = "main"
+# bootstrap_image_tag         = "bootstrap"
+# lambda_memory_mb            = 512
+# lambda_timeout_seconds      = 10
+# log_retention_days          = 14
+
+# Set to false if this AWS account already has an OIDC provider for
+# token.actions.githubusercontent.com (the account can only have one).
+# create_github_oidc_provider = true
