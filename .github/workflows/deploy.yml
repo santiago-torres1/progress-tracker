@@ -1,0 +1,354 @@
+# Continuous deployment: every push to main (in practice, every merged pull request) is deployed.
+#
+#   ci        -> the full CI workflow (ci.yml) must pass first
+#   backend   -> build + push the Lambda image, point the function at it, set its environment,
+#                smoke-test GET /health
+#   frontend  -> build the SPA against the Function URL, upload to S3, invalidate CloudFront
+#
+# AWS access: GitHub OIDC -> the IAM role in infra/main/github_oidc.tf. There are no stored AWS
+# keys. Every `aws` call below maps to an action that role grants; adding a call means adding its
+# IAM action there (and to CLAUDE.md's Deploy contract) in the same pull request.
+#
+# The role trusts only sub = repo:santiago-torres1/progress-tracker:ref:refs/heads/main. So:
+#   - no job here may set `environment:` (that changes the sub claim and the role can't be assumed);
+#   - every job is guarded to refs/heads/main (workflow_dispatch can target any branch).
+#
+# Public repository: logs and step summaries are world-readable. Secrets are passed through env
+# and never echoed, and AWS responses that include environment variables are never printed.
+name: Deploy
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - '.claude/**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One deploy at a time, never cancelled halfway (a half-finished deploy can leave the new backend
+# with the old frontend). A newer queued run replaces an older queued one, so main's latest commit
+# is what ends up deployed.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  ci:
+    if: github.ref == 'refs/heads/main'
+    uses: ./.github/workflows/ci.yml
+
+  backend:
+    name: deploy backend
+    needs: ci
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: read
+      id-token: write # request the OIDC token that is exchanged for the deploy role
+    env:
+      LAMBDA_FUNCTION_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
+    # No job outputs on purpose. AWS_REGION is a secret and the Function URL contains the region,
+    # so the runner would drop a function_url output ("Skip output ... since it may contain
+    # secret"). The frontend job looks the URL up itself with the same granted API call.
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: gha-deploy-backend-${{ github.run_id }}-${{ github.run_attempt }}
+          mask-aws-account-id: true
+
+      # The account ID is derived, never stored. sts:GetCallerIdentity needs no IAM permission.
+      - name: Check ECR repository secret
+        env:
+          ECR_REPOSITORY_URI: ${{ secrets.ECR_REPOSITORY_URI }}
+        run: |
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          echo "::add-mask::${account_id}"
+          registry="${account_id}.dkr.ecr.${AWS_REGION}.amazonaws.com"
+          if [[ "${ECR_REPOSITORY_URI}" != "${registry}/"?* || "${ECR_REPOSITORY_URI}" == *[:@]* ]]; then
+            echo "::error title=ECR_REPOSITORY_URI is wrong::Expected <account-id>.dkr.ecr.<AWS_REGION>.amazonaws.com/<repository>, with no tag or digest, in the account of AWS_ROLE_ARN. Set it from: terraform -chdir=infra/main output -raw ecr_repository_url"
+            exit 1
+          fi
+
+      - name: Log in to Amazon ECR
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: docker/setup-buildx-action@v4
+
+      # docker buildx build --platform linux/amd64 --provenance=false --build-arg GIT_SHA=<sha>
+      # --push. --provenance=false matters: Lambda rejects OCI image indexes with attestations.
+      # The build summary is off because it lists build inputs (including the tag, which contains
+      # the account ID) in the world-readable job summary.
+      - name: Build and push Lambda image
+        uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_SUMMARY: false
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        with:
+          context: backend
+          file: backend/Dockerfile
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
+          push: true
+          tags: ${{ secrets.ECR_REPOSITORY_URI }}:${{ github.sha }}
+          build-args: GIT_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=backend-lambda-image
+          cache-to: type=gha,scope=backend-lambda-image,mode=max
+
+      # Every lambda update-* call returns the full function configuration, INCLUDING environment
+      # variable values, so each one prints only LastUpdateStatus.
+      - name: Point Lambda at the new image
+        env:
+          IMAGE_URI: ${{ secrets.ECR_REPOSITORY_URI }}:${{ github.sha }}
+        run: |
+          # An earlier update (e.g. from the console) may still be in progress; update-* would
+          # then fail with ResourceConflictException.
+          aws lambda wait function-updated --function-name "${LAMBDA_FUNCTION_NAME}"
+          aws lambda update-function-code \
+            --function-name "${LAMBDA_FUNCTION_NAME}" \
+            --image-uri "${IMAGE_URI}" \
+            --query LastUpdateStatus --output text
+          aws lambda wait function-updated --function-name "${LAMBDA_FUNCTION_NAME}"
+
+      # --environment REPLACES the function's whole variable map, so everything is sent together.
+      # GIT_SHA is deliberately absent: it is baked into the image, and a variable would override
+      # it. The request is built with jq from the environment (secrets never appear in a command
+      # line or a shell string) into a private temp file that is removed right after use.
+      - name: Set Lambda environment
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          missing=()
+          for name in SUPABASE_URL SUPABASE_ANON_KEY SUPABASE_SERVICE_ROLE_KEY; do
+            [[ -n "${!name}" ]] || missing+=("${name}")
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "::warning title=Supabase secrets not set::${missing[*]}. They are left out of the Lambda environment, and GET /health/db will report unconfigured."
+          fi
+
+          umask 077
+          request="$(mktemp "${RUNNER_TEMP}/lambda-configuration.XXXXXXXX")"
+          trap 'rm -f "${request}"' EXIT
+          jq -n '{
+            FunctionName: env.LAMBDA_FUNCTION_NAME,
+            Environment: {
+              Variables: ({
+                SUPABASE_URL: env.SUPABASE_URL,
+                SUPABASE_ANON_KEY: env.SUPABASE_ANON_KEY,
+                SUPABASE_SERVICE_ROLE_KEY: env.SUPABASE_SERVICE_ROLE_KEY,
+                NODE_ENV: "production"
+              } | with_entries(select(.value != null and .value != "")))
+            }
+          }' > "${request}"
+          aws lambda update-function-configuration \
+            --cli-input-json "file://${request}" \
+            --query LastUpdateStatus --output text
+          rm -f "${request}"
+          aws lambda wait function-updated --function-name "${LAMBDA_FUNCTION_NAME}"
+
+      - name: Smoke test
+        run: |
+          function_url="$(aws lambda get-function-url-config \
+            --function-name "${LAMBDA_FUNCTION_NAME}" --query FunctionUrl --output text)"
+          function_url="${function_url%/}"
+          if [[ "${function_url}" != https://?* ]]; then
+            echo "::error title=No Function URL::get-function-url-config returned '${function_url}'."
+            exit 1
+          fi
+
+          # GET /health must report this exact commit. Retries cover the few seconds in which
+          # instances of the previous image can still answer.
+          attempts=12
+          for (( attempt = 1; attempt <= attempts; attempt++ )); do
+            body="$(curl --silent --show-error --fail --max-time 10 "${function_url}/health" || true)"
+            if jq -e --arg sha "${GITHUB_SHA}" '.status == "ok" and .commit == $sha' <<< "${body}" > /dev/null 2>&1; then
+              echo "GET /health passed on attempt ${attempt}: ${body}"
+              break
+            fi
+            if (( attempt == attempts )); then
+              echo "::error title=Smoke test failed::GET /health did not return status ok with commit ${GITHUB_SHA} after ${attempts} attempts. Last response: ${body:-none}"
+              exit 1
+            fi
+            echo "Attempt ${attempt}/${attempts}: not ready (${body:-no response}); retrying in 5s"
+            sleep 5
+          done
+
+          # Supabase is reported, not required: a deploy without Supabase configured is valid.
+          # The endpoint never echoes secrets; only status and reason are printed anyway.
+          db_body="$(curl --silent --show-error --max-time 15 "${function_url}/health/db" || true)"
+          db_status="$(jq -r '.status // "unknown"' <<< "${db_body}" 2> /dev/null || echo "unreadable")"
+          db_reason="$(jq -r '.reason // "none"' <<< "${db_body}" 2> /dev/null || echo "none")"
+          echo "GET /health/db: status=${db_status} reason=${db_reason}"
+          if [[ "${db_status}" != "ok" ]]; then
+            echo "::warning title=Supabase check not ok::GET /health/db status=${db_status} reason=${db_reason}. The deploy continues."
+          fi
+
+          {
+            echo "### Backend"
+            echo
+            echo "| Check | Result |"
+            echo "| --- | --- |"
+            echo "| \`GET /health\` | ok, commit \`${GITHUB_SHA:0:7}\` |"
+            echo "| \`GET /health/db\` | ${db_status} (reason: ${db_reason}) |"
+            echo
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+  frontend:
+    name: deploy frontend
+    needs: backend
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      id-token: write # request the OIDC token that is exchanged for the deploy role
+    env:
+      LAMBDA_FUNCTION_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
+      S3_FRONTEND_BUCKET: ${{ secrets.S3_FRONTEND_BUCKET }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      # Before AWS credentials exist in the job.
+      - name: Install dependencies
+        working-directory: frontend
+        run: npm ci --no-audit --no-fund
+
+      - name: Configure AWS credentials (OIDC)
+        uses: aws-actions/configure-aws-credentials@v6
+        with:
+          role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ secrets.AWS_REGION }}
+          role-session-name: gha-deploy-frontend-${{ github.run_id }}-${{ github.run_attempt }}
+          mask-aws-account-id: true
+
+      - name: Resolve Function URL
+        id: api
+        run: |
+          function_url="$(aws lambda get-function-url-config \
+            --function-name "${LAMBDA_FUNCTION_NAME}" --query FunctionUrl --output text)"
+          function_url="${function_url%/}"
+          if [[ "${function_url}" != https://?* ]]; then
+            echo "::error title=No Function URL::get-function-url-config returned '${function_url}'."
+            exit 1
+          fi
+          echo "function_url=${function_url}" >> "${GITHUB_OUTPUT}"
+
+      # The Function URL is public by design (it is inlined into the JS bundle).
+      - name: Build
+        working-directory: frontend
+        env:
+          VITE_API_BASE_URL: ${{ steps.api.outputs.function_url }}
+          VITE_COMMIT_SHA: ${{ github.sha }}
+        run: |
+          # The build needs no AWS access, so its tooling does not get the credentials.
+          env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN npm run build
+
+      # Upload order avoids a broken window: assets first, then the index.html that references
+      # them, and stale objects are removed only at the very end. No --acl flags: the bucket
+      # enforces BucketOwnerEnforced and rejects ACLs.
+      - name: Upload to S3
+        id: upload
+        working-directory: frontend
+        run: |
+          bucket="s3://${S3_FRONTEND_BUCKET}"
+
+          # (a) Content-hashed build output: a changed file gets a new name, so each object is
+          #     immutable. --size-only skips re-uploading ones that already exist.
+          aws s3 sync dist/assets "${bucket}/assets" --size-only --no-progress \
+            --cache-control "public,max-age=31536000,immutable"
+
+          # (b) Other files with fixed names (copied from public/, e.g. favicon.svg): short cache.
+          aws s3 sync dist "${bucket}" --no-progress \
+            --exclude "assets/*" --exclude "index.html" \
+            --cache-control "public,max-age=300"
+
+          # (c) The entry point, last: browsers revalidate it on every load.
+          aws s3 cp dist/index.html "${bucket}/index.html" --no-progress \
+            --cache-control "no-cache"
+
+          # (d) Delete objects that are not part of this build (e.g. the previous build's hashed
+          #     assets). Not `aws s3 sync --delete`: sync re-uploads every file whose local copy
+          #     looks newer, WITHOUT the Cache-Control headers set above. Instead: list the bucket
+          #     (s3:ListBucket), diff the keys against dist/, and delete only the difference
+          #     (s3:DeleteObject). This pass never uploads, so it can't clobber (a) to (c).
+          (cd dist && find . -type f | sed 's|^\./||' | LC_ALL=C sort) > "${RUNNER_TEMP}/keys-local"
+          aws s3api list-objects-v2 --bucket "${S3_FRONTEND_BUCKET}" \
+            --query 'Contents[].Key' --output json \
+            | jq -r '.[]?' | LC_ALL=C sort > "${RUNNER_TEMP}/keys-remote"
+          LC_ALL=C comm -13 "${RUNNER_TEMP}/keys-local" "${RUNNER_TEMP}/keys-remote" \
+            > "${RUNNER_TEMP}/keys-stale"
+          stale_count="$(wc -l < "${RUNNER_TEMP}/keys-stale")"
+          if (( stale_count > 0 )); then
+            # DeleteObjects takes at most 1000 keys per request.
+            split -l 1000 "${RUNNER_TEMP}/keys-stale" "${RUNNER_TEMP}/stale-batch-"
+            for batch in "${RUNNER_TEMP}"/stale-batch-*; do
+              jq -R -s '{Objects: (split("\n") | map(select(length > 0) | {Key: .})), Quiet: true}' \
+                "${batch}" > "${batch}.json"
+              errors="$(aws s3api delete-objects --bucket "${S3_FRONTEND_BUCKET}" \
+                --delete "file://${batch}.json" --query Errors --output json)"
+              failed="$(jq 'length' <<< "${errors}")" # null (no errors) has length 0
+              if (( failed > 0 )); then
+                echo "::error title=S3 cleanup failed::${failed} stale object(s) could not be deleted."
+                exit 1
+              fi
+            done
+          fi
+          echo "Removed ${stale_count} stale object(s)."
+          echo "stale_count=${stale_count}" >> "${GITHUB_OUTPUT}"
+
+      # Not waited on: `aws cloudfront wait invalidation-completed` needs
+      # cloudfront:GetInvalidation, which the role does not grant. Hashed assets never need
+      # invalidating and index.html is no-cache, so this only speeds up the switch at the edge.
+      - name: Invalidate CloudFront
+        id: invalidate
+        env:
+          CLOUDFRONT_DISTRIBUTION_ID: ${{ secrets.CLOUDFRONT_DISTRIBUTION_ID }}
+        run: |
+          invalidation_id="$(aws cloudfront create-invalidation \
+            --distribution-id "${CLOUDFRONT_DISTRIBUTION_ID}" --paths '/*' \
+            --query Invalidation.Id --output text)"
+          echo "Created invalidation ${invalidation_id}"
+          echo "id=${invalidation_id}" >> "${GITHUB_OUTPUT}"
+
+      # World-readable: no secrets, no bucket name or distribution ID (both are secrets; the bucket
+      # name also contains the account ID).
+      - name: Summary
+        env:
+          FUNCTION_URL: ${{ steps.api.outputs.function_url }}
+          INVALIDATION_ID: ${{ steps.invalidate.outputs.id }}
+          STALE_COUNT: ${{ steps.upload.outputs.stale_count }}
+        run: |
+          version="$(jq -r .version backend/package.json)"
+          commit_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
+          {
+            echo "### Deployed"
+            echo
+            echo "| | |"
+            echo "| --- | --- |"
+            echo "| Version | \`${version}\` |"
+            echo "| Commit | [\`${GITHUB_SHA:0:7}\`](${commit_url}) |"
+            echo "| Function URL | ${FUNCTION_URL} |"
+            echo "| CloudFront invalidation | \`${INVALIDATION_ID}\` |"
+            echo "| Stale S3 objects removed | ${STALE_COUNT} |"
+          } >> "${GITHUB_STEP_SUMMARY}"

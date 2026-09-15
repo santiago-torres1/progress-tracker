@@ -1,0 +1,45 @@
+# Enforces a Conventional Commits pull request title, e.g. "feat(frontend): add task list".
+#
+# main uses squash merging with the pull request title as the commit message, so this title is
+# exactly what lands on main and what git-cliff turns into CHANGELOG.md entries (cliff.toml).
+# The allowed types mirror cliff.toml's commit_parsers.
+#
+# Uses `pull_request` (never `pull_request_target`) with a read-only token; the action only reads
+# the pull request. Required status check name: pr-title
+name: PR title
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    branches: [main]
+
+permissions:
+  pull-requests: read
+
+concurrency:
+  group: pr-title-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  pr-title:
+    name: pr-title
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    steps:
+      - uses: amannn/action-semantic-pull-request@v6
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        with:
+          types: |
+            feat
+            fix
+            perf
+            refactor
+            docs
+            ci
+            build
+            chore
+            test
+            style
+            revert
+          requireScope: false

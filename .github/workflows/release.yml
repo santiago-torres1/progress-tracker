@@ -1,0 +1,250 @@
+# Release: publish a GitHub Release when a v<SemVer> tag is pushed.
+#
+# A tag does NOT deploy anything. The tagged commit was already deployed by deploy.yml when it was
+# merged to main; the Release records which version is live and what changed in it.
+#
+# Process (details in scripts/release-prepare.mjs):
+#   1. `npm run release:prepare -- <version>` on a release/v<version> branch: bumps package versions
+#      and writes the CHANGELOG.md section with git-cliff.
+#   2. Pull request "chore(release): v<version>" -> merge -> deploy.yml deploys it.
+#   3. A maintainer tags that commit on main and pushes the tag -> this workflow.
+#
+# main is protected (pull requests only, even for GITHUB_TOKEN), so this workflow never pushes to
+# main. If CHANGELOG.md lacks the section, it opens a pull request instead. Pull requests opened
+# with GITHUB_TOKEN don't trigger other workflows, so that pull request needs a maintainer nudge
+# (see the last step).
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.ref_name }}
+  cancel-in-progress: false
+
+env:
+  # Keep in sync with GIT_CLIFF in scripts/release-prepare.mjs, so CI and local runs format the
+  # changelog identically.
+  GIT_CLIFF_VERSION: 2.13.1
+
+jobs:
+  release:
+    name: release
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: write # create the GitHub Release; push the changelog fallback branch
+      pull-requests: write # open the changelog fallback pull request
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          # Full history and all tags (git-cliff, previous-tag lookup) plus origin/main.
+          fetch-depth: 0
+          # Kept (the default) because the fallback step pushes a branch.
+          persist-credentials: true
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+
+      - name: Validate tag
+        id: meta
+        run: |
+          tag="${GITHUB_REF_NAME}"
+          # SemVer 2.0.0 without build metadata (npm drops "+build", so it could never match).
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
+          if [[ ! "${tag}" =~ ${semver} ]]; then
+            echo "::error title=Not a release tag::${tag} is not v<SemVer> (e.g. v0.1.1-alpha, v1.0.0). Delete it with: git push origin :refs/tags/${tag}"
+            exit 1
+          fi
+          version="${tag#v}"
+
+          mismatch=false
+          for manifest in package.json frontend/package.json backend/package.json; do
+            actual="$(jq -r .version "${manifest}")"
+            if [[ "${actual}" != "${version}" ]]; then
+              echo "::error file=${manifest},title=Version mismatch::${manifest} has version ${actual}, but the tag is ${tag}. Run 'npm run release:prepare -- ${version}' first, merge that pull request, and tag its commit on main."
+              mismatch=true
+            fi
+          done
+          if [[ "${mismatch}" == true ]]; then
+            exit 1
+          fi
+
+          # The Release says "this is live". Only commits on main were deployed.
+          commit="$(git rev-parse HEAD)"
+          if ! git merge-base --is-ancestor "${commit}" origin/main; then
+            echo "::error title=Tag is not on main::${tag} points to ${commit}, which is not on main and was never deployed. Delete the tag and tag the merged commit on main instead."
+            exit 1
+          fi
+
+          prerelease=false
+          if [[ "${version}" == *-* ]]; then
+            prerelease=true
+          fi
+          {
+            echo "version=${version}"
+            echo "prerelease=${prerelease}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Release notes
+        id: notes
+        env:
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          notes="${RUNNER_TEMP}/release-notes.md"
+
+          # 1. Preferred: the reviewed section of CHANGELOG.md at the tagged commit. For releases
+          #    made with release:prepare it is always there (and for 0.1.0-alpha it's hand-written;
+          #    git-cliff would produce nothing because the first commit isn't conventional).
+          status=0
+          node scripts/changelog-section.mjs "${VERSION}" CHANGELOG.md > "${notes}" || status=$?
+          if (( status != 0 && status != 2 )); then
+            exit "${status}"
+          fi
+          changelog_missing=false
+          if (( status == 2 )); then
+            changelog_missing=true
+          fi
+          source="CHANGELOG.md"
+
+          # Commit range for the git-cliff fallbacks below: strictly "since the previous release
+          # tag reachable from here". Not --latest, which means "between the repository's last two
+          # tags" and so produces the wrong version when an older tag is (re-)released.
+          previous="$(git describe --tags --abbrev=0 --match 'v[0-9]*' HEAD^ 2> /dev/null || true)"
+          if [[ -n "${previous}" ]]; then
+            range=(-- "${previous}..${GITHUB_REF_NAME}") # RANGE is a positional argument
+          else
+            range=(--latest) # first release: everything up to this tag
+          fi
+
+          # 2. Fallback: generate from the Conventional Commits between the previous tag and this one.
+          if [[ ! -s "${notes}" ]]; then
+            if [[ "${changelog_missing}" == true ]]; then
+              echo "::warning title=CHANGELOG.md has no ${VERSION} section::Release notes are generated with git-cliff instead, and a pull request adding the section will be opened."
+            else
+              echo "::warning title=Empty changelog section::The ${VERSION} section of CHANGELOG.md has no entries. Trying git-cliff."
+            fi
+            source="git-cliff"
+            npx --yes "git-cliff@${GIT_CLIFF_VERSION}" --strip header "${range[@]}" \
+              | node scripts/changelog-section.mjs "${VERSION}" - > "${notes}" || true
+          fi
+
+          # 3. Never publish an empty body.
+          if [[ ! -s "${notes}" ]]; then
+            source="placeholder"
+            server="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}"
+            if [[ -n "${previous}" ]]; then
+              diff_url="${server}/compare/${previous}...${GITHUB_REF_NAME}"
+            else
+              diff_url="${server}/commits/${GITHUB_REF_NAME}"
+            fi
+            printf 'No notable changes were recorded for this release.\n\nFull diff: %s\n' \
+              "${diff_url}" > "${notes}"
+            echo "::warning title=No release notes::Neither CHANGELOG.md nor git-cliff produced notes for ${VERSION}; publishing a placeholder."
+          fi
+
+          echo "Release notes (from ${source}):"
+          cat "${notes}"
+          {
+            echo "file=${notes}"
+            echo "source=${source}"
+            echo "changelog_missing=${changelog_missing}"
+          } >> "${GITHUB_OUTPUT}"
+
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          NOTES_FILE: ${{ steps.notes.outputs.file }}
+          NOTES_SOURCE: ${{ steps.notes.outputs.source }}
+          PRERELEASE: ${{ steps.meta.outputs.prerelease }}
+        run: |
+          if gh release view "${TAG}" > /dev/null 2>&1; then
+            # A re-run of this workflow: refresh the existing release instead of failing.
+            gh release edit "${TAG}" --title "${TAG}" --notes-file "${NOTES_FILE}" \
+              --prerelease="${PRERELEASE}"
+            action="Updated"
+          else
+            prerelease_flag=()
+            if [[ "${PRERELEASE}" == true ]]; then
+              prerelease_flag=(--prerelease)
+            fi
+            gh release create "${TAG}" --verify-tag --title "${TAG}" \
+              --notes-file "${NOTES_FILE}" "${prerelease_flag[@]}"
+            action="Published"
+          fi
+          {
+            echo "### ${action} release ${TAG}"
+            echo
+            echo "- Pre-release: ${PRERELEASE}"
+            echo "- Notes from: ${NOTES_SOURCE}"
+            echo "- ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/releases/tag/${TAG}"
+          } >> "${GITHUB_STEP_SUMMARY}"
+
+      # Only when CHANGELOG.md at the tag had no section for this version. Opens a pull request
+      # (main is protected) and never fails the release, which is already published.
+      - name: Open pull request adding the changelog section
+        if: steps.notes.outputs.changelog_missing == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+          VERSION: ${{ steps.meta.outputs.version }}
+        run: |
+          branch="chore/changelog-${TAG}"
+          title="chore(release): changelog for ${TAG}"
+
+          if git ls-remote --exit-code --heads origin "refs/heads/${branch}" > /dev/null; then
+            echo "::warning title=Changelog branch already exists::${branch} exists (from an earlier run?). Not opening another pull request."
+            exit 0
+          fi
+
+          # --force-create: the remote branch is known not to exist (checked above), so a leftover
+          # local branch from a re-run in the same checkout must not abort the step.
+          git switch --force-create "${branch}" origin/main
+          status=0
+          node scripts/changelog-section.mjs "${VERSION}" CHANGELOG.md > /dev/null || status=$?
+          if (( status == 0 )); then
+            echo "CHANGELOG.md on main already has a ${VERSION} section. Nothing to do."
+            exit 0
+          elif (( status != 2 )); then
+            echo "::warning title=Changelog pull request skipped::Could not read CHANGELOG.md on main."
+            exit 0
+          fi
+
+          # Same commit range as the release notes, anchored on the tag rather than on main's HEAD
+          # (main may already have moved on).
+          previous="$(git describe --tags --abbrev=0 --match 'v[0-9]*' "${TAG}^" 2> /dev/null || true)"
+          if [[ -n "${previous}" ]]; then
+            range=(-- "${previous}..${TAG}") # RANGE is a positional argument
+          else
+            range=(--latest)
+          fi
+          npx --yes "git-cliff@${GIT_CLIFF_VERSION}" --prepend CHANGELOG.md "${range[@]}"
+          titles="$(grep -c '^# ' CHANGELOG.md || true)"
+          if (( titles != 1 )) || ! node scripts/changelog-section.mjs "${VERSION}" CHANGELOG.md > /dev/null; then
+            echo "::warning title=Changelog pull request skipped::git-cliff did not produce a clean ${VERSION} section (does the top of CHANGELOG.md match the header in cliff.toml?). Add the section by hand."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add CHANGELOG.md
+          git commit --message "${title}"
+          git push origin "HEAD:refs/heads/${branch}"
+
+          body="$(printf '%s\n' \
+            "The ${TAG} tag was pushed without a \`## [${VERSION}]\` section in CHANGELOG.md, so its GitHub Release used notes generated by git-cliff. This adds the same section to the changelog." \
+            "" \
+            "Opened by the release workflow. Pull requests created with GITHUB_TOKEN don't trigger workflows: close and reopen this pull request (or push an empty commit to \`${branch}\`) so the required checks run.")"
+          if ! gh pr create --base main --head "${branch}" --title "${title}" --body "${body}"; then
+            echo "::warning title=Could not open the changelog pull request::Branch ${branch} was pushed; open a pull request from it by hand. If GitHub said Actions may not create pull requests, enable Settings > Actions > General > Allow GitHub Actions to create and approve pull requests."
+            exit 0
+          fi
+          echo "::warning title=Changelog pull request needs a maintainer::Opened '${title}'. Its checks will not start on their own (GITHUB_TOKEN-created pull requests don't trigger workflows): close and reopen it, or push an empty commit to ${branch}, then merge."

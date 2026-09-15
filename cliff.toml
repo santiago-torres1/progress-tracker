@@ -1,0 +1,103 @@
+# git-cliff configuration: https://git-cliff.org/docs/configuration
+#
+# Used by `npm run release:prepare` (scripts/release-prepare.mjs) and by
+# .github/workflows/release.yml. Both run the same pinned git-cliff version so the output is
+# identical locally and in CI.
+#
+# Output format: Keep a Changelog (https://keepachangelog.com/en/1.1.0/), newest release first.
+# Input: Conventional Commits on main. With squash merging, each commit on main is a PR title,
+# which .github/workflows/pr-title.yml validates.
+
+[changelog]
+# MUST stay byte-identical to the top of CHANGELOG.md (everything above the first "## [" line).
+# `git-cliff --prepend CHANGELOG.md` removes this exact string from the existing file once, then
+# writes header + new section + the rest. If the two drift apart, the header is duplicated
+# (release-prepare.mjs detects that and restores the file).
+# Rules: plain text only (no Tera tags), no leading/trailing spaces on any line, and end with
+# exactly one blank line.
+#
+# There is deliberately no "## [Unreleased]" heading and no link-reference footer:
+#   - The changelog is only written at release time, so an Unreleased section would always be
+#     empty, and its compare link (vX...HEAD) would need editing on every release.
+#   - --prepend only writes at the top of the file and forces `footer` off, so a footer of link
+#     references at the bottom could never be updated. Each section instead ends with its own
+#     link reference (see `body`), which makes the "## [x.y.z]" headings render as links.
+header = """
+# Changelog
+
+All notable changes to this project are documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+Release sections are generated from Conventional Commit messages by `npm run release:prepare`
+(git-cliff, configured in `cliff.toml`) and may be edited by hand before the release pull request
+is merged. See the [Release Process](README.md#release-process) section of the README.
+
+"""
+
+# One release section. Group headings carry an invisible "<!-- n -->" prefix only to control
+# their order (group_by sorts alphabetically); `striptags` removes it from the output.
+body = """
+{%- set repo = "https://github.com/santiago-torres1/progress-tracker" -%}
+{%- if version -%}
+{%- set v = version | trim_start_matches(pat="v") -%}
+## [{{ v }}] - {{ timestamp | date(format="%Y-%m-%d") }}
+{%- else -%}
+{%- set v = "Unreleased" -%}
+## [Unreleased]
+{%- endif %}
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim }}
+{% for commit in commits %}
+- {% if commit.breaking %}**BREAKING:** {% endif %}\
+{% if commit.scope %}**{{ commit.scope }}:** {% endif %}\
+{% if group is ending_with("Reverted") %}{{ commit.message }}{% else %}{{ commit.message | upper_first }}{% endif %}\
+{% if commit.breaking and commit.breaking_description and commit.breaking_description != commit.message %} ({{ commit.breaking_description }}){% endif %}
+{%- endfor %}
+{% endfor %}
+{% if version and previous and previous.version -%}
+[{{ v }}]: {{ repo }}/compare/{{ previous.version }}...{{ version }}
+{% elif version -%}
+[{{ v }}]: {{ repo }}/releases/tag/{{ version }}
+{% endif %}
+
+"""
+
+# Trim leading/trailing whitespace on every template line (lets the Tera tags above be indented
+# freely). Commit messages are rendered on a single line, so nothing meaningful is lost.
+trim = true
+
+[git]
+conventional_commits = true
+# Commits that are not Conventional Commits (e.g. the repository's first commit) are left out.
+filter_unconventional = true
+require_conventional = false
+split_commits = false
+# Commits that match no parser below are left out, rather than rendered under an empty heading.
+filter_commits = true
+# A breaking change is never dropped by a `skip` parser.
+protect_breaking_commits = true
+
+# Squash merges append " (#123)" to the PR title. Turn it into a link, since GitHub does not
+# auto-link issue references inside repository Markdown files.
+commit_preprocessors = [
+  { pattern = '\s*\(#([0-9]+)\)$', replace = " ([#${1}](https://github.com/santiago-torres1/progress-tracker/pull/${1}))" },
+]
+
+# First match wins. The type list mirrors .github/workflows/pr-title.yml.
+commit_parsers = [
+  # The release commit itself (`chore(release): vX.Y.Z`) is bookkeeping, not a change.
+  { message = '^chore\(release\)', skip = true },
+  { message = '^feat[(!:]', group = "<!-- 0 -->Added" },
+  { message = '^fix[(!:]', group = "<!-- 1 -->Fixed" },
+  { message = '^(perf|refactor)[(!:]', group = "<!-- 2 -->Changed" },
+  { message = '^docs[(!:]', group = "<!-- 3 -->Documentation" },
+  { message = '^(ci|build|chore|test|style)[(!:]', group = "<!-- 4 -->Maintenance" },
+  { message = '^revert[(!:]', group = "<!-- 5 -->Reverted" },
+]
+
+# Release tags: v0.1.0-alpha, v1.2.3, ... The leading "v" is stripped in `body`.
+tag_pattern = "v[0-9].*"
+topo_order = false
+sort_commits = "oldest"
