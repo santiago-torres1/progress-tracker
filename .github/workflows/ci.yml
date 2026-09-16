@@ -1,0 +1,165 @@
+# CI: format, lint, typecheck, test, and build both packages; validate the backend Dockerfile and
+# the Terraform roots.
+#
+# Runs on pull requests into main, manually, and as the first job of deploy.yml (workflow_call).
+# The job names below are the required status checks on main, so rename them only together with
+# the branch protection rule (frontend, backend, terraform, repo). Do not add path filters: a
+# required check that never runs blocks the pull request forever.
+#
+# Public repository: this workflow uses `pull_request` (never `pull_request_target`), needs no
+# secrets, and has a read-only token, so pull requests from forks can run it safely.
+name: CI
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# Superseded runs of the same pull request are cancelled. Every other run (including this workflow
+# nested inside a deploy, where github.event_name is "push") gets a unique group, so CI can never
+# cancel, or wait on, a deploy's `deploy-main` group.
+concurrency:
+  group: ci-${{ github.event_name }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  frontend:
+    name: frontend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+
+  backend:
+    name: backend
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run format:check
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm run test
+      - run: npm run build
+
+      - uses: docker/setup-buildx-action@v4
+
+      # Builds the Lambda image exactly as deploy.yml does, without pushing, to catch Dockerfile
+      # breakage before merge. This is `docker buildx build --platform linux/amd64
+      # --provenance=false`; the action is used instead of a bare `run:` because only JavaScript
+      # actions receive the runtime token that the GitHub Actions cache backend (type=gha) needs.
+      # Same cache scope and GIT_SHA build arg as deploy.yml, so on main the deploy's build is a
+      # full cache hit.
+      - name: Build Lambda image (no push)
+        uses: docker/build-push-action@v7
+        env:
+          DOCKER_BUILD_RECORD_UPLOAD: false
+        with:
+          context: backend
+          file: backend/Dockerfile
+          platforms: linux/amd64
+          provenance: false
+          sbom: false
+          push: false
+          build-args: GIT_SHA=${{ github.sha }}
+          cache-from: type=gha,scope=backend-lambda-image
+          cache-to: type=gha,scope=backend-lambda-image,mode=max
+
+  # Root-level files that neither package covers: workflows, release scripts, and the top-level
+  # JSON/Markdown. Without this, `.github/**` and `scripts/**` drift out of Prettier style.
+  repo:
+    name: repo
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - run: npm ci --no-audit --no-fund
+      - run: npm run format:check:repo
+
+  terraform:
+    name: terraform
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    env:
+      TF_IN_AUTOMATION: 'true'
+      TF_INPUT: '0'
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: 1.16.2
+          terraform_wrapper: false
+
+      # The AWS provider is ~800 MB unpacked. Terraform reuses a cached copy only when its checksum
+      # is in the committed .terraform.lock.hcl (which has linux_amd64 hashes), so the cache key
+      # is the lock files' hash.
+      - name: Prepare provider plugin cache
+        run: |
+          echo "TF_PLUGIN_CACHE_DIR=${HOME}/.terraform.d/plugin-cache" >> "${GITHUB_ENV}"
+          mkdir -p "${HOME}/.terraform.d/plugin-cache"
+
+      - uses: actions/cache@v6
+        with:
+          path: ~/.terraform.d/plugin-cache
+          key: terraform-providers-${{ runner.os }}-${{ hashFiles('infra/**/.terraform.lock.hcl') }}
+
+      - name: terraform fmt
+        run: terraform fmt -check -recursive -diff infra/
+
+      # -backend=false: no state access and no AWS credentials. -lockfile=readonly: fail instead of
+      # silently changing provider versions or checksums.
+      - name: terraform validate
+        run: |
+          for root in infra/bootstrap infra/main; do
+            echo "::group::${root}"
+            terraform -chdir="${root}" init -backend=false -lockfile=readonly
+            terraform -chdir="${root}" validate
+            echo "::endgroup::"
+          done

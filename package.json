@@ -14,11 +14,14 @@
     "typecheck": "npm run typecheck --prefix frontend && npm run typecheck --prefix backend",
     "test": "npm run test --prefix frontend && npm run test --prefix backend",
     "build": "npm run build --prefix frontend && npm run build --prefix backend",
-    "format": "npm run format --prefix frontend && npm run format --prefix backend",
-    "format:check": "npm run format:check --prefix frontend && npm run format:check --prefix backend",
-    "release:prepare": "node scripts/release-prepare.mjs"
+    "format": "npm run format:repo && npm run format --prefix frontend && npm run format --prefix backend",
+    "format:check": "npm run format:check:repo && npm run format:check --prefix frontend && npm run format:check --prefix backend",
+    "release:prepare": "node scripts/release-prepare.mjs",
+    "format:repo": "prettier --write \"*.{json,md}\" \".github/**/*.{yml,yaml}\" \"scripts/**/*.mjs\"",
+    "format:check:repo": "prettier --check \"*.{json,md}\" \".github/**/*.{yml,yaml}\" \"scripts/**/*.mjs\""
   },
   "devDependencies": {
-    "concurrently": "^9.2.4"
+    "concurrently": "^9.2.4",
+    "prettier": "^3.9.6"
   }
 }

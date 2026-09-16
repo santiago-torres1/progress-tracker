@@ -17,17 +17,17 @@ If you are about to write business logic, stop and ask whether it belongs in the
 
 ## Fixed stack — do not deviate without asking the human
 
-| Layer        | Choice                                                                                         |
-| ------------ | ---------------------------------------------------------------------------------------------- |
-| Frontend     | React + Vite + TypeScript                                                                      |
-| Backend      | Express + TypeScript; wrapped for Lambda with `serverless-http`                                |
-| DB / Auth    | Supabase                                                                                       |
-| Compute      | AWS Lambda (container image, `x86_64`) + Lambda Function URL                                   |
-| Static host  | S3 (private) + CloudFront with Origin Access Control                                           |
-| Images       | Amazon ECR                                                                                     |
-| IaC          | Terraform; remote state in S3 with a DynamoDB lock table                                       |
-| CI/CD        | GitHub Actions → AWS via GitHub OIDC + IAM role. **No static AWS access keys, ever.**          |
-| Versioning   | SemVer, starting at `0.1.0-alpha`; conventional commits; changelog generated with `git-cliff`  |
+| Layer       | Choice                                                                                        |
+| ----------- | --------------------------------------------------------------------------------------------- |
+| Frontend    | React + Vite + TypeScript                                                                     |
+| Backend     | Express + TypeScript; wrapped for Lambda with `serverless-http`                               |
+| DB / Auth   | Supabase                                                                                      |
+| Compute     | AWS Lambda (container image, `x86_64`) + Lambda Function URL                                  |
+| Static host | S3 (private) + CloudFront with Origin Access Control                                          |
+| Images      | Amazon ECR                                                                                    |
+| IaC         | Terraform; remote state in S3 with a DynamoDB lock table                                      |
+| CI/CD       | GitHub Actions → AWS via GitHub OIDC + IAM role. **No static AWS access keys, ever.**         |
+| Versioning  | SemVer, starting at `0.1.0-alpha`; conventional commits; changelog generated with `git-cliff` |
 
 ## Repo layout
 
@@ -51,11 +51,11 @@ CLAUDE.md  README.md  CHANGELOG.md  cliff.toml
 The main interactive session is the **orchestrator**; the human approves. Delegate scoped
 work to the specialist that owns it rather than doing everything in the main session.
 
-| Agent               | Owns                                                                                   | Must not touch                          |
-| ------------------- | -------------------------------------------------------------------------------------- | --------------------------------------- |
-| `design-agent`      | CSS, design tokens, layout, component appearance                                       | Terraform, workflows, backend, logic    |
-| `features-agent`    | Business logic: tasks/projects, reminders, calendar UX, client state, product routes   | Infra, Supabase schema/client, styling  |
-| `integration-agent` | Backend runtime shell, Supabase schema/client, external APIs, Terraform, CI/CD, deploy | Styling, business logic                 |
+| Agent               | Owns                                                                                   | Must not touch                         |
+| ------------------- | -------------------------------------------------------------------------------------- | -------------------------------------- |
+| `design-agent`      | CSS, design tokens, layout, component appearance                                       | Terraform, workflows, backend, logic   |
+| `features-agent`    | Business logic: tasks/projects, reminders, calendar UX, client state, product routes   | Infra, Supabase schema/client, styling |
+| `integration-agent` | Backend runtime shell, Supabase schema/client, external APIs, Terraform, CI/CD, deploy | Styling, business logic                |
 
 **Gotcha — new agent definitions load on the next turn.** A file added to `.claude/agents/`
 isn't callable via the Agent tool until the orchestrator's next turn (a user message or a
@@ -84,15 +84,15 @@ report rather than editing them, to avoid parallel-edit collisions.
 
 Both `frontend/` and `backend/` expose exactly these npm scripts. CI depends on the names.
 
-| Script         | Meaning                                         |
-| -------------- | ----------------------------------------------- |
-| `dev`          | local dev server with reload                    |
-| `build`        | production build to `dist/`                     |
-| `lint`         | ESLint, zero warnings allowed                   |
-| `typecheck`    | `tsc --noEmit`                                  |
-| `test`         | Vitest, single run (not watch)                  |
-| `format`       | Prettier write                                  |
-| `format:check` | Prettier check                                  |
+| Script         | Meaning                        |
+| -------------- | ------------------------------ |
+| `dev`          | local dev server with reload   |
+| `build`        | production build to `dist/`    |
+| `lint`         | ESLint, zero warnings allowed  |
+| `typecheck`    | `tsc --noEmit`                 |
+| `test`         | Vitest, single run (not watch) |
+| `format`       | Prettier write                 |
+| `format:check` | Prettier check                 |
 
 Root: `npm run setup` (install all), `npm run dev` (both apps), and `lint` / `typecheck` /
 `test` / `build` / `format:check` fan out to both packages.
@@ -103,6 +103,7 @@ Root: `npm run setup` (install all), `npm run dev` (both apps), and `lint` / `ty
 in dev, so the browser sees a single origin locally and no CORS is involved.
 
 **Backend endpoints (infrastructure only):**
+
 - `GET /health` → `{ status: "ok", version, commit, timestamp }` — `version` from
   `backend/package.json`; `commit` from the `GIT_SHA` env var (baked in at image build,
   `"local"` otherwise). Never depends on Supabase.
@@ -142,6 +143,19 @@ IAM actions required, each scoped to the specific resource ARN except where AWS 
 `lambda:GetFunctionUrlConfig`, `s3:ListBucket`, `s3:PutObject`, `s3:DeleteObject`,
 `cloudfront:CreateInvalidation`.
 
+Constraints that break deploys if ignored (learned while writing `infra/main`):
+
+- Use `aws lambda wait function-updated`, **not** `function-updated-v2` (needs `lambda:GetFunction`).
+- Deploy jobs must **not** use `environment:` and must run only on `refs/heads/main`: the role's
+  trust policy matches `sub = repo:santiago-torres1/progress-tracker:ref:refs/heads/main` exactly.
+- No `--acl` flags on S3 uploads (bucket uses `BucketOwnerEnforced`).
+- `update-function-configuration --environment` replaces the whole map: always send all
+  `SUPABASE_*` together, and never set `GIT_SHA` there (it's baked into the image).
+- Terraform's `aws_lambda_function` ignores `image_uri` and `environment` — CI owns both.
+- `infra/main` needs AWS provider `~> 6.28` (auto-creates both public Function URL permissions).
+- Adding an AWS call to `deploy.yml` means adding its IAM action to `infra/main/github_oidc.tf`
+  and to the list above, in the same PR.
+
 **GitHub secrets (exact names):** `AWS_REGION`, `AWS_ROLE_ARN`, `ECR_REPOSITORY_URI`,
 `LAMBDA_FUNCTION_NAME`, `S3_FRONTEND_BUCKET`, `CLOUDFRONT_DISTRIBUTION_ID`, `SUPABASE_URL`,
 `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`. The AWS account ID is never stored.
@@ -158,8 +172,42 @@ IAM actions required, each scoped to the specific resource ARN except where AWS 
 
 ## Git, versioning, and release process
 
-<!-- Finalized in Phase 7 — see README "Release Process". -->
-_TBD in this session._
+**Trunk-based.** `main` is always deployable and always deployed: every push to it runs
+`deploy.yml`. Work happens on short-lived branches (`feat/…`, `fix/…`, `chore/…`) and reaches
+`main` only through a pull request. Never commit directly to `main`.
+
+**Squash merge, and the PR title is the commit message.** That title is the only thing git-cliff
+sees, so it must be a Conventional Commit: `type(optional-scope): summary`, with type one of
+`feat | fix | perf | refactor | docs | ci | build | chore | test | style | revert`.
+`.github/workflows/pr-title.yml` enforces it. `feat` → Added, `fix` → Fixed, `perf`/`refactor` →
+Changed, `docs` → Documentation, everything else → Maintenance (`cliff.toml`). `!` or a
+`BREAKING CHANGE:` footer flags a break.
+
+**SemVer, starting at `0.1.0-alpha`.** While pre-1.0 and alpha: `0.1.1-alpha`, `0.1.0-alpha.1`,
+etc. (`-alpha` sorts before `-alpha.1`). Move to `0.2.0-alpha` at a milestone, `1.0.0` when the app
+is real and public. The version lives in three `package.json` files plus their lockfiles — always
+change it with `npm run release:prepare`, never by hand. `GET /health` reports it, so it is the
+deployed artifact's identity.
+
+**Releasing** (details in `README.md#release-process`):
+
+1. `git switch -c release/vX.Y.Z` → `npm run release:prepare -- X.Y.Z` (bumps versions, writes the
+   `CHANGELOG.md` section with git-cliff). Edit the generated section for humans if needed.
+2. PR titled `chore(release): vX.Y.Z` → merge → `deploy.yml` deploys it.
+3. Tag that merged commit on `main` and push the tag → `release.yml` publishes the GitHub Release.
+
+A tag never deploys. The commit was already live when it merged; the Release is the record.
+
+**Conventions that keep this working:**
+
+- `CHANGELOG.md`'s top must stay byte-identical to `[changelog].header` in `cliff.toml`, or
+  `--prepend` duplicates it. It is in `.prettierignore` for that reason — never format it.
+- Third-party actions are pinned to a major version and tracked by Dependabot.
+- `AWS_REGION` is a secret (as specified), so any job output containing the region — including the
+  Function URL — is dropped by the runner. That is why `deploy.yml` re-reads the Function URL in
+  each job instead of passing it between them. Making it a repository _variable_ would be cleaner
+  and would stop regions being masked as `***` in logs; it needs the human's go-ahead.
+- Branch protection is recommended but must be enabled by hand in GitHub's UI (see README).
 
 ## Safety rules for every session
 

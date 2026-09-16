@@ -1,0 +1,67 @@
+# Dependency updates. Grouped and weekly, to keep this a single review slot rather than a stream
+# of pull requests.
+#
+# Commit message prefixes are not cosmetic: squash merging turns each pull request title into the
+# commit message on main, .github/workflows/pr-title.yml requires a Conventional Commits title,
+# and cliff.toml maps build/ci to the "Maintenance" section of the changelog.
+version: 2
+
+updates:
+  # Three independent npm packages (no workspaces), updated together per group.
+  - package-ecosystem: npm
+    directories:
+      - /
+      - /frontend
+      - /backend
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build
+      include: scope # -> "build(deps): ..." / "build(deps-dev): ..."
+    groups:
+      npm-minor-and-patch:
+        patterns: ['*']
+        update-types: [minor, patch]
+    ignore:
+      # @types/node tracks the Lambda/CI runtime (Node 22, see .nvmrc), not the newest release.
+      - dependency-name: '@types/node'
+        update-types: [version-update:semver-major]
+
+  # Actions used by the workflows in this directory. Pinned to major tags, so these pull requests
+  # only appear for new majors (which can break the deploy path and deserve a read).
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: ci
+      include: scope
+    groups:
+      github-actions:
+        patterns: ['*']
+
+  # Terraform providers: the versions recorded in each .terraform.lock.hcl.
+  - package-ecosystem: terraform
+    directories:
+      - /infra/bootstrap
+      - /infra/main
+    schedule:
+      interval: weekly
+      day: monday
+      time: '06:00'
+      timezone: Etc/UTC
+    open-pull-requests-limit: 5
+    commit-message:
+      prefix: build
+      include: scope
+    groups:
+      terraform:
+        patterns: ['*']
