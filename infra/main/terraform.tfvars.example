@@ -5,6 +5,10 @@
 # project_name                = "progress-tracker"
 # environment                 = "alpha"
 # github_repository           = "santiago-torres1/progress-tracker"
+# Numeric IDs in the immutable OIDC subject claim. Get both with:
+#   gh api repos/<owner>/<name> --jq '{owner_id: .owner.id, repo_id: .id}'
+# github_owner_id             = "114947035"
+# github_repository_id        = "1370776563"
 # github_branch               = "main"
 # bootstrap_image_tag         = "bootstrap"
 # lambda_memory_mb            = 512

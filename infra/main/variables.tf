@@ -37,6 +37,28 @@ variable "github_repository" {
   }
 }
 
+variable "github_owner_id" {
+  description = "Numeric GitHub account ID of the repository owner. GitHub puts it in the immutable OIDC subject claim. Find it with: gh api repos/<owner>/<name> --jq .owner.id"
+  type        = string
+  default     = "114947035"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_owner_id))
+    error_message = "github_owner_id must be the numeric GitHub account ID (digits only)."
+  }
+}
+
+variable "github_repository_id" {
+  description = "Numeric GitHub repository ID. GitHub puts it in the immutable OIDC subject claim. Find it with: gh api repos/<owner>/<name> --jq .id"
+  type        = string
+  default     = "1370776563"
+
+  validation {
+    condition     = can(regex("^[0-9]+$", var.github_repository_id))
+    error_message = "github_repository_id must be the numeric repository ID (digits only)."
+  }
+}
+
 variable "github_branch" {
   description = "Branch whose push workflows may assume the deploy role."
   type        = string
