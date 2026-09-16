@@ -11,6 +11,26 @@ locals {
   github_oidc_url  = "https://token.actions.githubusercontent.com"
   github_oidc_host = "token.actions.githubusercontent.com"
 
+  # GitHub signs each workflow's token with an *immutable* subject claim: the owner and repository
+  # names are each followed by their numeric ID, which survives renames and cannot be re-created by
+  # someone who later claims a freed-up name:
+  #   repo:OWNER@OWNER_ID/NAME@REPO_ID:ref:refs/heads/BRANCH
+  # The older name-only form (repo:OWNER/NAME:ref:...) is NOT what this repository's tokens carry,
+  # and a trust policy written against it fails with "Not authorized to perform
+  # sts:AssumeRoleWithWebIdentity". To see what a run actually sent, look up the
+  # AssumeRoleWithWebIdentity event in CloudTrail: userIdentity.userName is the subject claim.
+  github_owner_name = split("/", var.github_repository)[0]
+  github_repo_name  = split("/", var.github_repository)[1]
+
+  github_oidc_sub = format(
+    "repo:%s@%s/%s@%s:ref:refs/heads/%s",
+    local.github_owner_name,
+    var.github_owner_id,
+    local.github_repo_name,
+    var.github_repository_id,
+    var.github_branch,
+  )
+
   github_oidc_provider_arn = (
     var.create_github_oidc_provider
     ? aws_iam_openid_connect_provider.github[0].arn
@@ -60,17 +80,16 @@ data "aws_iam_policy_document" "github_actions_assume_role" {
 
     # Exact match (StringEquals, no wildcards): only workflows running for a
     # push to this one branch of this one repository can assume the role.
-    # Pull requests (sub = repo:OWNER/REPO:pull_request), forks, tags, and
-    # other branches cannot.
+    # Pull requests (whose claim ends in :pull_request), forks, tags, and other
+    # branches cannot.
     #
-    # If deploy.yml later uses a GitHub Environment (`environment:` on the
-    # job), GitHub changes the claim to repo:OWNER/REPO:environment:NAME, and
-    # this value must change with it. Renaming or transferring the repository
-    # changes it too.
+    # If deploy.yml later uses a GitHub Environment (`environment:` on the job),
+    # GitHub replaces the ":ref:refs/heads/..." suffix with ":environment:NAME",
+    # and this value must change with it.
     condition {
       test     = "StringEquals"
       variable = "${local.github_oidc_host}:sub"
-      values   = ["repo:${var.github_repository}:ref:refs/heads/${var.github_branch}"]
+      values   = [local.github_oidc_sub]
     }
   }
 }

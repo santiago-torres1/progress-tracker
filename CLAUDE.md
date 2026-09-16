@@ -147,7 +147,13 @@ Constraints that break deploys if ignored (learned while writing `infra/main`):
 
 - Use `aws lambda wait function-updated`, **not** `function-updated-v2` (needs `lambda:GetFunction`).
 - Deploy jobs must **not** use `environment:` and must run only on `refs/heads/main`: the role's
-  trust policy matches `sub = repo:santiago-torres1/progress-tracker:ref:refs/heads/main` exactly.
+  trust policy matches one exact `sub` claim.
+- That claim is GitHub's **immutable** form — names each followed by their numeric ID:
+  `repo:OWNER@OWNER_ID/NAME@REPO_ID:ref:refs/heads/main` (see `github_owner_id` /
+  `github_repository_id` in `infra/main`). The older name-only form does not match what GitHub
+  sends, and fails with a generic `Not authorized to perform sts:AssumeRoleWithWebIdentity`.
+  To see the claim a run actually sent, look up its `AssumeRoleWithWebIdentity` event in
+  CloudTrail: `userIdentity.userName` is the subject claim.
 - No `--acl` flags on S3 uploads (bucket uses `BucketOwnerEnforced`).
 - `update-function-configuration --environment` replaces the whole map: always send all
   `SUPABASE_*` together, and never set `GIT_SHA` there (it's baked into the image).
