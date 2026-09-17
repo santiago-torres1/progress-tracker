@@ -1,0 +1,239 @@
+/*
+ * Design tokens — the single place a colour, size, radius or duration is written down.
+ *
+ * Ported from the approved "Meadow" mockup. Light values live on bare :root; the dark block
+ * redefines colour only — no type, spacing, radius or motion changes, so a component never has
+ * to know which theme it is in.
+ *
+ * Components never write a hex. A goal, entry or area names its life area with
+ * `data-area="<slug>"` and reads `var(--goal)`; the slug -> colour mapping is at the bottom of
+ * this file. Slugs are the six built-in life areas the API returns; anything else falls back to
+ * the same neutral the backend uses when a goal has no area.
+ */
+
+:root {
+  color-scheme: light dark;
+
+  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+
+  /* Type: five steps. --fs-xs is reserved for dense calendar annotation. */
+  --fs-xs: 0.75rem;
+  --fs-sm: 0.8125rem;
+  --fs-md: 0.9375rem;
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.625rem;
+
+  --fw-medium: 500;
+  --fw-semibold: 600;
+  --lh-tight: 1.25;
+  --lh-body: 1.5;
+
+  /* Space */
+  --sp-1: 0.25rem;
+  --sp-2: 0.5rem;
+  --sp-3: 0.75rem;
+  --sp-4: 1rem;
+  --sp-5: 1.5rem;
+  --sp-6: 2rem;
+  --sp-7: 3rem;
+
+  /* Shape */
+  --r-xs: 0.25rem;
+  --r-sm: 0.375rem;
+  --r-md: 0.625rem;
+  --r-lg: 0.875rem;
+  --r-xl: 1.125rem;
+  --r-2xl: 1.5rem;
+  --r-full: 999px;
+
+  /* Motion — water settling, never a dashboard booting */
+  --mo-fast: 150ms;
+  --mo: 200ms;
+  --mo-slow: 320ms;
+  --mo-settle: 420ms;
+  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  /* Layout */
+  --shell-width: 68rem;
+  --content-width: 34rem;
+
+  /* --- Life areas: six, fixed and final --------------------- */
+  --area-health: #2e7d57;
+  --area-learning: #4f52c7;
+  --area-money: #8a6410;
+  --area-relationships: #a6416b;
+  --area-work: #14717f;
+  --area-creative: #7d4aa8;
+  /* Matches the backend's fallback for a goal with no area. */
+  --area-neutral: #64748b;
+
+  /* How much of a goal's hue is mixed into a surface. Tokenised so dark mode can be more
+     generous without any structural change. */
+  --tint-top: 9%;
+  --tint-bot: 17%;
+  --tint-bar: 12%;
+  --tint-bar-2: 19%;
+
+  /* --- Surfaces, ink, accent -------------------------------- */
+  --bg: #eef2ef;
+  --bg-2: #e7edef;
+  --surface: #ffffff;
+  --surface-2: #f4f7f4;
+  --surface-3: #e9efea;
+  --border: #dde4de;
+  --border-strong: #c2ccc5;
+  --text: #16201a;
+  --muted: #55605a;
+  --accent: #2f6f5c;
+  --accent-contrast: #ffffff;
+  --accent-soft: #dcebe4;
+
+  /* Layered depth, not one stamped box-shadow */
+  --sh-1:
+    0 1px 1px rgba(20, 38, 30, 0.04), 0 2px 4px -1px rgba(20, 38, 30, 0.05),
+    0 6px 14px -6px rgba(20, 38, 30, 0.08);
+  --sh-2:
+    0 1px 1px rgba(20, 38, 30, 0.04), 0 3px 8px -2px rgba(20, 38, 30, 0.07),
+    0 14px 28px -10px rgba(20, 38, 30, 0.12);
+  --sh-rim: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+
+  /* The area colour in scope. Overridden by [data-area] below; this is the fallback for
+     anything that has no area at all. */
+  --goal: var(--area-neutral);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --area-health: #5fc294;
+    --area-learning: #9a9df5;
+    --area-money: #e0b45c;
+    --area-relationships: #f093b4;
+    --area-work: #5cc3d1;
+    --area-creative: #c79ae8;
+    --area-neutral: #94a3b8;
+
+    --tint-top: 13%;
+    --tint-bot: 24%;
+    --tint-bar: 18%;
+    --tint-bar-2: 26%;
+
+    --bg: #0f1412;
+    --bg-2: #101817;
+    --surface: #161b18;
+    --surface-2: #1b211d;
+    --surface-3: #121715;
+    --border: #262e29;
+    --border-strong: #3a443e;
+    --text: #e7ece9;
+    --muted: #a8b2ac;
+    --accent: #74c2a8;
+    --accent-contrast: #0d1714;
+    --accent-soft: #172a23;
+
+    --sh-1:
+      0 1px 1px rgba(0, 0, 0, 0.35), 0 2px 6px -2px rgba(0, 0, 0, 0.4),
+      0 8px 18px -8px rgba(0, 0, 0, 0.5);
+    --sh-2:
+      0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 10px -2px rgba(0, 0, 0, 0.45),
+      0 18px 34px -12px rgba(0, 0, 0, 0.6);
+    --sh-rim: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+  }
+}
+
+/* ------------------------------------------------------------------
+   Life area -> colour, addressed by the slug the API returns.
+   The bare [data-area] rule comes first so an unknown slug lands on
+   the neutral rather than inheriting a neighbour's hue.
+   ------------------------------------------------------------------ */
+
+[data-area] {
+  --goal: var(--area-neutral);
+}
+
+[data-area='health'] {
+  --goal: var(--area-health);
+}
+
+[data-area='learning'] {
+  --goal: var(--area-learning);
+}
+
+[data-area='money'] {
+  --goal: var(--area-money);
+}
+
+[data-area='relationships'] {
+  --goal: var(--area-relationships);
+}
+
+[data-area='work'] {
+  --goal: var(--area-work);
+}
+
+[data-area='creative'] {
+  --goal: var(--area-creative);
+}
+
+/* ------------------------------------------------------------------
+   Aliases for the alpha infra shell (App, HealthPanel).
+   That UI was built against the earlier token names; rather than leave
+   the app with two palettes, the old names now point at Meadow's. Fold
+   them away when the shell itself is restyled.
+   ------------------------------------------------------------------ */
+
+:root {
+  --font-size-sm: var(--fs-sm);
+  --font-size-md: var(--fs-md);
+  --font-size-lg: var(--fs-lg);
+  --font-size-xl: var(--fs-xl);
+  --font-weight-medium: var(--fw-medium);
+  --font-weight-semibold: var(--fw-semibold);
+  --line-height-tight: var(--lh-tight);
+  --line-height-body: var(--lh-body);
+
+  --space-1: var(--sp-1);
+  --space-2: var(--sp-2);
+  --space-3: var(--sp-3);
+  --space-4: var(--sp-4);
+  --space-5: var(--sp-5);
+  --space-6: var(--sp-6);
+  --space-7: var(--sp-7);
+
+  --radius-md: var(--r-md);
+  --radius-lg: var(--r-lg);
+  --radius-full: var(--r-full);
+
+  --motion-duration: var(--mo);
+  --motion-ease: var(--ease);
+
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-hover: var(--surface-2);
+  --color-surface-active: var(--surface-3);
+  --color-border: var(--border);
+  --color-border-strong: var(--border-strong);
+  --color-border-hover: var(--border-strong);
+  --color-text: var(--text);
+  --color-text-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-focus: var(--accent);
+
+  --color-success-fg: var(--accent);
+  --color-success-bg: var(--accent-soft);
+  --color-neutral-fg: var(--muted);
+  --color-neutral-bg: var(--surface-2);
+  --color-danger-fg: #a3322b;
+  --color-danger-bg: #fbeceb;
+
+  --shadow-panel: var(--sh-1);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-danger-fg: #f19a92;
+    --color-danger-bg: #331a19;
+  }
+}

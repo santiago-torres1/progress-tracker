@@ -1,0 +1,142 @@
+/*
+ * The calendar's frame: a bar that says which period is on screen and offers the three views,
+ * and the room underneath that the day, week or month draws into.
+ *
+ * The bar is deliberately the quietest thing here. The switcher is the only accent in it, as in
+ * the mockup; stepping a period is a pair of hairline chevrons and a "Today" that sits at the
+ * far end, out of the way until it is wanted.
+ */
+
+.calendar-screen {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.calendar-screen > * {
+  min-width: 0;
+}
+
+/*
+ * Two lines: the section's name and the view switcher on the first, the period controls across
+ * the second. The controls wrapper carries no box of its own so both of its children can be
+ * placed in this grid directly.
+ */
+.calendar-screen__head {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-4);
+}
+
+.calendar-screen__controls {
+  display: contents;
+}
+
+.calendar-screen__title {
+  grid-column: 1;
+  font-size: var(--fs-lg);
+  letter-spacing: -0.015em;
+}
+
+/* Placed by this bar; how it looks is CalendarViewSwitcher's own business. */
+.calendar-screen__head .calendar-view-switcher {
+  grid-column: 2;
+  justify-self: end;
+}
+
+.calendar-screen__nav {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* Narrow: the switcher takes its own line rather than squeezing the heading. */
+@media (max-width: 30rem) {
+  .calendar-screen__head {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .calendar-screen__head .calendar-view-switcher {
+    grid-column: 1;
+    justify-self: start;
+  }
+}
+
+.calendar-screen__step,
+.calendar-screen__today {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  color: var(--muted);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease);
+}
+
+.calendar-screen__step {
+  width: 2rem;
+  height: 2rem;
+  padding: 0;
+}
+
+.calendar-screen__chevron {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* The label between the chevrons: the one piece of the bar that is information. */
+.calendar-screen__period {
+  flex: 0 1 auto;
+  min-width: 0;
+  padding-inline: var(--sp-1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Not a step, so it does not sit with them. */
+.calendar-screen__today {
+  min-height: 2rem;
+  margin-inline-start: auto;
+  padding-inline: var(--sp-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+@media (hover: hover) {
+  .calendar-screen__step:hover,
+  .calendar-screen__today:hover {
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+}
+
+@media (pointer: coarse) {
+  .calendar-screen__step {
+    width: 2.75rem;
+    height: 2.75rem;
+  }
+
+  .calendar-screen__today {
+    min-height: 2.75rem;
+    padding-inline: var(--sp-4);
+  }
+}
+
+/*
+ * The views bring their own surfaces, so the panel is only the room they stand in. It keeps a
+ * floor under it: swapping a view, or waiting on a read, never pulls the footer up the page.
+ */
+.calendar-screen__panel {
+  display: grid;
+  align-content: start;
+  min-height: 16rem;
+}

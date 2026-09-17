@@ -1,0 +1,169 @@
+/*
+ * Day view. No grid of empty hours: a list of what is yours to place, then a spine that carries
+ * an hour only where something actually happens.
+ */
+
+.calendar-day__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+  padding-bottom: var(--sp-4);
+  border-bottom: 1px solid var(--border);
+}
+
+.calendar-day__dow {
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  line-height: 1.1;
+  letter-spacing: -0.025em;
+}
+
+.calendar-day__date {
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.calendar-day__count {
+  text-align: end;
+  font-size: var(--fs-sm);
+}
+
+.calendar-day__count span {
+  display: block;
+  color: var(--muted);
+  font-size: var(--fs-xs);
+}
+
+.calendar-day__section {
+  margin-top: var(--sp-5);
+}
+
+.calendar-day__anytime {
+  display: grid;
+  gap: var(--sp-2);
+  margin-top: var(--sp-3);
+}
+
+/* an untimed entry is the whole day's, so it gets the room to say so */
+.calendar-day__anytime .entry-bar {
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-md);
+}
+
+.calendar-day__timed {
+  position: relative;
+  display: grid;
+  gap: var(--sp-3);
+  margin-top: var(--sp-3);
+}
+
+/* the spine */
+.calendar-day__timed::before {
+  content: '';
+  position: absolute;
+  top: 0.75rem;
+  bottom: 0.75rem;
+  left: 3.9rem;
+  width: 1px;
+  background-color: var(--border);
+}
+
+.calendar-day__slot {
+  position: relative;
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+.calendar-day__slot::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 3.9rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--surface);
+  box-shadow: 0 0 0 1.5px var(--goal);
+  transform: translate(-50%, -50%);
+}
+
+.calendar-day__slot-time {
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+  text-align: end;
+}
+
+/* the hour is already in the rail, so the bar sits flush against the spine */
+.calendar-day__slot .entry-bar--at {
+  margin-left: 0;
+  width: 100%;
+}
+
+.calendar-day__now {
+  position: relative;
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr);
+  align-items: center;
+  gap: var(--sp-4);
+  color: var(--accent);
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+}
+
+.calendar-day__now::before {
+  content: '';
+  position: absolute;
+  top: 50%;
+  left: 3.9rem;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--accent);
+  transform: translate(-50%, -50%);
+}
+
+.calendar-day__now-time {
+  text-align: end;
+  font-weight: var(--fw-semibold);
+}
+
+.calendar-day__now-line {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.calendar-day__now-line::before {
+  content: '';
+  flex: 1 1 auto;
+  height: 1px;
+  background-color: color-mix(in srgb, var(--accent) 45%, transparent);
+}
+
+.calendar-day__foot {
+  margin-top: var(--sp-5);
+  padding-top: var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+
+@media (max-width: 26rem) {
+  .calendar-day__slot,
+  .calendar-day__now {
+    grid-template-columns: 2.75rem minmax(0, 1fr);
+    gap: var(--sp-3);
+  }
+
+  .calendar-day__timed::before,
+  .calendar-day__slot::before,
+  .calendar-day__now::before {
+    left: 3.1rem;
+  }
+}

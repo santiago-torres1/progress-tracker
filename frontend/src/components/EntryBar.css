@@ -1,0 +1,146 @@
+/*
+ * One calendar entry, with its text inside it — never a coloured block you have to hover to
+ * read. Two grammars: untimed bars span the full width with a rail on the leading edge, timed
+ * bars are inset and carry their hour.
+ */
+
+.entry-bar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  width: 100%;
+  min-width: 0;
+  padding: 0.3125rem var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  line-height: 1.3;
+  text-align: start;
+  color: var(--text);
+  background-color: var(--surface-2);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  transition:
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease),
+    transform var(--mo) var(--ease-out);
+}
+
+button.entry-bar {
+  cursor: pointer;
+}
+
+/* Untimed: it belongs to the whole day, so it takes the whole width. */
+.entry-bar--any {
+  background-color: var(--surface-2);
+  background-image: linear-gradient(
+    color-mix(in srgb, var(--goal) var(--tint-bar), var(--surface)),
+    color-mix(in srgb, var(--goal) var(--tint-bar), var(--surface))
+  );
+  border-left: 3px solid var(--goal);
+  border-top-left-radius: var(--r-xs);
+  border-bottom-left-radius: var(--r-xs);
+}
+
+/* Timed: inset from the leading edge, and it carries its hour. */
+.entry-bar--at {
+  margin-left: 1.125rem;
+  width: calc(100% - 1.125rem);
+  background-color: var(--surface);
+  border-color: var(--border);
+  box-shadow: var(--sh-1);
+}
+
+.entry-bar--at::before {
+  content: '';
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--goal);
+}
+
+.entry-bar__time {
+  flex: none;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.entry-bar__name {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.entry-bar__area {
+  flex: none;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.entry-bar__tag {
+  flex: none;
+  padding: 0 var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-full);
+}
+
+.entry-bar__tick {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+  color: var(--goal);
+}
+
+.entry-bar--done .entry-bar__name {
+  color: var(--muted);
+}
+
+/* Completed but never planned — it still counts. Dashed rail. */
+.entry-bar--unplanned {
+  border-left-style: dashed;
+}
+
+/* Planned, didn't happen. Faded, and nothing else is said. */
+.entry-bar--missed {
+  opacity: 0.62;
+  background-image: none;
+  background-color: transparent;
+  border: 1px dashed var(--border-strong);
+  box-shadow: none;
+}
+
+.entry-bar--missed.entry-bar--any {
+  border-left: 3px dashed var(--goal);
+}
+
+@media (hover: hover) {
+  button.entry-bar:hover {
+    transform: translateX(1px);
+    border-color: var(--border-strong);
+  }
+
+  button.entry-bar--any:hover {
+    background-image: linear-gradient(
+      color-mix(in srgb, var(--goal) var(--tint-bar-2), var(--surface)),
+      color-mix(in srgb, var(--goal) var(--tint-bar-2), var(--surface))
+    );
+  }
+}
+
+/* Narrow: the area name leaves the layout but stays in the accessibility tree, so the colour
+   is still never alone. */
+@media (max-width: 30rem) {
+  .entry-bar__area {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}

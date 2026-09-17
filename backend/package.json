@@ -1,6 +1,6 @@
 {
   "name": "progress-tracker-backend",
-  "version": "0.1.0-alpha",
+  "version": "0.1.1-alpha",
   "private": true,
   "description": "progress-tracker API: Express 5 app, run locally with app.listen() and on AWS Lambda via serverless-http.",
   "license": "UNLICENSED",

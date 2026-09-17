@@ -1,7 +1,14 @@
 /*
- * Page shell: a single centered column.
- * The column is anchored at a viewport-relative top offset rather than centered, so the
- * header stays put when the health panel grows after the check resolves (no load jump).
+ * Page shell.
+ *
+ * The product is the page now, so the column is the mockup's 68rem shell rather than the single
+ * panel's 34rem, and it starts at the top of the viewport instead of floating in the middle of
+ * it: the goal canvas and the month grid both need the width, and neither should move when a
+ * read arrives.
+ *
+ * Above the content is the app's name — chrome, and sized like chrome, so the dashboard's
+ * headline is the largest type on the page. Below it is the deploy proof, kept because this
+ * milestone is about the plumbing, demoted because it is no longer the point.
  */
 
 .app {
@@ -11,26 +18,35 @@
   flex-direction: column;
   min-height: 100vh;
   min-height: 100dvh;
-  padding: clamp(var(--space-6), 18vh, 12rem) var(--space-4) var(--space-5);
+  padding: var(--sp-5) var(--sp-4) var(--sp-7);
+}
+
+@media (min-width: 48rem) {
+  .app {
+    padding: var(--sp-6) var(--sp-6) var(--sp-7);
+  }
 }
 
 .app__header,
 .app__main,
 .app__footer {
   width: 100%;
-  max-width: var(--content-width);
+  min-width: 0;
+  max-width: var(--shell-width);
   margin-inline: auto;
 }
 
+/* --- masthead ------------------------------------------------------------- */
+
 .app__header {
-  margin-bottom: var(--space-6);
+  margin-bottom: var(--sp-6);
 }
 
 .app__title {
   display: flex;
   align-items: center;
-  gap: var(--space-3);
-  font-size: var(--font-size-xl);
+  gap: var(--sp-2);
+  font-size: var(--fs-lg);
   letter-spacing: -0.015em;
 }
 
@@ -40,25 +56,153 @@
   flex: none;
   width: var(--mark-size);
   height: var(--mark-size);
-  border: 0.1875rem solid var(--color-accent-soft);
-  border-top-color: var(--color-accent);
-  border-right-color: var(--color-accent);
-  border-bottom-color: var(--color-accent);
+  border: 0.1875rem solid var(--accent-soft);
+  border-top-color: var(--accent);
+  border-right-color: var(--accent);
+  border-bottom-color: var(--accent);
   border-radius: 50%;
   transform: rotate(45deg);
 }
 
 .app__tagline {
-  margin-top: var(--space-1);
-  padding-inline-start: calc(var(--mark-size) + var(--space-3));
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
+  margin-top: var(--sp-1);
+  padding-inline-start: calc(var(--mark-size) + var(--sp-2));
+  font-size: var(--fs-sm);
+  color: var(--muted);
 }
 
+/* --- the two screens ------------------------------------------------------ */
+
+.app__main {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-7);
+}
+
+/* --- foot: the deploy proof, and what is deployed ------------------------- */
+
 .app__footer {
+  display: grid;
+  gap: var(--sp-4);
   margin-top: auto;
-  padding-top: var(--space-7);
-  font-size: var(--font-size-sm);
-  color: var(--color-text-muted);
+  padding-top: var(--sp-5);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  border-top: 1px solid var(--border);
+}
+
+/* The main content and the footer are never closer than this, however short the page is. */
+.app__main + .app__footer {
+  margin-block-start: var(--sp-7);
+}
+
+.app__build {
   font-variant-numeric: tabular-nums;
+}
+
+.app__build code {
+  padding: 0 var(--sp-1);
+  font-size: inherit;
+  background-color: var(--surface-2);
+  border-radius: var(--r-xs);
+}
+
+/*
+ * HealthPanel, demoted from the main event to a diagnostic. It is styled entirely from out
+ * here: the component keeps its card for anywhere else it might be used, and the footer simply
+ * takes the card away — no surface, no shadow, no heading weight — and leaves the readings.
+ */
+
+.app__footer .health-panel {
+  gap: var(--sp-2);
+  padding: 0;
+  background-color: transparent;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.app__footer .health-panel__header {
+  gap: var(--sp-2) var(--sp-3);
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+/* The same small uppercase label the rest of the app uses above a group. */
+.app__footer .health-panel__title {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* The status keeps its pill: it is the whole reason this block is still on the page. */
+.app__footer .health-panel__status {
+  padding: 0 var(--sp-2) 0 0.4375rem;
+  font-size: var(--fs-xs);
+}
+
+/* Readings run along one line and wrap, instead of stretching label-to-value across 68rem. */
+.app__footer .health-panel__details {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1) var(--sp-5);
+}
+
+.app__footer .health-panel__row {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  padding-block: 0;
+}
+
+.app__footer .health-panel__row + .health-panel__row {
+  border-top: 0;
+}
+
+.app__footer .health-panel__row dt {
+  font-size: inherit;
+}
+
+.app__footer .health-panel__row dd {
+  text-align: start;
+  color: var(--text);
+}
+
+.app__footer .health-panel code {
+  font-size: inherit;
+}
+
+.app__footer .health-panel__retry {
+  align-self: start;
+  min-height: 1.75rem;
+  margin-top: var(--sp-1);
+  padding: 0 var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  background-color: transparent;
+  border-color: var(--border-strong);
+  border-radius: var(--r-full);
+}
+
+.app__footer .health-panel__retry:disabled {
+  color: var(--muted);
+  background-color: transparent;
+  border-color: var(--border);
+  cursor: default;
+}
+
+@media (hover: hover) {
+  .app__footer .health-panel__retry:hover:not(:disabled) {
+    color: var(--text);
+    background-color: var(--surface);
+    border-color: var(--border-strong);
+  }
+}
+
+@media (pointer: coarse) {
+  .app__footer .health-panel__retry {
+    min-height: 2.25rem;
+  }
 }

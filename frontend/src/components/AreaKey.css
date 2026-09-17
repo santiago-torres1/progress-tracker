@@ -1,0 +1,23 @@
+/* The key: six dots, six names. Colour is never asked to carry a meaning on its own. */
+
+.area-key {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2) var(--sp-4);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.area-key li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.area-key__dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--goal);
+}

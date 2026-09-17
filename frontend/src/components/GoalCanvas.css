@@ -1,0 +1,63 @@
+/*
+ * The canvas: deliberately unsorted. Size is importance, nothing else, so the grid only has to
+ * place spans — every other decision belongs to the tile inside the cell.
+ */
+
+.goal-canvas {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-auto-rows: 4.5rem;
+  gap: var(--sp-3);
+}
+
+/* the cell is a grid so its tile fills it on both axes, whatever the span */
+.goal-canvas__cell {
+  display: grid;
+  min-width: 0;
+}
+
+.goal-canvas__cell--lg {
+  grid-column: span 2;
+  grid-row: span 3;
+}
+
+.goal-canvas__cell--md {
+  grid-column: span 2;
+  grid-row: span 2;
+}
+
+.goal-canvas__cell--sm {
+  grid-column: span 1;
+  grid-row: span 2;
+}
+
+@media (min-width: 40rem) {
+  .goal-canvas {
+    grid-auto-rows: 5.5rem;
+    gap: var(--sp-4);
+  }
+
+  .goal-canvas__cell--md {
+    grid-column: span 1;
+  }
+
+  .goal-canvas__cell--sm {
+    grid-row: span 1;
+  }
+}
+
+@media (min-width: 56rem) {
+  .goal-canvas {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    grid-auto-rows: 5.5rem;
+  }
+
+  .goal-canvas__cell--lg {
+    grid-row: span 3;
+  }
+
+  .goal-canvas__cell--md {
+    grid-column: span 2;
+    grid-row: span 2;
+  }
+}

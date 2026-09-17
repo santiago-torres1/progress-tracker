@@ -1,0 +1,58 @@
+/* What is left of today, on one line. Never what was missed. */
+
+.today-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3) var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-1), var(--sh-rim);
+}
+
+.today-strip__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  min-width: 0;
+}
+
+.today-strip__empty {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.today-strip__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  max-width: 100%;
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm);
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+}
+
+.today-strip__dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--goal);
+}
+
+.today-strip__pill time {
+  flex: none;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.today-strip__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -1,0 +1,34 @@
+/*
+ * The dashboard's layout, and nothing else: every part of this screen is a component with its
+ * own file. What is decided here is the order they stand in and the air between them.
+ *
+ * The headline is the loudest type on the page on purpose — "Your glass is half full." is the
+ * one sentence this product exists to say, so the app's own name above it stays smaller.
+ */
+
+.dashboard {
+  display: grid;
+  gap: var(--sp-5);
+}
+
+/* Grid items default to min-width: auto; the canvas and the strip must be free to shrink. */
+.dashboard > * {
+  min-width: 0;
+}
+
+.dashboard__head {
+  max-width: 46rem;
+}
+
+.dashboard__headline {
+  font-size: var(--fs-xl);
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.dashboard__detail {
+  margin-top: var(--sp-1);
+  max-width: 44ch;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}

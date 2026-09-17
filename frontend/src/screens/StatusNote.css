@@ -1,0 +1,113 @@
+/*
+ * Waiting, and not-arrived.
+ *
+ * The one rule this file follows: nothing here may look like an accusation. No red, no warning
+ * triangle, no border that shouts — a dashed outline, the same one the empty state uses for a
+ * plot with nothing planted in it, because both are "not filled in yet" rather than "wrong".
+ *
+ * Two shapes. `block` stands in for a screen that has nothing else to show; `line` is a quiet
+ * aside on a screen that still has its content.
+ */
+
+.status-note--block {
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-3);
+  padding: var(--sp-6) var(--sp-5);
+  text-align: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-2xl);
+}
+
+/* One sentence in the margin of a screen that is otherwise fine: a rail, and room to wrap. */
+.status-note--line {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-1) var(--sp-3);
+  padding-inline-start: var(--sp-3);
+  border-inline-start: 2px solid var(--border-strong);
+}
+
+.status-note__title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  line-height: var(--lh-tight);
+  text-wrap: balance;
+}
+
+.status-note--line .status-note__title {
+  font-size: var(--fs-sm);
+}
+
+.status-note__body {
+  max-width: 48ch;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* Waiting is the quietest thing on the page: the sentence, in the same grey as a caption. */
+.status-note[aria-busy='true'] .status-note__title {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+/*
+ * A read that answers quickly should never flash the word "loading" at anyone. The note holds
+ * at zero opacity for longer than a fast answer takes, then fades in. Nothing moves, and
+ * reduced motion turns the delay off with it.
+ */
+.status-note[aria-busy='true'] {
+  animation: status-note-arrive var(--mo) var(--ease) 140ms backwards;
+}
+
+@keyframes status-note-arrive {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+/* An offer, not an instruction: the reader may press it, and nothing retries on its own. */
+.status-note__retry {
+  min-height: 2.25rem;
+  padding: var(--sp-2) var(--sp-4);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text);
+  background-color: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease);
+}
+
+.status-note--line .status-note__retry {
+  min-height: 1.75rem;
+  padding: 0 var(--sp-3);
+  font-size: var(--fs-xs);
+  background-color: transparent;
+}
+
+@media (hover: hover) {
+  .status-note__retry:hover {
+    color: var(--accent);
+    border-color: var(--accent);
+  }
+}
+
+@media (pointer: coarse) {
+  .status-note__retry {
+    min-height: 2.75rem;
+  }
+
+  .status-note--line .status-note__retry {
+    min-height: 2.25rem;
+  }
+}
