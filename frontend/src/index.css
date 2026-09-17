@@ -1,98 +1,12 @@
 /*
- * Design tokens and base styles for progress-tracker.
+ * Base styles for progress-tracker.
  *
- * Components reference these custom properties only, never raw color values.
- * Dark mode swaps token values below; component CSS does not change.
+ * Every custom property lives in styles/tokens.css — components reference those, never a raw
+ * colour or size. This file is the reset, the document-level type and background, and the two
+ * utility classes that more than one component needs.
  */
 
-:root {
-  color-scheme: light dark;
-
-  /* Type: system stacks only, four sizes max */
-  --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', sans-serif;
-  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
-  /* 13px: labels, meta, code */
-  --font-size-sm: 0.8125rem;
-  /* 15px: body */
-  --font-size-md: 0.9375rem;
-  /* 17px: section titles */
-  --font-size-lg: 1.0625rem;
-  /* 24px: page title */
-  --font-size-xl: 1.5rem;
-  --font-weight-medium: 500;
-  --font-weight-semibold: 600;
-  --line-height-tight: 1.25;
-  --line-height-body: 1.5;
-
-  /* Space */
-  --space-1: 0.25rem;
-  --space-2: 0.5rem;
-  --space-3: 0.75rem;
-  --space-4: 1rem;
-  --space-5: 1.5rem;
-  --space-6: 2rem;
-  --space-7: 3rem;
-
-  /* Shape */
-  --radius-md: 0.5rem;
-  --radius-lg: 0.875rem;
-  --radius-full: 999px;
-
-  /* Motion */
-  --motion-duration: 180ms;
-  --motion-ease: ease;
-
-  /* Layout */
-  --content-width: 34rem;
-
-  /* Color: light */
-  --color-bg: #f7f7f8;
-  --color-surface: #ffffff;
-  --color-surface-hover: #f4f4f5;
-  --color-surface-active: #ececef;
-  --color-border: #e6e6e9;
-  --color-border-strong: #d4d4d9;
-  --color-border-hover: #c2c2c9;
-  --color-text: #18181b;
-  --color-text-muted: #5f5f68;
-  --color-accent: #4a4fc4;
-  --color-accent-soft: #e2e3f6;
-  --color-focus: var(--color-accent);
-
-  --color-success-fg: #1d6b41;
-  --color-success-bg: #e9f6ee;
-  --color-danger-fg: #a3322b;
-  --color-danger-bg: #fbeceb;
-  --color-neutral-fg: var(--color-text-muted);
-  --color-neutral-bg: #f0f0f2;
-
-  --shadow-panel: 0 1px 3px rgb(24 24 27 / 0.06);
-}
-
-@media (prefers-color-scheme: dark) {
-  :root {
-    /* Color: dark */
-    --color-bg: #111113;
-    --color-surface: #18181b;
-    --color-surface-hover: #202024;
-    --color-surface-active: #27272c;
-    --color-border: #2a2a30;
-    --color-border-strong: #3a3a41;
-    --color-border-hover: #4a4a53;
-    --color-text: #ececef;
-    --color-text-muted: #a0a0ab;
-    --color-accent: #8b90f0;
-    --color-accent-soft: #2a2c4d;
-
-    --color-success-fg: #6ccf97;
-    --color-success-bg: #142a1e;
-    --color-danger-fg: #f19a92;
-    --color-danger-bg: #331a19;
-    --color-neutral-bg: #232327;
-
-    --shadow-panel: 0 1px 3px rgb(0 0 0 / 0.4);
-  }
-}
+@import './styles/tokens.css';
 
 /* Reset: light and modern */
 
@@ -114,10 +28,12 @@ html {
 body {
   min-height: 100vh;
   font-family: var(--font-sans);
-  font-size: var(--font-size-md);
-  line-height: var(--line-height-body);
-  color: var(--color-text);
-  background-color: var(--color-bg);
+  font-size: var(--fs-md);
+  line-height: var(--lh-body);
+  color: var(--text);
+  background-color: var(--bg);
+  background-image: linear-gradient(172deg, var(--bg) 0%, var(--bg-2) 100%);
+  background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
@@ -125,14 +41,21 @@ body {
 h1,
 h2,
 h3 {
-  font-weight: var(--font-weight-semibold);
-  line-height: var(--line-height-tight);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
   text-wrap: balance;
 }
 
 p,
 dd {
   overflow-wrap: break-word;
+}
+
+/* Lists are used for structure here (grids, strips, day rows), not for bullets. */
+ul,
+ol {
+  padding: 0;
+  list-style: none;
 }
 
 button {
@@ -144,7 +67,7 @@ code,
 kbd,
 samp {
   font-family: var(--font-mono);
-  font-size: var(--font-size-sm);
+  font-size: var(--fs-sm);
 }
 
 img,
@@ -154,14 +77,62 @@ svg {
 }
 
 ::selection {
-  color: var(--color-text);
-  background-color: var(--color-accent-soft);
+  color: var(--text);
+  background-color: var(--accent-soft);
 }
 
-/* One focus ring for every interactive element */
+/* One focus ring for every interactive element; it follows each element's own corner radius. */
 :focus-visible {
-  outline: 2px solid var(--color-focus);
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Utilities ---------------------------------------------------------------- */
+
+/* Text for screen readers only. Colour never carries meaning alone: anything tinted with a
+   life area also names that area, visibly or through one of these. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* Small uppercase label above a group. The optional inner <span> is the quiet half; it carries
+   its own leading space so the markup never depends on JSX whitespace. */
+.eyebrow {
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.eyebrow span {
+  margin-left: 0.4em;
+  font-weight: 400;
+  letter-spacing: 0.02em;
+  text-transform: none;
+}
+
+/* Motion ------------------------------------------------------------------- */
+
+/* Water settling: the shared entrance for tiles, rows and plots. Nothing bounces, nothing
+   loops, and nothing moves once it has arrived. */
+@keyframes pt-settle {
+  from {
+    opacity: 0;
+    transform: translateY(9px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -169,6 +140,7 @@ svg {
   *::before,
   *::after {
     animation-duration: 0.01ms !important;
+    animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }

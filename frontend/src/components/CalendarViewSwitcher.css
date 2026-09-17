@@ -1,0 +1,43 @@
+/* Day / week / month. Small, quiet, and the only place the accent appears in the calendar bar. */
+
+.calendar-view-switcher {
+  display: inline-flex;
+  gap: var(--sp-1);
+  padding: 0.1875rem;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+  box-shadow: var(--sh-1);
+}
+
+.calendar-view-switcher__tab {
+  padding: var(--sp-1) var(--sp-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease);
+}
+
+.calendar-view-switcher__tab[aria-selected='true'] {
+  color: var(--accent-contrast);
+  background-color: var(--accent);
+}
+
+@media (hover: hover) {
+  .calendar-view-switcher__tab[aria-selected='false']:hover {
+    color: var(--text);
+    background-color: var(--accent-soft);
+  }
+}
+
+@media (pointer: coarse) {
+  .calendar-view-switcher__tab {
+    padding: var(--sp-2) var(--sp-4);
+  }
+}

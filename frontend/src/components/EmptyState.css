@@ -1,0 +1,124 @@
+/*
+ * The empty state. An empty glass is room, not failure — so there is no illustration of a task
+ * you have not done, no zero, and no streak waiting to be broken.
+ */
+
+.empty-state {
+  display: grid;
+  justify-items: center;
+  gap: var(--sp-4);
+  padding: var(--sp-6) 0 var(--sp-7);
+  text-align: center;
+}
+
+.empty-state__title {
+  max-width: 20ch;
+  font-size: var(--fs-xl);
+  font-weight: var(--fw-semibold);
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.empty-state__body {
+  max-width: 44ch;
+  font-size: var(--fs-md);
+  color: var(--muted);
+}
+
+.empty-state__plots {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+  gap: var(--sp-3);
+  width: 100%;
+  max-width: 40rem;
+  margin-top: var(--sp-2);
+}
+
+/* a plot of ground with nothing planted in it: dashed, and a hand's width of soil at the foot */
+.empty-state__plot {
+  position: relative;
+  display: grid;
+  align-content: end;
+  gap: var(--sp-1);
+  min-height: 9rem;
+  padding: var(--sp-4);
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  text-align: start;
+  color: var(--muted);
+  border: 1.5px dashed var(--border-strong);
+  border-radius: var(--r-2xl);
+  animation: pt-settle var(--mo-slow) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 60ms);
+}
+
+.empty-state__plot::before {
+  content: '';
+  position: absolute;
+  inset: auto 0 0 0;
+  height: 8%;
+  background-color: var(--accent-soft);
+}
+
+.empty-state__plot > * {
+  position: relative;
+}
+
+.empty-state__plot b {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+.empty-state__plot--first {
+  color: var(--text);
+  background-color: var(--surface);
+  border-style: solid;
+  border-color: var(--accent);
+  box-shadow: var(--sh-1), var(--sh-rim);
+}
+
+.empty-state__seed {
+  justify-self: start;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  margin-bottom: auto;
+  font-size: var(--fs-lg);
+  line-height: 1;
+  color: var(--accent);
+  border: 1.5px solid currentColor;
+  border-radius: 50%;
+}
+
+.empty-state__action {
+  padding: var(--sp-3) var(--sp-5);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-medium);
+  color: var(--accent-contrast);
+  background-color: var(--accent);
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  box-shadow: var(--sh-1);
+  transition:
+    transform var(--mo) var(--ease-out),
+    box-shadow var(--mo) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .empty-state__action:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--sh-2);
+  }
+}
+
+.empty-state__action:active {
+  transform: translateY(0);
+}
+
+.empty-state__note {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}

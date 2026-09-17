@@ -1,0 +1,291 @@
+/*
+ * The glass.
+ *
+ * A goal is a vessel: a still body of its area's colour, with a 2px surface line whose meniscus
+ * climbs both walls. Only this component draws water, so a full glass always means the same
+ * thing. The level, the old level and the habit minimum arrive as --p, --from and --min.
+ */
+
+.goal-tile {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  min-width: 0;
+  padding: var(--sp-3);
+  overflow: hidden;
+  text-align: start;
+  font: inherit;
+  color: inherit;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-xl);
+  box-shadow: var(--sh-1), var(--sh-rim);
+  animation: pt-settle var(--mo-slow) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms);
+  transition:
+    transform var(--mo-slow) var(--ease-out),
+    box-shadow var(--mo-slow) var(--ease-out),
+    border-color var(--mo) var(--ease);
+}
+
+button.goal-tile {
+  cursor: pointer;
+}
+
+@media (min-width: 40rem) {
+  .goal-tile {
+    padding: var(--sp-4);
+    border-radius: var(--r-2xl);
+  }
+
+  /* the smallest tile keeps tighter padding — it is one row tall */
+  .goal-tile--sm {
+    padding: var(--sp-3);
+    border-radius: var(--r-xl);
+  }
+}
+
+@media (hover: hover) {
+  button.goal-tile:hover {
+    transform: translateY(-2px);
+    border-color: var(--border-strong);
+    box-shadow: var(--sh-2), var(--sh-rim);
+  }
+
+  button.goal-tile:hover .goal-tile__line {
+    transform: translateY(-1px);
+  }
+}
+
+button.goal-tile:active {
+  transform: translateY(0) scale(0.998);
+}
+
+/* everything except the two absolutely-placed layers sits above the water */
+.goal-tile > :not(.goal-tile__glass):not(.goal-tile__min) {
+  position: relative;
+}
+
+/* --- the water ------------------------------------------------------------ */
+
+.goal-tile__glass {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border-radius: inherit;
+  pointer-events: none;
+}
+
+.goal-tile__body {
+  position: absolute;
+  inset: auto 0 0 0;
+  height: calc(var(--p) * 1%);
+  background-color: var(--surface-2);
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--goal) var(--tint-top), var(--surface)),
+    color-mix(in srgb, var(--goal) var(--tint-bot), var(--surface))
+  );
+  box-shadow: inset 0 2px 7px -5px color-mix(in srgb, var(--goal) 60%, transparent);
+  animation: goal-tile-rise var(--mo-settle) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms + 90ms);
+}
+
+.goal-tile__line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--p) * 1%);
+  /* pulls the line back inside the vessel so a 100%-full glass still shows its surface
+     flush with the rim */
+  margin-bottom: -2px;
+  height: 2px;
+  background-color: var(--goal);
+  opacity: 0.9;
+  animation: goal-tile-rise-line var(--mo-settle) var(--ease-out) backwards;
+  animation-delay: calc(var(--i, 0) * 45ms + 90ms);
+  transition: transform var(--mo-slow) var(--ease-out);
+}
+
+/* the meniscus: a thinning film climbing each wall */
+.goal-tile__line::before,
+.goal-tile__line::after {
+  content: '';
+  position: absolute;
+  bottom: 0;
+  width: 15px;
+  height: 5px;
+  border-bottom: 2px solid var(--goal);
+}
+
+.goal-tile__line::before {
+  left: 0;
+  border-bottom-left-radius: 15px 5px;
+}
+
+.goal-tile__line::after {
+  right: 0;
+  border-bottom-right-radius: 15px 5px;
+}
+
+/* where the level used to be, for a goal that has gone backwards.
+   A hairline, the colour of a border. No red, no badge. */
+.goal-tile__was {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--from) * 1%);
+  border-top: 1px dashed var(--border-strong);
+}
+
+/* etched on the glass, not drawn in the water: the minimum that keeps a habit alive */
+.goal-tile__min {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(var(--min) * 1%);
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px dashed var(--border-strong);
+  pointer-events: none;
+}
+
+.goal-tile__min span {
+  padding: 0 var(--sp-1);
+  margin-top: -0.6rem;
+  font-size: var(--fs-xs);
+  line-height: 1.1;
+  color: var(--muted);
+  background-color: color-mix(in srgb, var(--surface) 80%, transparent);
+  border-radius: var(--r-xs);
+}
+
+/* the smallest tile keeps the etch but not the word — no room */
+.goal-tile--sm .goal-tile__min span {
+  display: none;
+}
+
+/* --- what the tile says --------------------------------------------------- */
+
+.goal-tile__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-bottom: auto;
+  min-width: 0;
+  max-width: 100%;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.goal-tile__dot {
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  border-radius: 50%;
+  background-color: var(--goal);
+}
+
+.goal-tile__area {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.goal-tile__kind {
+  flex: none;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+}
+
+/* one row tall: the kind is already implied by the line underneath */
+.goal-tile--sm .goal-tile__kind {
+  display: none;
+}
+
+.goal-tile__name {
+  margin-top: var(--sp-3);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: 1.25;
+  letter-spacing: -0.012em;
+}
+
+.goal-tile--lg .goal-tile__name {
+  font-size: var(--fs-lg);
+  letter-spacing: -0.02em;
+}
+
+.goal-tile--sm .goal-tile__name {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.goal-tile__val {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-tile--sm .goal-tile__val {
+  font-size: var(--fs-xs);
+}
+
+.goal-tile__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.goal-tile__pct {
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.goal-tile__state {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-1);
+  color: var(--muted);
+}
+
+.goal-tile__tick {
+  width: 0.8125rem;
+  height: 0.8125rem;
+  color: var(--goal);
+}
+
+/* one quiet line for a goal that slipped */
+.goal-tile__drift {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* --- motion: water settling ----------------------------------------------- */
+
+@keyframes goal-tile-rise {
+  from {
+    height: calc(var(--from, 0) * 1%);
+  }
+
+  to {
+    height: calc(var(--p) * 1%);
+  }
+}
+
+@keyframes goal-tile-rise-line {
+  from {
+    bottom: calc(var(--from, 0) * 1%);
+  }
+
+  to {
+    bottom: calc(var(--p) * 1%);
+  }
+}

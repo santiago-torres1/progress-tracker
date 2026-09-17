@@ -20,6 +20,7 @@ export default defineConfig({
     // at the Lambda Function URL instead, and CORS is handled there (see CLAUDE.md).
     proxy: {
       '/health': { target: 'http://localhost:3001', changeOrigin: true },
+      '/api': { target: 'http://localhost:3001', changeOrigin: true },
     },
   },
   test: {
