@@ -3,6 +3,7 @@ import { Router } from 'express';
 
 import { readEnv } from '../lib/env.js';
 import { getSupabaseAdmin, SupabaseConfigError } from '../lib/supabase.js';
+import { TimeoutError, withTimeout } from '../lib/timeout.js';
 import { APP_VERSION } from '../lib/version.js';
 
 export const DEFAULT_DB_PROBE_TIMEOUT_MS = 3_000;
@@ -21,35 +22,8 @@ export type DbProbeFailure =
   | 'invalid_config' // env vars present but unusable (e.g. malformed SUPABASE_URL)
   | 'probe_failed'; // anything else thrown while probing
 
-class ProbeTimeoutError extends Error {
-  constructor(ms: number) {
-    super(`Supabase probe exceeded ${ms}ms`);
-    this.name = 'ProbeTimeoutError';
-  }
-}
-
-/**
- * Settles with `promise` or rejects after `ms`, whichever comes first. The underlying request is
- * not cancelled (supabase-js admin calls take no AbortSignal), but the HTTP response, and so the
- * Lambda invocation, is never held longer than `ms`. Promise.race keeps a handler attached to
- * `promise`, so a late rejection is not an unhandled rejection.
- */
-async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
-  let timer: NodeJS.Timeout | undefined;
-  const timeout = new Promise<never>((_resolve, reject) => {
-    timer = setTimeout(() => {
-      reject(new ProbeTimeoutError(ms));
-    }, ms);
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    clearTimeout(timer);
-  }
-}
-
 function classifyProbeFailure(error: unknown): DbProbeFailure {
-  if (error instanceof ProbeTimeoutError) return 'timeout';
+  if (error instanceof TimeoutError) return 'timeout';
   if (error instanceof SupabaseConfigError) return 'invalid_config';
   if (isAuthError(error)) {
     if (error.status === 401 || error.status === 403) return 'key_rejected';

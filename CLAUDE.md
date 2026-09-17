@@ -10,10 +10,29 @@ A personal, minimalist life-tracking app: ongoing tasks/projects, a built-in cal
 Google/Apple Calendar sync, and encouraging reminder notifications. Login is optional.
 Single-user for now; may go public later.
 
-**Current milestone: `0.1.0-alpha` — "the plumbing works."** A trivial change merged to
-`main` deploys automatically to a real URL with versioning and a changelog. There is no
-product logic yet: calendar, reminders, auth, and tracking UI are intentionally unbuilt.
-If you are about to write business logic, stop and ask whether it belongs in the current pass.
+**`0.1.0-alpha` — "the plumbing works" — is done and live.** A change merged to `main`
+deploys automatically to a real URL, and the deploy fails unless the live `/health` reports the
+pushed commit.
+
+**Current milestone: `0.1.1-alpha` — the goals dashboard as a read-only live demo.** The app
+renders real Supabase rows and **writes nothing**: no login, no create flow, example data only
+(`supabase/seed.sql` is therefore the product's content, not a fixture). Writing and Supabase Auth
+are `0.1.2-alpha`.
+
+**Product rules that the code must not quietly break:**
+
+- The design is **"Meadow"**: an unsorted canvas of goal tiles, where tile **size is how important
+  the goal is** to the person. A goal is **a glass that fills** — "your glass is half full".
+- **No failure states, ever.** A measured goal that moves backwards just makes the glass quietly
+  lower. No red, no "behind" badge, no streak-guilt.
+- **Habits have a target and a minimum.** Target 4 runs a week, minimum 1: while the minimum is
+  met the app encourages. Above the minimum nothing is ever a failure. An unplanned completion
+  counts toward the period just like a planned one.
+- **Six fixed life areas**, and colour means area — never status, and never alone (every coloured
+  element also says its area in text). Custom areas are a later release.
+- Goal kinds are `scheduled` (sessions), `measured` (a value toward a target) and `habit`
+  (repetition in a period); progress for all three is computed by `goal_dashboard`, never in
+  TypeScript.
 
 ## Fixed stack — do not deviate without asking the human
 
@@ -110,8 +129,26 @@ in dev, so the browser sees a single origin locally and no CORS is involved.
 - `GET /health/db` → reports whether Supabase env vars are present and a trivial probe
   succeeds. Never echoes secrets or raw upstream error messages.
 
+**Product API (read-only in `0.1.1-alpha` — there are no write routes, by design):**
+
+- `GET /api/goals` → the dashboard: one entry per active goal, a union discriminated on `kind`
+  with a `habit` / `measured` / `scheduled` block. Carries `size`, the area and its colour, and
+  `progress.fraction` + `progress.basis`. The API names no failure state and the UI must not
+  invent one.
+- `GET /api/calendar?from=&to=` → entries in an inclusive date range (max 366 days), each with an
+  explicit `timing: 'timed' | 'untimed'` discriminant, plus enough of its goal to render.
+- `GET /api/areas` → the six life areas.
+
+Shapes live in `backend/src/types/api.ts` and are the contract the frontend imports. Successful
+responses carry `Cache-Control: public, max-age=60`; errors carry `no-store`. `backend/src/types/database.ts`
+is hand-written and must be replaced by `supabase gen types typescript` once the project is linked.
+
 **Backend env vars** (see `backend/.env.example`): `PORT`, `SUPABASE_URL`,
-`SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GIT_SHA`.
+`SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GIT_SHA`, `DEFAULT_USER_ID`.
+
+`DEFAULT_USER_ID` identifies the single login-less user and **defaults to the constant documented
+in `supabase/README.md`** — so it must NOT become a GitHub secret and `deploy.yml`'s environment
+map needs no change for it (that map is replaced wholesale on every deploy).
 
 **Frontend build-time env vars:** `VITE_API_BASE_URL` (empty locally → same-origin via
 proxy; in deploys, the Lambda Function URL discovered at runtime), `VITE_COMMIT_SHA`.

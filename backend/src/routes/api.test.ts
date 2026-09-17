@@ -1,0 +1,870 @@
+import request from 'supertest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+
+import { createApp } from '../app.js';
+import type { SupabaseAdminClient } from '../lib/supabase.js';
+import { DEFAULT_USER_ID } from '../lib/user.js';
+
+/*
+ * Route tests for the read-only API, against a MOCKED Supabase client.
+ *
+ * What these prove: response shape, ordering, the caching and error contracts, input
+ * validation, and that nothing upstream leaks into a body. What they cannot prove is that the
+ * columns and filters below exist in the database — that is checked separately by running the
+ * exact selects (see GOAL_DASHBOARD_COLUMNS et al.) through psql against a real PostgreSQL with
+ * the migrations and seed.sql applied.
+ *
+ * Fixtures are copied from that same seeded database, so the two halves line up.
+ */
+
+const { createClientMock } = vi.hoisted(() => ({ createClientMock: vi.fn() }));
+
+vi.mock('@supabase/supabase-js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('@supabase/supabase-js')>()),
+  createClient: createClientMock,
+}));
+
+const FAKE_URL = 'https://fake-project-ref.supabase.co';
+const FAKE_ANON_KEY = 'fake-anon-key-do-not-echo';
+const FAKE_SERVICE_ROLE_KEY = 'fake-service-role-key-do-not-echo';
+
+function stubSupabaseEnv(overrides: Record<string, string | undefined> = {}): void {
+  const values: Record<string, string | undefined> = {
+    SUPABASE_URL: FAKE_URL,
+    SUPABASE_ANON_KEY: FAKE_ANON_KEY,
+    SUPABASE_SERVICE_ROLE_KEY: FAKE_SERVICE_ROLE_KEY,
+    DEFAULT_USER_ID: undefined,
+    ...overrides,
+  };
+  for (const [name, value] of Object.entries(values)) vi.stubEnv(name, value);
+}
+
+function expectNoSecrets(text: string): void {
+  for (const secret of [
+    FAKE_URL,
+    'fake-project-ref',
+    FAKE_ANON_KEY,
+    FAKE_SERVICE_ROLE_KEY,
+    DEFAULT_USER_ID,
+    'user_id',
+  ]) {
+    expect(text).not.toContain(secret);
+  }
+}
+
+// --- A fake PostgREST builder ------------------------------------------------------------------
+
+interface PostgrestLikeResult {
+  data: unknown;
+  error: unknown;
+  status: number;
+}
+
+/** Everything a route did to build one query, so the test can assert the query, not just the JSON. */
+interface RecordedQuery {
+  table: string;
+  columns: string;
+  ops: string[];
+  signal: AbortSignal | undefined;
+}
+
+interface FakeBuilder extends PromiseLike<PostgrestLikeResult> {
+  select(columns: string): FakeBuilder;
+  eq(column: string, value: unknown): FakeBuilder;
+  in(column: string, values: readonly unknown[]): FakeBuilder;
+  or(filter: string): FakeBuilder;
+  gte(column: string, value: unknown): FakeBuilder;
+  lte(column: string, value: unknown): FakeBuilder;
+  order(column: string, options?: { ascending?: boolean; nullsFirst?: boolean }): FakeBuilder;
+  abortSignal(signal: AbortSignal): FakeBuilder;
+}
+
+const queries: RecordedQuery[] = [];
+let respond: (query: RecordedQuery) => Promise<PostgrestLikeResult>;
+
+function rows(data: unknown): Promise<PostgrestLikeResult> {
+  return Promise.resolve({ data, error: null, status: 200 });
+}
+
+function createBuilder(table: string): FakeBuilder {
+  const record: RecordedQuery = { table, columns: '', ops: [], signal: undefined };
+  queries.push(record);
+
+  const builder: FakeBuilder = {
+    select(columns) {
+      record.columns = columns;
+      return builder;
+    },
+    eq(column, value) {
+      record.ops.push(`eq:${column}=${String(value)}`);
+      return builder;
+    },
+    in(column, values) {
+      record.ops.push(`in:${column}=${values.map(String).join('|')}`);
+      return builder;
+    },
+    or(filter) {
+      record.ops.push(`or:${filter}`);
+      return builder;
+    },
+    gte(column, value) {
+      record.ops.push(`gte:${column}=${String(value)}`);
+      return builder;
+    },
+    lte(column, value) {
+      record.ops.push(`lte:${column}=${String(value)}`);
+      return builder;
+    },
+    order(column, options) {
+      const direction = options?.ascending === false ? 'desc' : 'asc';
+      record.ops.push(
+        `order:${column}:${direction}${options?.nullsFirst === true ? ':nullsfirst' : ''}`,
+      );
+      return builder;
+    },
+    abortSignal(signal) {
+      record.signal = signal;
+      return builder;
+    },
+    then(onfulfilled, onrejected) {
+      return respond(record).then(onfulfilled, onrejected);
+    },
+  };
+  return builder;
+}
+
+// One stable client object: src/lib/supabase.ts caches by URL + key, so createClient is not
+// called again between tests. Behaviour is swapped through `respond`, not through the client.
+const fakeClient = {
+  from: (table: string) => createBuilder(table),
+} as unknown as SupabaseAdminClient;
+
+// --- Fixtures, lifted from the seeded demo database -------------------------------------------
+
+const HABIT_GOAL_ROW = {
+  id: 'd0000000-0000-4000-8000-000000000001',
+  title: 'Run three times a week',
+  description: 'Tuesday, Thursday, Saturday before work. Any run counts, target day or not.',
+  kind: 'habit',
+  status: 'active',
+  size: 'large',
+  sort_order: 10,
+  life_area_id: '10000000-0000-4000-8000-000000000001',
+  life_area_slug: 'health',
+  life_area_name: 'Health & Wellbeing',
+  life_area_icon: 'heart',
+  color: '#2e7d57',
+  start_date: '2026-08-13',
+  target_date: null,
+  measurement_unit: null,
+  start_value: null,
+  target_value: null,
+  current_value: null,
+  last_measured_on: null,
+  previous_value: null,
+  previous_measured_on: null,
+  target_count: 3,
+  minimum_count: 1,
+  habit_period: 'week',
+  period_start: '2026-09-14',
+  period_end: '2026-09-20',
+  period_completed_count: 1,
+  period_minimum_met: true,
+  // numeric as a string, which is how PostgREST may render it
+  period_minimum_fraction: '1.0000',
+  target_sessions: null,
+  planned_count: 36,
+  completed_count: 14,
+  due_count: 18,
+  progress_basis: 'period_completion',
+  progress_fraction: '0.3333',
+  last_progress_on: '2026-09-14',
+  created_at: '2026-09-17T06:02:53.813916+00:00',
+  updated_at: '2026-09-17T06:02:53.813916+00:00',
+};
+
+const MEASURED_GOAL_ROW = {
+  ...HABIT_GOAL_ROW,
+  id: 'd0000000-0000-4000-8000-000000000002',
+  title: 'Get back to 78 kg',
+  description: 'Same scale, Sunday mornings, no drama about any single week.',
+  kind: 'measured',
+  size: 'medium',
+  sort_order: 20,
+  start_date: '2026-08-06',
+  target_date: '2026-12-01',
+  measurement_unit: 'kg',
+  start_value: '84.0000',
+  target_value: '78.0000',
+  current_value: '81.6000',
+  last_measured_on: '2026-09-14',
+  previous_value: '80.9000',
+  previous_measured_on: '2026-09-03',
+  target_count: null,
+  minimum_count: null,
+  habit_period: null,
+  period_start: null,
+  period_end: null,
+  period_completed_count: 0,
+  period_minimum_met: null,
+  period_minimum_fraction: null,
+  planned_count: 4,
+  completed_count: 4,
+  due_count: 4,
+  progress_basis: 'measured_value',
+  progress_fraction: '0.4000',
+};
+
+const SCHEDULED_GOAL_ROW = {
+  ...MEASURED_GOAL_ROW,
+  id: 'd0000000-0000-4000-8000-000000000006',
+  title: 'Weekly 1:1 with Dani',
+  description: 'Half an hour on Wednesdays. The one meeting that never gets moved.',
+  kind: 'scheduled',
+  size: 'small',
+  sort_order: 60,
+  life_area_id: '10000000-0000-4000-8000-000000000005',
+  life_area_slug: 'work',
+  life_area_name: 'Work & Career',
+  life_area_icon: 'briefcase',
+  color: '#14717f',
+  start_date: '2026-07-16',
+  target_date: null,
+  measurement_unit: null,
+  start_value: null,
+  target_value: null,
+  current_value: null,
+  last_measured_on: null,
+  previous_value: null,
+  previous_measured_on: null,
+  target_sessions: null,
+  planned_count: 17,
+  completed_count: 8,
+  due_count: 9,
+  progress_basis: 'session_adherence',
+  // numeric as a JSON number, the other rendering PostgREST may use
+  progress_fraction: 0.8889,
+  last_progress_on: '2026-09-16',
+};
+
+const CALENDAR_GOAL_ROWS = [
+  {
+    id: 'd0000000-0000-4000-8000-000000000001',
+    title: 'Run three times a week',
+    kind: 'habit',
+    color: '#2e7d57',
+    life_area_id: '10000000-0000-4000-8000-000000000001',
+    life_area_slug: 'health',
+    life_area_name: 'Health & Wellbeing',
+    life_area_icon: 'heart',
+  },
+  {
+    id: 'd0000000-0000-4000-8000-000000000008',
+    title: 'Read before bed',
+    kind: 'habit',
+    color: '#7d4aa8',
+    life_area_id: '10000000-0000-4000-8000-000000000006',
+    life_area_slug: 'creative',
+    life_area_name: 'Creativity & Hobbies',
+    life_area_icon: 'palette',
+  },
+];
+
+const UNTIMED_ENTRY_ROW = {
+  id: '98456e48-ee2f-4886-b94f-6351729d2503',
+  goal_id: 'd0000000-0000-4000-8000-000000000008',
+  recurrence_id: null,
+  title: 'Read',
+  notes: null,
+  entry_date: '2026-09-17',
+  start_at: null,
+  end_at: null,
+  time_zone: 'UTC',
+  status: 'completed',
+  completed_at: '2026-09-17T06:02:56.042272+00:00',
+};
+
+const TIMED_ENTRY_ROW = {
+  id: '36305d32-ece1-42c4-879e-4980f04ca553',
+  goal_id: 'd0000000-0000-4000-8000-000000000001',
+  recurrence_id: 'd1000000-0000-4000-8000-000000000001',
+  // NULL title: 97 of the demo's 120 entries look like this, and mean "show the goal's title"
+  title: null,
+  notes: null,
+  entry_date: '2026-09-17',
+  start_at: '2026-09-17T07:00:00+00:00',
+  end_at: '2026-09-17T07:45:00+00:00',
+  time_zone: 'UTC',
+  status: 'planned',
+  completed_at: null,
+};
+
+const GOAL_LESS_ENTRY_ROW = {
+  id: 'dc000000-0000-4000-8000-000000000002',
+  goal_id: null,
+  recurrence_id: null,
+  title: "Mum's birthday",
+  notes: null,
+  entry_date: '2026-09-18',
+  start_at: null,
+  end_at: null,
+  time_zone: 'UTC',
+  status: 'planned',
+  completed_at: null,
+};
+
+const LIFE_AREA_ROWS = [
+  {
+    id: '10000000-0000-4000-8000-000000000001',
+    slug: 'health',
+    name: 'Health & Wellbeing',
+    color: '#2e7d57',
+    icon: 'heart',
+    sort_order: 10,
+    is_system: true,
+  },
+  {
+    id: '10000000-0000-4000-8000-000000000002',
+    slug: 'learning',
+    name: 'Learning & Skills',
+    color: '#4f52c7',
+    icon: 'book',
+    sort_order: 20,
+    is_system: true,
+  },
+];
+
+beforeEach(() => {
+  createClientMock.mockReset().mockReturnValue(fakeClient);
+  queries.length = 0;
+  respond = () => rows([]);
+  stubSupabaseEnv();
+  vi.spyOn(console, 'error').mockImplementation(() => undefined);
+});
+
+afterEach(() => {
+  vi.unstubAllEnvs();
+  vi.restoreAllMocks();
+});
+
+// --- GET /api/goals ---------------------------------------------------------------------------
+
+describe('GET /api/goals', () => {
+  it('shapes each kind of goal for the tile that renders it', async () => {
+    respond = () => rows([HABIT_GOAL_ROW, MEASURED_GOAL_ROW, SCHEDULED_GOAL_ROW]);
+
+    const res = await request(createApp()).get('/api/goals');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      goals: [
+        {
+          id: 'd0000000-0000-4000-8000-000000000001',
+          title: 'Run three times a week',
+          description:
+            'Tuesday, Thursday, Saturday before work. Any run counts, target day or not.',
+          status: 'active',
+          size: 'large',
+          sortOrder: 10,
+          area: {
+            id: '10000000-0000-4000-8000-000000000001',
+            slug: 'health',
+            name: 'Health & Wellbeing',
+            icon: 'heart',
+          },
+          color: '#2e7d57',
+          startDate: '2026-08-13',
+          targetDate: null,
+          progress: { basis: 'period_completion', fraction: 0.3333 },
+          lastProgressOn: '2026-09-14',
+          createdAt: '2026-09-17T06:02:53.813Z',
+          updatedAt: '2026-09-17T06:02:53.813Z',
+          kind: 'habit',
+          habit: {
+            period: 'week',
+            periodStart: '2026-09-14',
+            periodEnd: '2026-09-20',
+            completedCount: 1,
+            targetCount: 3,
+            minimumCount: 1,
+            minimumFraction: 1,
+            minimumMet: true,
+          },
+        },
+        {
+          id: 'd0000000-0000-4000-8000-000000000002',
+          title: 'Get back to 78 kg',
+          description: 'Same scale, Sunday mornings, no drama about any single week.',
+          status: 'active',
+          size: 'medium',
+          sortOrder: 20,
+          area: {
+            id: '10000000-0000-4000-8000-000000000001',
+            slug: 'health',
+            name: 'Health & Wellbeing',
+            icon: 'heart',
+          },
+          color: '#2e7d57',
+          startDate: '2026-08-06',
+          targetDate: '2026-12-01',
+          progress: { basis: 'measured_value', fraction: 0.4 },
+          lastProgressOn: '2026-09-14',
+          createdAt: '2026-09-17T06:02:53.813Z',
+          updatedAt: '2026-09-17T06:02:53.813Z',
+          kind: 'measured',
+          measured: {
+            unit: 'kg',
+            startValue: 84,
+            targetValue: 78,
+            currentValue: 81.6,
+            lastMeasuredOn: '2026-09-14',
+            previousValue: 80.9,
+            previousMeasuredOn: '2026-09-03',
+          },
+        },
+        {
+          id: 'd0000000-0000-4000-8000-000000000006',
+          title: 'Weekly 1:1 with Dani',
+          description: 'Half an hour on Wednesdays. The one meeting that never gets moved.',
+          status: 'active',
+          size: 'small',
+          sortOrder: 60,
+          area: {
+            id: '10000000-0000-4000-8000-000000000005',
+            slug: 'work',
+            name: 'Work & Career',
+            icon: 'briefcase',
+          },
+          color: '#14717f',
+          startDate: '2026-07-16',
+          targetDate: null,
+          progress: { basis: 'session_adherence', fraction: 0.8889 },
+          lastProgressOn: '2026-09-16',
+          createdAt: '2026-09-17T06:02:53.813Z',
+          updatedAt: '2026-09-17T06:02:53.813Z',
+          kind: 'scheduled',
+          scheduled: {
+            targetSessions: null,
+            plannedCount: 17,
+            completedCount: 8,
+            dueCount: 9,
+          },
+        },
+      ],
+    });
+  });
+
+  it('asks goal_dashboard for active goals in canvas order, scoped to the default user', async () => {
+    respond = () => rows([HABIT_GOAL_ROW]);
+
+    await request(createApp()).get('/api/goals');
+
+    expect(queries).toHaveLength(1);
+    const [query] = queries;
+    expect(query?.table).toBe('goal_dashboard');
+    expect(query?.columns.split(',')).toContain('period_minimum_fraction');
+    expect(query?.columns.split(',')).not.toContain('user_id');
+    expect(query?.ops).toEqual([
+      `eq:user_id=${DEFAULT_USER_ID}`,
+      'eq:status=active',
+      'order:sort_order:asc',
+      'order:created_at:asc',
+    ]);
+    // The timeout budget is real only if the signal actually reaches the query.
+    expect(query?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('scopes reads to DEFAULT_USER_ID when it is set', async () => {
+    const otherUser = '00000000-0000-4000-8000-0000000000ff';
+    stubSupabaseEnv({ DEFAULT_USER_ID: otherUser });
+    respond = () => rows([]);
+
+    await request(createApp()).get('/api/goals');
+
+    expect(queries[0]?.ops).toContain(`eq:user_id=${otherUser}`);
+  });
+
+  it('is cacheable for a minute and leaks no identifiers', async () => {
+    respond = () => rows([HABIT_GOAL_ROW, MEASURED_GOAL_ROW]);
+
+    const res = await request(createApp()).get('/api/goals');
+
+    expect(res.headers['cache-control']).toBe('public, max-age=60');
+    expectNoSecrets(res.text);
+  });
+});
+
+// --- GET /api/calendar ------------------------------------------------------------------------
+
+describe('GET /api/calendar', () => {
+  function respondWithCalendar(): void {
+    respond = (query) =>
+      query.table === 'calendar_entries'
+        ? rows([UNTIMED_ENTRY_ROW, TIMED_ENTRY_ROW, GOAL_LESS_ENTRY_ROW])
+        : rows(CALENDAR_GOAL_ROWS);
+  }
+
+  it('returns timed, untimed and goal-less entries, each carrying its goal', async () => {
+    respondWithCalendar();
+
+    const res = await request(createApp()).get('/api/calendar?from=2026-09-17&to=2026-09-18');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      from: '2026-09-17',
+      to: '2026-09-18',
+      entries: [
+        {
+          id: '98456e48-ee2f-4886-b94f-6351729d2503',
+          date: '2026-09-17',
+          timeZone: 'UTC',
+          title: 'Read',
+          notes: null,
+          status: 'completed',
+          completedAt: '2026-09-17T06:02:56.042Z',
+          recurrenceId: null,
+          goal: {
+            id: 'd0000000-0000-4000-8000-000000000008',
+            title: 'Read before bed',
+            kind: 'habit',
+            color: '#7d4aa8',
+            area: {
+              id: '10000000-0000-4000-8000-000000000006',
+              slug: 'creative',
+              name: 'Creativity & Hobbies',
+              icon: 'palette',
+            },
+          },
+          timing: 'untimed',
+          startAt: null,
+          endAt: null,
+        },
+        {
+          id: '36305d32-ece1-42c4-879e-4980f04ca553',
+          date: '2026-09-17',
+          timeZone: 'UTC',
+          // the entry has no title of its own, so it borrows the goal's
+          title: 'Run three times a week',
+          notes: null,
+          status: 'planned',
+          completedAt: null,
+          recurrenceId: 'd1000000-0000-4000-8000-000000000001',
+          goal: {
+            id: 'd0000000-0000-4000-8000-000000000001',
+            title: 'Run three times a week',
+            kind: 'habit',
+            color: '#2e7d57',
+            area: {
+              id: '10000000-0000-4000-8000-000000000001',
+              slug: 'health',
+              name: 'Health & Wellbeing',
+              icon: 'heart',
+            },
+          },
+          timing: 'timed',
+          startAt: '2026-09-17T07:00:00.000Z',
+          endAt: '2026-09-17T07:45:00.000Z',
+        },
+        {
+          id: 'dc000000-0000-4000-8000-000000000002',
+          date: '2026-09-18',
+          timeZone: 'UTC',
+          title: "Mum's birthday",
+          notes: null,
+          status: 'planned',
+          completedAt: null,
+          recurrenceId: null,
+          goal: null,
+          timing: 'untimed',
+          startAt: null,
+          endAt: null,
+        },
+      ],
+    });
+    expect(res.headers['cache-control']).toBe('public, max-age=60');
+    expectNoSecrets(res.text);
+  });
+
+  it('queries the range on entry_date, untimed entries first, then looks up only the goals it saw', async () => {
+    respondWithCalendar();
+
+    await request(createApp()).get('/api/calendar?from=2026-09-17&to=2026-09-18');
+
+    expect(queries).toHaveLength(2);
+    expect(queries[0]?.table).toBe('calendar_entries');
+    expect(queries[0]?.ops).toEqual([
+      `eq:user_id=${DEFAULT_USER_ID}`,
+      'gte:entry_date=2026-09-17',
+      'lte:entry_date=2026-09-18',
+      'order:entry_date:asc',
+      'order:start_at:asc:nullsfirst',
+    ]);
+    expect(queries[1]?.table).toBe('goal_dashboard');
+    expect(queries[1]?.ops).toEqual([
+      `eq:user_id=${DEFAULT_USER_ID}`,
+      'in:id=d0000000-0000-4000-8000-000000000008|d0000000-0000-4000-8000-000000000001',
+    ]);
+  });
+
+  it('skips the goal lookup entirely when nothing in the range is goal-linked', async () => {
+    respond = () => rows([GOAL_LESS_ENTRY_ROW]);
+
+    const res = await request(createApp()).get('/api/calendar?from=2026-09-18&to=2026-09-18');
+
+    expect(res.status).toBe(200);
+    expect(queries).toHaveLength(1);
+  });
+
+  it.each([
+    ['both parameters missing', '', 'missing_parameter', 'from and to required'],
+    ['only from', '?from=2026-09-01', 'missing_parameter', 'to required'],
+    [
+      'a repeated parameter',
+      '?from=2026-09-01&from=2026-09-02&to=2026-09-30',
+      'missing_parameter',
+      '',
+    ],
+    [
+      'a nonsense date',
+      '?from=yesterday&to=2026-09-30',
+      'invalid_date',
+      'from must be a real calendar date',
+    ],
+    ['a date that does not exist', '?from=2026-02-30&to=2026-03-30', 'invalid_date', ''],
+    ['a month that does not exist', '?from=2026-13-01&to=2026-13-02', 'invalid_date', ''],
+    ['a non-ISO format', '?from=01-09-2026&to=30-09-2026', 'invalid_date', ''],
+    [
+      'to before from',
+      '?from=2026-09-30&to=2026-09-01',
+      'invalid_range',
+      'from must be on or before to',
+    ],
+    [
+      'a range longer than a year',
+      '?from=2026-01-01&to=2027-01-02',
+      'range_too_long',
+      'at most 366 days',
+    ],
+  ])(
+    'rejects %s with 400 and a message the caller can act on',
+    async (_case, query, error, hint) => {
+      respondWithCalendar();
+
+      const res = await request(createApp()).get(`/api/calendar${query}`);
+
+      expect(res.status).toBe(400);
+      expect((res.body as { error: unknown }).error).toBe(error);
+      expect((res.body as { message: string }).message).toContain(hint);
+      expect(res.headers['cache-control']).toBe('no-store');
+      // A rejected request must never have reached Supabase.
+      expect(queries).toHaveLength(0);
+    },
+  );
+
+  it('accepts a range of exactly the maximum length', async () => {
+    respond = () => rows([]);
+
+    const res = await request(createApp()).get('/api/calendar?from=2026-01-01&to=2027-01-01');
+
+    expect(res.status).toBe(200);
+  });
+
+  it('accepts a single day', async () => {
+    respond = () => rows([]);
+
+    const res = await request(createApp()).get('/api/calendar?from=2026-09-17&to=2026-09-17');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ from: '2026-09-17', to: '2026-09-17', entries: [] });
+  });
+});
+
+// --- GET /api/areas ---------------------------------------------------------------------------
+
+describe('GET /api/areas', () => {
+  it('returns the life areas for the dashboard key', async () => {
+    respond = () => rows(LIFE_AREA_ROWS);
+
+    const res = await request(createApp()).get('/api/areas');
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      areas: [
+        {
+          id: '10000000-0000-4000-8000-000000000001',
+          slug: 'health',
+          name: 'Health & Wellbeing',
+          color: '#2e7d57',
+          icon: 'heart',
+          sortOrder: 10,
+          isSystem: true,
+        },
+        {
+          id: '10000000-0000-4000-8000-000000000002',
+          slug: 'learning',
+          name: 'Learning & Skills',
+          color: '#4f52c7',
+          icon: 'book',
+          sortOrder: 20,
+          isSystem: true,
+        },
+      ],
+    });
+    expect(res.headers['cache-control']).toBe('public, max-age=60');
+    expectNoSecrets(res.text);
+  });
+
+  it("asks for built-in areas and the user's own, in legend order", async () => {
+    respond = () => rows(LIFE_AREA_ROWS);
+
+    await request(createApp()).get('/api/areas');
+
+    expect(queries[0]?.table).toBe('life_areas');
+    expect(queries[0]?.ops).toEqual([
+      `or:user_id.is.null,user_id.eq.${DEFAULT_USER_ID}`,
+      'order:sort_order:asc',
+      'order:name:asc',
+    ]);
+  });
+});
+
+// --- Failure modes, shared by all three routes -------------------------------------------------
+
+const ROUTES = [
+  ['/api/goals', '/api/goals'],
+  ['/api/calendar', '/api/calendar?from=2026-09-01&to=2026-09-30'],
+  ['/api/areas', '/api/areas'],
+] as const;
+
+describe.each(ROUTES)('%s when the data layer is unavailable', (_name, path) => {
+  it('reports 503 missing_env, and builds no client, when Supabase is not configured', async () => {
+    stubSupabaseEnv({
+      SUPABASE_URL: undefined,
+      SUPABASE_ANON_KEY: undefined,
+      SUPABASE_SERVICE_ROLE_KEY: undefined,
+    });
+
+    const res = await request(createApp()).get(path);
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({
+      error: 'unavailable',
+      reason: 'missing_env',
+      missing: ['SUPABASE_URL', 'SUPABASE_ANON_KEY', 'SUPABASE_SERVICE_ROLE_KEY'],
+    });
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(createClientMock).not.toHaveBeenCalled();
+    expect(queries).toHaveLength(0);
+  });
+
+  it('names only the variables that are actually missing', async () => {
+    stubSupabaseEnv({ SUPABASE_SERVICE_ROLE_KEY: undefined });
+
+    const res = await request(createApp()).get(path);
+
+    expect(res.status).toBe(503);
+    expect((res.body as { missing: unknown }).missing).toEqual(['SUPABASE_SERVICE_ROLE_KEY']);
+  });
+
+  it('reports 503 upstream_error without echoing the upstream failure', async () => {
+    respond = () =>
+      Promise.resolve({
+        data: null,
+        error: {
+          code: '42P01',
+          message: 'relation "public.goal_dashboard" does not exist',
+          details: `connection to ${FAKE_URL} using key ${FAKE_SERVICE_ROLE_KEY}`,
+          hint: 'check the schema',
+        },
+        status: 404,
+      });
+
+    const res = await request(createApp()).get(path);
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'unavailable', reason: 'upstream_error' });
+    expect(res.text).not.toContain('42P01');
+    expect(res.text).not.toContain('does not exist');
+    expect(res.text).not.toContain('check the schema');
+    expectNoSecrets(res.text);
+    expect(res.headers['cache-control']).toBe('no-store');
+  });
+
+  it('reports 503 upstream_error when a column is missing from the answer', async () => {
+    // A row from a view that has drifted away from src/types/database.ts.
+    respond = (query) =>
+      rows([
+        query.table === 'life_areas'
+          ? { id: 'a', slug: 'health', name: 'Health' }
+          : query.table === 'calendar_entries'
+            ? { id: 'a', goal_id: null }
+            : { id: 'a', title: 'x' },
+      ]);
+
+    const res = await request(createApp()).get(path);
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'unavailable', reason: 'upstream_error' });
+  });
+
+  it('reports 503 invalid_config when DEFAULT_USER_ID is not a UUID', async () => {
+    stubSupabaseEnv({ DEFAULT_USER_ID: 'the-default-user' });
+
+    const res = await request(createApp()).get(path);
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'unavailable', reason: 'invalid_config' });
+    expect(res.text).not.toContain('the-default-user');
+  });
+
+  it('reports 503 timeout, and gives up, when Supabase does not answer in time', async () => {
+    respond = (query) =>
+      new Promise((resolve) => {
+        query.signal?.addEventListener('abort', () => {
+          // What postgrest-js resolves with on abort: an error object, status 0.
+          resolve({
+            data: null,
+            error: {
+              code: '',
+              message: 'AbortError: The operation was aborted',
+              details: '',
+              hint: '',
+            },
+            status: 0,
+          });
+        });
+      });
+
+    const res = await request(createApp({ readTimeoutMs: 25 })).get(path);
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'unavailable', reason: 'timeout' });
+    expect(res.headers['cache-control']).toBe('no-store');
+  });
+
+  it('reports 503 timeout even if the query never settles at all', async () => {
+    respond = () => new Promise<PostgrestLikeResult>(() => undefined);
+
+    const res = await request(createApp({ readTimeoutMs: 25 })).get(path);
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'unavailable', reason: 'timeout' });
+  });
+});
+
+// --- The API must not have grown a write path --------------------------------------------------
+
+describe('the read-only contract', () => {
+  it.each(['post', 'patch', 'put', 'delete'] as const)(
+    'has no %s handler on any /api route',
+    async (method) => {
+      const app = createApp();
+
+      for (const [, path] of ROUTES) {
+        const res = await request(app)[method](path.split('?')[0] ?? path);
+        expect(res.status).toBe(404);
+        expect(res.body).toEqual({ error: 'not_found' });
+      }
+    },
+  );
+});
