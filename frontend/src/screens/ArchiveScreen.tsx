@@ -16,6 +16,7 @@ import { useAppSession } from '../lib/sessionContext';
 import { useApiResource } from '../lib/useApiResource';
 import { StatusNote } from './StatusNote';
 import type { GoalStatus } from '../types/api';
+import './ArchiveScreen.css';
 
 export interface ArchiveScreenProps {
   onBack: () => void;

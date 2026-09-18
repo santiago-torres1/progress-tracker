@@ -1,0 +1,105 @@
+/*
+ * "My full glasses" — a shelf, not a trophy cabinet.
+ *
+ * THE OWNER REJECTED GAMIFICATION OUTRIGHT, so the whole design of this screen is a list of things
+ * it does not do. There is no count at the top, no total, no "best month", no ribbon, no gold, no
+ * order of merit, no confetti and no empty slots hinting at what is missing. Nothing on this screen
+ * is bigger because it was harder.
+ *
+ * What is left is the board, at rest. The tiles are exactly the tiles from the dashboard, still
+ * holding whatever water they held, in the order they were put down. The single difference is that
+ * they lose their lift: a shelved glass sits on its shelf instead of hovering above it, which says
+ * "finished" without saying "scored". The shelf itself is one hairline under the row — a shelf is a
+ * line things stand on, and that is the entire ornament budget for this screen.
+ */
+
+.archive {
+  display: grid;
+  gap: var(--sp-5);
+}
+
+.archive > * {
+  min-width: 0;
+}
+
+.archive__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+}
+
+.archive__title {
+  min-width: 0;
+  font-size: var(--fs-xl);
+  line-height: 1.15;
+  letter-spacing: -0.025em;
+}
+
+.archive__back {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding-inline: var(--sp-4);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--muted);
+  background-color: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease);
+}
+
+@media (hover: hover) {
+  .archive__back:hover {
+    color: var(--text);
+    background-color: var(--surface-2);
+  }
+}
+
+@media (pointer: coarse) {
+  .archive__back {
+    min-height: 2.75rem;
+  }
+}
+
+.archive__body {
+  max-width: 56ch;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/*
+ * The shelf. One hairline under the glasses, and nothing below it — no summary line, nothing to
+ * add up. The tiles keep their border and their rim but give up their drop shadow: they are
+ * standing on something now.
+ */
+.archive .goal-canvas {
+  padding-bottom: var(--sp-5);
+  border-bottom: 1px solid var(--border-strong);
+}
+
+.archive .goal-tile {
+  box-shadow: var(--sh-rim);
+}
+
+/* Nothing here yet is room, in the same dashed frame the empty board and every status note use. */
+.archive__empty {
+  max-width: 48ch;
+  margin-inline: auto;
+  padding: var(--sp-6) var(--sp-5);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  text-align: center;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-2xl);
+}

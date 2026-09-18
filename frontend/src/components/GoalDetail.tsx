@@ -24,6 +24,7 @@ import type {
   RecurrenceInput,
   UpdateGoalRequest,
 } from '../types/api';
+import './GoalDetail.css';
 
 export interface GoalDetailProps {
   goal: GoalSummary;

@@ -1,0 +1,44 @@
+/*
+ * The first thing anybody sees, and the one screen nobody asked for.
+ *
+ * While a session is being minted this is a single sentence with nothing around it — no card, no
+ * spinner, no progress bar. A dashed box drawn around "Getting your board ready…" would be
+ * furniture built for a state that usually lasts a moment, and furniture that flashes is worse
+ * than no furniture at all. The note fades in after 140ms on its own (StatusNote), so a fast
+ * session never shows anything here.
+ *
+ * All four ways this can fail — the project built without its database settings, anonymous
+ * sign-ins turned off, the per-network ceiling on new accounts, and the service simply not
+ * answering — land on exactly the same shape, because they have exactly the same standing: they
+ * are the app's business and none of them is the visitor's fault. So there is no red, no icon, no
+ * alert role and no dialog. It is the dashed frame the rest of the app uses for "nothing here
+ * yet", one sentence of what happened, one of what that means, and a button the reader may press
+ * if they feel like it. The words are the whole difference between the four (see `copy.ts`); the
+ * design's job is to make sure none of them arrives looking like an error.
+ */
+
+.session-gate {
+  display: grid;
+  align-content: center;
+  justify-items: center;
+  min-height: 18rem;
+  padding-block: var(--sp-6);
+}
+
+.session-gate .status-note {
+  width: 100%;
+  max-width: 34rem;
+}
+
+/* Waiting: the sentence, and room. */
+.session-gate .status-note[aria-busy='true'] {
+  padding: 0;
+  border: 0;
+}
+
+@media (min-width: 40rem) {
+  .session-gate {
+    min-height: 22rem;
+    padding-block: var(--sp-7);
+  }
+}

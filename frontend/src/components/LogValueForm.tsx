@@ -9,6 +9,7 @@
 import { useId, useState, type SyntheticEvent } from 'react';
 import { formatNumber } from './format';
 import type { GoalSummary } from '../types/api';
+import './LogValueForm.css';
 
 export interface LogValueFormProps {
   goal: Extract<GoalSummary, { kind: 'measured' }>;

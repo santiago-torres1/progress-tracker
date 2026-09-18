@@ -36,6 +36,7 @@ import {
 } from '../lib/sessionContext';
 import { StatusNote } from '../screens/StatusNote';
 import type { SessionProfile } from '../types/api';
+import './SessionGate.css';
 
 export interface SessionGateProps {
   children: ReactNode;

@@ -1,0 +1,385 @@
+/*
+ * One goal, opened.
+ *
+ * The same inline panel the composer is, for the same reasons, and at the same width: it stands
+ * where the board was rather than floating over it, so nothing is dimmed, nothing is trapped and
+ * Escape is not the only way out — "Close" is a button in the corner, where a person can see it.
+ *
+ * NO TROPHIES AND NO BADGES. Nothing on this panel scores anything: the history is a list of days,
+ * a gap in it is just a gap, and "Put it on the shelf" is a place, not a prize. The only ornament
+ * in here is the goal's own glass at the top, which is the same tile it has on the board — opening
+ * a goal should feel like picking it up, not like opening its file.
+ */
+
+.goal-detail {
+  width: 100%;
+  max-width: 38rem;
+  margin-inline: auto;
+  padding: var(--sp-5);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--sh-1), var(--sh-rim);
+  animation: pt-settle var(--mo-slow) var(--ease-out) backwards;
+}
+
+@media (min-width: 40rem) {
+  .goal-detail {
+    padding: var(--sp-6);
+  }
+}
+
+/* --- head ----------------------------------------------------------------- */
+
+.goal-detail__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-2) var(--sp-4);
+}
+
+.goal-detail__title {
+  min-width: 0;
+  font-size: var(--fs-lg);
+  letter-spacing: -0.015em;
+}
+
+.goal-detail__close {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 2rem;
+  padding-inline: var(--sp-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--muted);
+  background-color: var(--surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease);
+}
+
+@media (hover: hover) {
+  .goal-detail__close:hover {
+    color: var(--text);
+    background-color: var(--surface-2);
+  }
+}
+
+@media (pointer: coarse) {
+  .goal-detail__close {
+    min-height: 2.75rem;
+  }
+}
+
+/* --- the glass, and what the person wrote about it ------------------------ */
+
+/*
+ * On the board a tile is as tall as its cell; here there is no grid to give it one, so the panel
+ * lends it enough height for the water to be worth looking at. It is the plain, non-interactive
+ * tile — no tick on it, because the tick is on the board and this is not a second place to press.
+ */
+.goal-detail__glass {
+  margin-top: var(--sp-4);
+}
+
+.goal-detail__glass .goal-tile {
+  min-height: 9rem;
+}
+
+.goal-detail__body {
+  max-width: 56ch;
+  margin-top: var(--sp-4);
+  font-size: var(--fs-sm);
+}
+
+/* --- notices -------------------------------------------------------------- */
+
+.goal-detail__notice,
+.goal-detail__recurrence-note {
+  margin-top: var(--sp-4);
+  padding-inline-start: var(--sp-3);
+  font-size: var(--fs-sm);
+  border-inline-start: 2px solid var(--border-strong);
+}
+
+.goal-detail__notice-title {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.goal-detail__notice-body {
+  max-width: 54ch;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* --- the three panels ----------------------------------------------------- */
+
+/*
+ * History, Edit and Target days, in the same small segmented control the calendar uses for day,
+ * week and month. They are aria-pressed buttons rather than tabs, so the styling says "one of
+ * these is on" without pretending to be a tablist.
+ */
+.goal-detail__tabs {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: var(--sp-1);
+  margin-top: var(--sp-5);
+  padding: 0.1875rem;
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-full);
+}
+
+.goal-detail__tab {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2rem;
+  padding-inline: var(--sp-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease);
+}
+
+@media (hover: hover) {
+  .goal-detail__tab[aria-pressed='false']:hover {
+    color: var(--text);
+    background-color: var(--accent-soft);
+  }
+}
+
+.goal-detail__tab[aria-pressed='true'] {
+  color: var(--accent-contrast);
+  background-color: var(--accent);
+}
+
+@media (pointer: coarse) {
+  .goal-detail__tab {
+    min-height: 2.5rem;
+    padding-inline: var(--sp-4);
+  }
+}
+
+.goal-detail > .goal-form,
+.goal-detail > .recurrence {
+  margin-top: var(--sp-5);
+}
+
+.goal-detail__recurrence-note + .recurrence {
+  margin-top: var(--sp-4);
+}
+
+/* --- history -------------------------------------------------------------- */
+
+/*
+ * A list of days. No streak, no total, no best month — a gap in this list is a week somebody had,
+ * not a record of a failure, and there is nothing here that could add up to a score.
+ */
+.goal-detail__history {
+  margin-top: var(--sp-5);
+}
+
+.goal-detail__subtitle {
+  margin-top: var(--sp-5);
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.goal-detail__history > :first-child {
+  margin-top: 0;
+}
+
+.goal-detail__list {
+  margin-top: var(--sp-2);
+}
+
+.goal-detail__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--sp-1) var(--sp-3);
+  padding-block: var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.goal-detail__row + .goal-detail__row {
+  border-top: 1px solid var(--border);
+}
+
+.goal-detail__what {
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-detail__empty {
+  max-width: 54ch;
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* --- the foot: finish, shelve, delete ------------------------------------- */
+
+.goal-detail__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--border);
+}
+
+.goal-detail__done,
+.goal-detail__archive,
+.goal-detail__keep {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding-inline: var(--sp-4);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease);
+}
+
+/* Finishing a goal is the good ending, so it is the one that carries the accent — softly. This is
+   not a "complete" button competing with the tick on the board; it is the last thing you do once. */
+.goal-detail__done {
+  color: var(--accent);
+  background-color: var(--accent-soft);
+}
+
+.goal-detail__archive,
+.goal-detail__keep {
+  color: var(--text);
+  background-color: var(--surface);
+  border-color: var(--border-strong);
+}
+
+@media (hover: hover) {
+  .goal-detail__done:hover:not(:disabled) {
+    background-color: color-mix(in srgb, var(--accent) 18%, var(--surface));
+  }
+
+  .goal-detail__archive:hover:not(:disabled),
+  .goal-detail__keep:hover {
+    background-color: var(--surface-2);
+  }
+}
+
+.goal-detail__done:disabled,
+.goal-detail__archive:disabled {
+  color: var(--muted);
+  background-color: var(--surface-2);
+  border-color: var(--border);
+  cursor: default;
+}
+
+/*
+ * Deleting. It is a sentence in the margin rather than a red button — the app has one destructive
+ * action and it does not need to look dangerous to be taken seriously.
+ */
+.goal-detail__delete {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding-inline: var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color var(--mo) var(--ease);
+}
+
+@media (hover: hover) {
+  .goal-detail__delete:hover:not(:disabled) {
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+}
+
+/*
+ * Asked twice, quietly. The confirmation takes its own line as a recessed block — it is the same
+ * page, not an alert — and the two answers are deliberately uneven: "Keep it" is the solid button
+ * your hand lands on, "Delete it anyway" stays the sentence it always was. Nothing flashes, nothing
+ * counts down, and the copy beside them says what shelving would do instead.
+ */
+.goal-detail__confirm {
+  display: flex;
+  flex: 1 1 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-3);
+  padding: var(--sp-3);
+  background-color: var(--surface-2);
+  border: 1px solid var(--border);
+  border-radius: var(--r-lg);
+  animation: pt-settle var(--mo) var(--ease-out) backwards;
+}
+
+.goal-detail__confirm-text {
+  flex: 1 1 16ch;
+  min-width: 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* --- where a finished goal goes ------------------------------------------- */
+
+.goal-detail__shelf-note {
+  max-width: 64ch;
+  margin-top: var(--sp-4);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.goal-detail__shelf-note b {
+  font-weight: var(--fw-semibold);
+  color: var(--text);
+}
+
+@media (pointer: coarse) {
+  .goal-detail__done,
+  .goal-detail__archive,
+  .goal-detail__keep,
+  .goal-detail__delete {
+    min-height: 2.75rem;
+  }
+}

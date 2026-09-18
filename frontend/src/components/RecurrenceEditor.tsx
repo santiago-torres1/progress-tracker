@@ -15,6 +15,7 @@
 
 import { useId, useState, type SyntheticEvent } from 'react';
 import type { RecurrenceFreq, RecurrenceInput } from '../types/api';
+import './RecurrenceEditor.css';
 
 export interface RecurrenceEditorProps {
   /** The rule this goal already has, if one was found among its occurrences. */

@@ -1,0 +1,238 @@
+/*
+ * Adding a goal: six areas, then seven starting points, then the form.
+ *
+ * AN INLINE PANEL, NOT A MODAL — and that is a decision, not a shortcut. The composer stands where
+ * the board was, inside the dashboard's own section, so the page keeps its masthead, its calendar
+ * underneath and its scroll position; there is no overlay to dim, no focus to trap, no scroll to
+ * lock and no second Escape route to explain. At 400px a modal has to become a full-screen sheet
+ * with a title bar of its own, which is the moment a calm app starts looking like an operating
+ * system. This is simply the page, narrower. (The dashboard renders one surface at a time, so
+ * making these modal would be a change to the screen's logic, not to its styling.)
+ *
+ * Everything is one card at one width: three steps that stay the same size are three steps, where
+ * three boxes of different widths would be three screens.
+ */
+
+.composer {
+  width: 100%;
+  max-width: 38rem;
+  margin-inline: auto;
+  padding: var(--sp-5);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--sh-1), var(--sh-rim);
+  animation: pt-settle var(--mo-slow) var(--ease-out) backwards;
+}
+
+@media (min-width: 40rem) {
+  .composer {
+    padding: var(--sp-6);
+  }
+}
+
+.composer__title {
+  font-size: var(--fs-lg);
+  letter-spacing: -0.015em;
+}
+
+.composer__body {
+  max-width: 54ch;
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* --- the six areas -------------------------------------------------------- */
+
+/*
+ * Six cards, each tinted with its own life area and each saying that area in words: the colour is
+ * never the only thing carrying which one this is. The tint is deliberately weaker than a tile's
+ * water (7% against 9–22%) — these are choices, not glasses, and nothing here is full of anything
+ * yet.
+ */
+.composer__areas {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(8.5rem, 1fr));
+  gap: var(--sp-2);
+  margin-top: var(--sp-5);
+}
+
+/* The li is a grid so its card fills the row, whatever the tallest card in that row turned out to
+   be. Same trick the canvas uses for a cell. */
+.composer__areas li,
+.composer__templates li {
+  display: grid;
+  min-width: 0;
+}
+
+.composer__area,
+.composer__template {
+  display: grid;
+  align-content: start;
+  gap: var(--sp-1);
+  width: 100%;
+  padding: var(--sp-3);
+  font: inherit;
+  text-align: start;
+  color: var(--text);
+  background-color: color-mix(in srgb, var(--goal) 7%, var(--surface));
+  border: 1px solid color-mix(in srgb, var(--goal) 22%, var(--border));
+  border-radius: var(--r-lg);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease),
+    transform var(--mo) var(--ease-out),
+    box-shadow var(--mo) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .composer__area:hover,
+  .composer__template:hover {
+    transform: translateY(-1px);
+    border-color: color-mix(in srgb, var(--goal) 55%, var(--border-strong));
+    box-shadow: var(--sh-1);
+  }
+}
+
+.composer__area:active,
+.composer__template:active {
+  transform: translateY(0) scale(0.985);
+  box-shadow: none;
+  transition-duration: var(--mo-fast);
+}
+
+/* the same dot the key, the tiles and the day strip use for an area */
+.composer__area-name {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+
+.composer__area-name::before {
+  content: '';
+  flex: none;
+  width: 0.5rem;
+  height: 0.5rem;
+  background-color: var(--goal);
+  border-radius: 50%;
+}
+
+.composer__area-count {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+/* --- the starting points -------------------------------------------------- */
+
+.composer__templates {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(13rem, 1fr));
+  gap: var(--sp-2);
+  margin-top: var(--sp-5);
+}
+
+.composer__template {
+  min-height: 5rem;
+  padding: var(--sp-4);
+}
+
+.composer__template-title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+}
+
+.composer__template-hint {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+/*
+ * "Something else" is an ordinary card in the row, because the API has no idea templates exist and
+ * a custom goal is the same request with an empty draft. It is dashed rather than tinted: the same
+ * mark the empty state puts on a plot with nothing planted in it — room, not a lesser option.
+ */
+.composer__template--custom {
+  background-color: var(--surface);
+  border-style: dashed;
+  border-color: var(--border-strong);
+}
+
+@media (hover: hover) {
+  .composer__template--custom:hover {
+    border-color: var(--accent);
+  }
+}
+
+/* --- what the server said ------------------------------------------------- */
+
+/*
+ * A refusal, in the shape the whole app uses for one: a rail and two sentences. No red and no
+ * icon — the loudest thing it ever says is "that is a full board", which is good news.
+ */
+.composer__notice {
+  margin-top: var(--sp-4);
+  padding-inline-start: var(--sp-3);
+  border-inline-start: 2px solid var(--border-strong);
+}
+
+.composer__notice-title {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.composer__notice-body {
+  max-width: 54ch;
+  margin-top: var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* --- the way back --------------------------------------------------------- */
+
+.composer > .goal-form {
+  margin-top: var(--sp-5);
+}
+
+/* Leaving is always a sentence, never a button that competes with the one that gets on with it. */
+.composer__back,
+.composer__cancel {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.25rem;
+  margin-top: var(--sp-4);
+  margin-inline-start: calc(var(--sp-2) * -1);
+  padding-inline: var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color var(--mo) var(--ease);
+}
+
+@media (hover: hover) {
+  .composer__back:hover,
+  .composer__cancel:hover {
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+}
+
+@media (pointer: coarse) {
+  .composer__back,
+  .composer__cancel {
+    min-height: 2.75rem;
+  }
+}

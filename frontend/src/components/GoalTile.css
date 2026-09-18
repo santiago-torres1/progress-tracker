@@ -384,6 +384,7 @@ button.goal-tile:active,
  * sits on, so nothing about the glass has to be dimmed for a button to be legible.
  */
 .goal-tile__action {
+  position: relative;
   display: inline-flex;
   flex: none;
   align-items: center;
@@ -482,8 +483,10 @@ button.goal-tile:active,
   height: 1rem;
 }
 
-/* One row tall: the mark alone, in a circle that is still the biggest control on the tile. */
+/* One row tall: the mark alone, in a circle that is still the biggest control on the tile. The gap
+   goes with the word, or the clipped span it leaves behind would push the mark off centre. */
 .goal-tile--sm .goal-tile__tick {
+  gap: 0;
   min-width: 1.75rem;
   height: 1.75rem;
   padding-inline: 0;
@@ -516,6 +519,7 @@ button.goal-tile:active,
 }
 
 .goal-tile--sm .goal-tile__log {
+  height: 1.75rem;
   padding-inline: var(--sp-2);
   font-size: var(--fs-xs);
 }
@@ -531,6 +535,7 @@ button.goal-tile:active,
   font-size: var(--fs-sm);
   line-height: 1;
   cursor: grab;
+  -webkit-user-select: none;
   user-select: none;
 }
 

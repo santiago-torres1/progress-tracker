@@ -14,6 +14,7 @@
 import { useId, useState, type SyntheticEvent } from 'react';
 import type { GoalDraft } from '../lib/goalDraft';
 import type { GoalKind, GoalSize, HabitPeriod, LifeArea } from '../types/api';
+import './GoalForm.css';
 
 export interface GoalFormProps {
   draft: GoalDraft;

@@ -26,6 +26,7 @@ import type {
   GoalTemplateGroup,
   GoalTemplatesResponse,
 } from '../types/api';
+import './GoalComposer.css';
 
 export interface GoalComposerProps {
   catalogue: GoalTemplatesResponse;
