@@ -432,15 +432,42 @@ comment on function public.set_goal_layout(jsonb) is
 -- -----------------------------------------------------------------------------
 -- Recurrences: the rule, and the rows it materialises, kept in step.
 --
+-- EDITING A RULE ONLY EVER CHANGES THE FUTURE. That is a product rule before it
+-- is a technical one. "No failure states, ever" cannot survive an app that
+-- quietly rewrites what somebody owed last month: switching a goal from Tue/Thu
+-- to Mon/Wed/Fri must not retroactively decide they were due on Mondays they
+-- never planned, because every one of those days is already lived and their
+-- adherence would drop through no action of their own.
+--
 -- public.expand_recurrence() writes occurrences up to a horizon. What it
 -- deliberately does NOT do is notice that the rule changed -- it only ever
 -- INSERTs, and only past generated_through. So editing a rule is three
--- statements, in this order, and they are the ones supabase/README.md has
--- documented since 0.1.1:
+-- statements, in this order:
 --
 --   1. delete future PLANNED, NON-EXCEPTION occurrences of that rule;
---   2. reset generated_through, so expansion starts from the rule's start date;
+--   2. set generated_through to TODAY, which is the boundary expansion resumes
+--      from -- not NULL, which would restart it at the rule's start_date;
 --   3. expand again, to today + the horizon.
+--
+-- Step 2 used to be `generated_through = null`. On the old weekdays that was
+-- harmless (ON CONFLICT DO NOTHING left the existing past rows alone), but on
+-- the NEW weekdays there was nothing to conflict with, so every past Monday
+-- back to start_date was materialised as a planned occurrence that had never
+-- been planned -- and goal_dashboard's due_count, the denominator of session
+-- adherence, grew for days that were already over. TODAY is the honest value:
+-- after step 1, everything up to and including today is settled (the past is
+-- kept, the future is gone), and expansion may only write past it.
+--
+-- WHOSE TODAY. public.current_today() -- the caller's own zone, from their
+-- profile. A rule edited at 23:00 in New York must not regenerate that day's
+-- occurrence because it is already tomorrow in UTC. It is read ONCE per call
+-- and the same value is used for the delete and for the horizon, so there is no
+-- window in which the two could disagree about where the past ends.
+--
+-- THE BOUNDARY LINES UP EXACTLY. Step 1 deletes `entry_date > today`; step 3
+-- resumes at `generated_through + 1` = today + 1. No planned row can be left
+-- stranded between the old boundary and the new one, and no day is skipped
+-- between them.
 --
 -- Step 1 is where completed history survives: it names `status = 'planned'`, so
 -- a completed or skipped session is never touched, and `not is_exception`, so a
@@ -451,6 +478,11 @@ comment on function public.set_goal_layout(jsonb) is
 --
 -- Ad-hoc completions (recurrence_id IS NULL) are outside all three statements,
 -- so an unplanned run stays exactly where it was.
+--
+-- CREATING a rule is deliberately NOT subject to this: a new rule with a past
+-- start_date materialises from that date, because stating "I have been doing
+-- this since September" is the person's own account of their history, not
+-- something the app inferred and applied to them.
 -- -----------------------------------------------------------------------------
 create or replace function public.resync_recurrence(p_recurrence_id uuid)
 returns table (occurrences_removed integer, occurrences_created integer)
@@ -469,7 +501,8 @@ begin
     and ce.entry_date > v_today;
   get diagnostics v_removed = row_count;
 
-  update public.recurrences r set generated_through = null where r.id = p_recurrence_id;
+  -- TODAY, never NULL: the past is settled and expansion resumes after it.
+  update public.recurrences r set generated_through = v_today where r.id = p_recurrence_id;
 
   select public.expand_recurrence(p_recurrence_id, v_today + public.recurrence_horizon_days())
   into v_created;
@@ -479,7 +512,7 @@ end;
 $$;
 
 comment on function public.resync_recurrence(uuid) is
-  'Re-materialises a rule after it changed: drops future planned occurrences, keeps completed and edited ones, expands to the horizon.';
+  'Re-materialises a rule after it changed, from the caller''s today onwards: drops future planned occurrences, keeps completed and edited ones, never adds or removes a past one, expands to the horizon.';
 
 create or replace function public.create_recurrence(
   p_goal_id uuid,
@@ -643,7 +676,7 @@ end;
 $$;
 
 comment on function public.update_recurrence(uuid, uuid, public.recurrence_freq, date, integer, integer[], date, time, time, text, boolean) is
-  'Replaces a rule and re-materialises it. Completed, skipped and hand-edited occurrences survive; future planned ones are regenerated.';
+  'Replaces a rule and re-materialises it from the caller''s today onwards. The past is frozen exactly as it was lived; completed, skipped and hand-edited occurrences survive; future planned ones are regenerated.';
 
 -- Deleting the rule keeps the history it produced. The composite FK is
 -- ON DELETE SET NULL (recurrence_id), so completed sessions survive as ordinary

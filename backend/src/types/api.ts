@@ -458,11 +458,17 @@ export interface SessionProfile {
   expiresAt: string | null;
 }
 
-/** What a rule change did to the timeline. Completed and hand-edited occurrences are never in it. */
+/**
+ * What a rule change did to the timeline. Completed and hand-edited occurrences are never in it.
+ *
+ * Both numbers describe the FUTURE only. Editing a rule never adds or removes an occurrence on or
+ * before the caller's own today, so a goal that moves from Tuesdays to Mondays does not acquire
+ * Mondays it never had — which would raise how much it was "due" on days already lived.
+ */
 export interface OccurrenceChange {
   /** Future planned occurrences dropped because the rule changed. */
   removed: number;
-  /** Occurrences materialised up to the horizon. */
+  /** Occurrences materialised from tomorrow up to the horizon. */
   created: number;
 }
 
@@ -551,6 +557,19 @@ export interface MeasurementResponse {
 /** Deleting a check-in returns no check-in — only the tile, which has quietly changed. */
 export interface DeleteMeasurementResponse {
   goal: GoalSummary;
+}
+
+/**
+ * GET /api/goals/:goalId/recurrences — every rule on one goal, paused ones included.
+ *
+ * An empty list is the ordinary answer, and covers "this goal has no rules", "no such goal" and
+ * "not your goal" alike: under row-level security those are one fact, and the read path does not
+ * claim to tell them apart. A client that needs a rule's id — to replace or delete it — asks
+ * here; guessing it from a materialised occurrence's `recurrenceId` only works while an
+ * occurrence happens to be inside the calendar window the client is holding.
+ */
+export interface RecurrencesResponse {
+  recurrences: Recurrence[];
 }
 
 export interface RecurrenceResponse {

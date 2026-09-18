@@ -175,6 +175,9 @@ request. Missing or invalid token → 401 with a short reason code; over quota �
   either way: a template seeds a form and is then forgotten, so editing one later cannot reach a
   goal someone already created, and "a custom goal" is the only write path rather than a special
   case.
+- `GET /api/goals/:id/recurrences` → a goal's repeat rules, paused ones included. Another
+  session's goal and a goal with no rules both answer `200 { recurrences: [] }` — RLS makes those
+  one fact, so a 404 would leak which ids exist.
 - Writes: `POST`/`PATCH`/`DELETE /api/goals`, `PATCH /api/goals/layout` (batched reorder and
   resize — one request, all-or-nothing), `POST`/`DELETE /api/goals/:id/completions` (complete and
   undo), `POST`/`PATCH`/`DELETE /api/goals/:id/measurements`, and
@@ -184,6 +187,10 @@ request. Missing or invalid token → 401 with a short reason code; over quota �
   carries `limit`, and its copy must stay encouraging: a cap is not a failure.
 - Completing is idempotent per (goal, day); measurements upsert per (goal, day); undo restores the
   exact prior state, including returning a skipped day to skipped.
+- **Editing a repeat rule freezes the past.** Only occurrences after the caller's today change; days
+  already lived keep the plan they were lived under. Rewriting them would retroactively add "was
+  due" days and drop adherence for doing nothing — which is the failure state this product does not
+  have.
 
 Shapes live in `backend/src/types/api.ts` and are the contract the frontend imports. Successful
 responses carry `Cache-Control: public, max-age=60`; errors carry `no-store`. `backend/src/types/database.ts`
@@ -210,7 +217,9 @@ On push to `main`, after the reusable CI workflow passes:
 3. `aws lambda update-function-code --image-uri …:<sha>` → `aws lambda wait function-updated`.
 4. `aws lambda update-function-configuration` to set `SUPABASE_*` from GitHub secrets → wait.
 5. `aws lambda get-function-url-config` → smoke-test `GET /health`, assert `commit == <sha>`.
-6. Build frontend with `VITE_API_BASE_URL=<function url>`; `aws s3 sync` to `S3_FRONTEND_BUCKET`
+6. Build frontend with `VITE_API_BASE_URL=<function url>`, `VITE_COMMIT_SHA`, and
+   `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (from the existing `SUPABASE_*` secrets — the
+   anon key is public by design; `SUPABASE_SERVICE_ROLE_KEY` must never enter a frontend build); `aws s3 sync` to `S3_FRONTEND_BUCKET`
    (hashed `assets/` immutable-cached, `index.html` `no-cache`); stale files removed last.
 7. `aws cloudfront create-invalidation --paths "/*"`.
 

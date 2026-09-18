@@ -32,3 +32,98 @@
   font-size: var(--fs-sm);
   color: var(--muted);
 }
+
+/* --- the two ways out of the board ---------------------------------------- */
+
+/*
+ * Adding a goal is the one thing this screen asks anybody to do, so it is the one accent button on
+ * it. The shelf is a door, not an offer: it looks like the quiet controls in the calendar bar,
+ * because that is what it is.
+ */
+.dashboard__controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-4);
+}
+
+.dashboard__add,
+.dashboard__shelf {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding-inline: var(--sp-4);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease),
+    transform var(--mo) var(--ease-out),
+    box-shadow var(--mo) var(--ease-out);
+}
+
+.dashboard__add {
+  color: var(--accent-contrast);
+  background-color: var(--accent);
+  box-shadow: var(--sh-1);
+}
+
+.dashboard__shelf {
+  color: var(--muted);
+  background-color: var(--surface);
+  border-color: var(--border-strong);
+}
+
+@media (hover: hover) {
+  .dashboard__add:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--sh-2);
+  }
+
+  .dashboard__shelf:hover {
+    color: var(--text);
+    background-color: var(--surface-2);
+  }
+}
+
+/* the same press the tiles and the empty state use: quick down, unhurried back up */
+.dashboard__add:active,
+.dashboard__shelf:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: var(--sh-1);
+  transition-duration: var(--mo-fast);
+}
+
+@media (pointer: coarse) {
+  .dashboard__add,
+  .dashboard__shelf {
+    min-height: 2.75rem;
+  }
+}
+
+/* --- how long this all lasts ---------------------------------------------- */
+
+/*
+ * The 90-day lifetime, said once at the foot of the board. It is a fact about an anonymous
+ * session, not a countdown: caption size, the same grey as every other aside, no rule above it and
+ * nothing that could be mistaken for a warning. Under the empty state it centres, because there it
+ * is the last line of a centred column rather than a footnote to a board.
+ */
+.dashboard__expiry {
+  max-width: 64ch;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.empty-state + .dashboard__expiry {
+  margin-inline: auto;
+  text-align: center;
+}

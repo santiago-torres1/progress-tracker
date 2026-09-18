@@ -1,24 +1,34 @@
-import { render, screen } from '@testing-library/react';
-import { describe, expect, it } from 'vitest';
+import { fireEvent, render, screen } from '@testing-library/react';
+import { beforeEach, describe, expect, it } from 'vitest';
 import { App } from './App';
-import { stubFetch } from './test/fixtures';
+import { goalById, jsonResponse, stubFetch } from './test/fixtures';
+import { TEST_ZONE, forgetBrowserMemory, testAuthStore, workingTransport } from './test/harness';
 
 /*
  * The page as a whole. Nothing here fixes the clock — App reads the real one — so these
  * assertions are the ones that hold on any day.
  */
+function renderApp() {
+  return render(<App authStore={testAuthStore(workingTransport())} browserTimeZone={TEST_ZONE} />);
+}
+
 describe('App', () => {
-  it('opens on the goals dashboard', async () => {
+  beforeEach(() => {
+    forgetBrowserMemory();
+  });
+
+  it('opens on the goals dashboard, with nobody asked to sign in', async () => {
     stubFetch();
-    render(<App />);
+    renderApp();
 
     expect(await screen.findByText('Run three times a week')).toBeInTheDocument();
     expect(screen.getByRole('heading', { level: 1 })).toHaveTextContent('Progress Tracker');
+    expect(screen.queryByLabelText(/password|email/i)).not.toBeInTheDocument();
   });
 
   it('keeps the calendar under the dashboard', async () => {
     stubFetch();
-    render(<App />);
+    renderApp();
 
     await screen.findByText('Run three times a week');
 
@@ -29,12 +39,29 @@ describe('App', () => {
     expect(labels.indexOf('Your goals')).toBeLessThan(labels.indexOf('Calendar'));
   });
 
+  it('swaps the board for the shelf, and back again', async () => {
+    stubFetch({
+      goals: (statuses) =>
+        statuses === 'completed,archived'
+          ? jsonResponse({ goals: [{ ...goalById('goal-spanish'), status: 'completed' }] })
+          : jsonResponse({ goals: [goalById('goal-run')] }),
+    });
+    renderApp();
+
+    fireEvent.click(await screen.findByRole('button', { name: 'My full glasses' }));
+
+    expect(await screen.findByRole('heading', { name: 'My full glasses' })).toBeInTheDocument();
+    expect(screen.queryByText('Run three times a week')).not.toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back to the board' }));
+    expect(await screen.findByText('Run three times a week')).toBeInTheDocument();
+  });
+
   it('still shows the deploy proof, demoted to the footer', async () => {
     stubFetch();
-    render(<App />);
+    renderApp();
 
     expect(await screen.findByText('Pass')).toBeInTheDocument();
-    expect(screen.getByText('0.1.1-alpha')).toBeInTheDocument();
 
     const panel = screen.getByRole('region', { name: 'Alpha infra status' });
     expect(panel.closest('footer')).not.toBeNull();

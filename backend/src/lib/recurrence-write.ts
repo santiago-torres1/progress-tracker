@@ -1,17 +1,7 @@
-import {
-  readBoolean,
-  readDate,
-  readEnum,
-  readInstant,
-  readInteger,
-  readOptionalDate,
-  readOptionalString,
-  readString,
-  type UnknownRow,
-} from './row.js';
+import { toRecurrence } from './recurrences.js';
+import { readInteger, readString, type UnknownRow } from './row.js';
 import type { SupabaseUserClient } from './supabase.js';
 import { requireRow, runWrite } from './write.js';
-import { RECURRENCE_FREQS } from '../types/database.js';
 import type { OccurrenceChange, Recurrence, RecurrenceInput } from '../types/api.js';
 
 /*
@@ -29,34 +19,22 @@ import type { OccurrenceChange, Recurrence, RecurrenceInput } from '../types/api
  * session is history and is never touched; a skipped one is a decision somebody made; one dragged
  * to another time carries is_exception and is left alone. Ad-hoc completions have no recurrence_id
  * at all, so they are outside the whole operation. The numbers in `occurrences` say what moved.
+ *
+ * AND NOTHING IS ADDED TO THE PAST EITHER. Re-expansion resumes the day after the caller's own
+ * today (SQL sets generated_through to that date rather than clearing it), so moving a goal from
+ * Tue/Thu to Mon/Wed/Fri does not materialise Mondays that have already gone by. It would
+ * otherwise raise due_count — the denominator of session adherence — for days already lived, and
+ * an app with no failure states must not quietly decide somebody was behind on a day they never
+ * planned. `occurrences.created` therefore counts future rows only.
  */
 
 const CONTEXT = '[api/goals/recurrences]';
 
-export function toRecurrence(row: UnknownRow): Recurrence {
-  const days: unknown = row.byweekday;
-  return {
-    id: readString(row, 'id'),
-    goalId: readString(row, 'goal_id'),
-    freq: readEnum(row, 'freq', RECURRENCE_FREQS),
-    interval: readInteger(row, 'interval_count'),
-    byWeekday: Array.isArray(days) ? days.map((day, index) => readWeekday(day, index)) : null,
-    startDate: readDate(row, 'start_date'),
-    untilDate: readOptionalDate(row, 'until_date'),
-    startTime: readOptionalString(row, 'start_time'),
-    endTime: readOptionalString(row, 'end_time'),
-    timeZone: readString(row, 'time_zone'),
-    generatedThrough: readOptionalDate(row, 'generated_through'),
-    isActive: readBoolean(row, 'is_active'),
-    createdAt: readInstant(row, 'created_at'),
-    updatedAt: readInstant(row, 'updated_at'),
-  };
-}
-
-/** `byweekday` is a smallint[]; narrow each element rather than trusting the array's contents. */
-function readWeekday(value: unknown, index: number): number {
-  return readInteger({ [`byweekday[${index}]`]: value }, `byweekday[${index}]`);
-}
+/*
+ * A rule's row shape is mapped by lib/recurrences.ts and imported here, the same way
+ * occurrence-write.ts borrows toCalendarEntry from calendar-entries.ts: what a write returns and
+ * what a read returns are the same rule, so there is one mapper for both.
+ */
 
 function toChange(row: UnknownRow): OccurrenceChange {
   return {

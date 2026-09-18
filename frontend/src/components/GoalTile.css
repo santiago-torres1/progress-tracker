@@ -343,9 +343,31 @@ button.goal-tile:active,
   gap: var(--sp-2);
 }
 
-/* the head runs under the control, so it gives it room rather than eliding into it */
+.goal-tile--sm > .goal-tile__actions {
+  gap: var(--sp-1);
+}
+
+/*
+ * The head runs under the controls, so it gives them room rather than eliding into them. How much
+ * room depends on what is up there: a tick and a grip are two round-ish things, and an undo — which
+ * is only ever there for a moment after a tap — is a word as well. The area name ellipses into
+ * whatever is left, which is the right thing to lose: it is the quietest line on the tile and its
+ * colour is still on the dot beside it.
+ */
 .goal-tile:has(> .goal-tile__actions) .goal-tile__head {
-  padding-right: 1.75rem;
+  padding-right: 7rem;
+}
+
+.goal-tile--sm:has(> .goal-tile__actions) .goal-tile__head {
+  padding-right: 4rem;
+}
+
+.goal-tile:has(.goal-tile__undo) .goal-tile__head {
+  padding-right: 10.5rem;
+}
+
+.goal-tile--sm:has(.goal-tile__undo) .goal-tile__head {
+  padding-right: 7rem;
 }
 
 @media (min-width: 40rem) {
@@ -355,13 +377,25 @@ button.goal-tile:active,
   }
 }
 
+/*
+ * Every control on a glass is the same object: a pill with a hairline, sitting on a backdrop of
+ * its own so that it reads whether the water behind it is at the brim or nowhere near it. The
+ * backdrop is the tile's own surface at 78% rather than a blur — it is the same colour the copy
+ * sits on, so nothing about the glass has to be dimmed for a button to be legible.
+ */
 .goal-tile__action {
-  display: grid;
-  place-items: center;
-  width: 1.75rem;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  min-width: 1.75rem;
   height: 1.75rem;
   padding: 0;
   font: inherit;
+  font-size: var(--fs-xs);
+  line-height: 1;
+  white-space: nowrap;
   color: var(--muted);
   background-color: color-mix(in srgb, var(--surface) 78%, transparent);
   border: 1px solid var(--border-strong);
@@ -376,7 +410,7 @@ button.goal-tile:active,
 }
 
 .goal-tile--sm .goal-tile__action {
-  width: 1.5rem;
+  min-width: 1.5rem;
   height: 1.5rem;
 }
 
@@ -389,7 +423,7 @@ button.goal-tile:active,
 }
 
 @media (hover: hover) {
-  .goal-tile__action:hover {
+  .goal-tile__action:hover:not(:disabled) {
     color: var(--goal);
     border-color: var(--goal);
     background-color: color-mix(in srgb, var(--goal) 10%, var(--surface));
@@ -399,6 +433,132 @@ button.goal-tile:active,
 .goal-tile__action:active {
   transform: scale(0.88);
   transition-duration: var(--mo-fast);
+}
+
+/* In flight. The write is optimistic, so the control already shows the answer — there is nothing
+   here to grey out, only a press that should not repeat. */
+.goal-tile__action:disabled {
+  cursor: default;
+}
+
+/* --- the tick ------------------------------------------------------------- */
+
+/*
+ * The most-pressed thing in the product. It is the only control that carries a word as well as a
+ * mark, and the only one with ink at full strength: at a glance on a busy board it has to be
+ * findable without anybody hunting for a circle.
+ *
+ * It grows with the tile rather than staying one size, because a large glass is a goal somebody
+ * said mattered more, and the tick on it is pressed more often. On the smallest tile the word goes
+ * (the button keeps saying it to a screen reader through its own label) and what is left is a mark
+ * in a circle — still 28px, which is larger than the tile's other controls, not smaller.
+ */
+.goal-tile__tick {
+  padding-inline: var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text);
+  background-color: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.goal-tile:not(.goal-tile--sm) .goal-tile__tick {
+  height: 2rem;
+  padding-inline: var(--sp-2) var(--sp-3);
+}
+
+.goal-tile--lg .goal-tile__tick {
+  height: 2.25rem;
+  font-size: var(--fs-md);
+}
+
+.goal-tile__tick-mark {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.goal-tile--lg .goal-tile__tick-mark {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* One row tall: the mark alone, in a circle that is still the biggest control on the tile. */
+.goal-tile--sm .goal-tile__tick {
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding-inline: 0;
+}
+
+.goal-tile--sm .goal-tile__action-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- the other three ------------------------------------------------------ */
+
+/* A number instead of a tick, for a goal that cannot be ticked. Same weight as the tick, because
+   it is the same thing: this glass's one control. */
+.goal-tile__log {
+  padding-inline: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background-color: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.goal-tile:not(.goal-tile--sm) .goal-tile__log {
+  height: 2rem;
+}
+
+.goal-tile--sm .goal-tile__log {
+  padding-inline: var(--sp-2);
+  font-size: var(--fs-xs);
+}
+
+/* Taking something back is never the loud option — but it is one tap, so it is never hidden. */
+.goal-tile__undo {
+  padding-inline: var(--sp-2);
+}
+
+/* The grip. It says what it is by the cursor it takes and by what happens when it is held; the
+   held state comes free from [aria-pressed], which useArrange already sets. */
+.goal-tile__grip {
+  font-size: var(--fs-sm);
+  line-height: 1;
+  cursor: grab;
+  user-select: none;
+}
+
+.goal-tile__grip[aria-pressed='true'] {
+  cursor: grabbing;
+}
+
+@media (pointer: coarse) {
+  .goal-tile__action {
+    min-width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .goal-tile--sm .goal-tile__action {
+    min-width: 2rem;
+    height: 2rem;
+  }
+
+  .goal-tile__tick,
+  .goal-tile:not(.goal-tile--sm) .goal-tile__tick,
+  .goal-tile--sm .goal-tile__tick {
+    min-width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .goal-tile:not(.goal-tile--sm) .goal-tile__log {
+    height: 2.5rem;
+  }
 }
 
 /* --- what the tile says --------------------------------------------------- */

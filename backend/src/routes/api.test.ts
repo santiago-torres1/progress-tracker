@@ -384,6 +384,48 @@ const LIFE_AREA_ROWS = [
   },
 ];
 
+/** The goal the recurrence fixtures below hang off. */
+const SCHEDULED_GOAL_ID = 'd0000000-0000-4000-8000-000000000003';
+
+/**
+ * Two rules on one goal, as PostgREST renders public.recurrences: `byweekday` as an array of
+ * numbers, `time` columns as `HH:MM:SS` strings, and a paused rule alongside a live one.
+ */
+const RECURRENCE_ROWS = [
+  {
+    id: 'd1000000-0000-4000-8000-000000000002',
+    goal_id: SCHEDULED_GOAL_ID,
+    freq: 'weekly',
+    interval_count: 1,
+    byweekday: [2, 4],
+    start_date: '2026-07-02',
+    until_date: null,
+    start_time: '19:00:00',
+    end_time: '20:00:00',
+    time_zone: 'Europe/Madrid',
+    generated_through: '2026-12-15',
+    is_active: true,
+    created_at: '2026-07-02T08:00:00+00:00',
+    updated_at: '2026-07-02T08:00:00+00:00',
+  },
+  {
+    id: 'd1000000-0000-4000-8000-000000000009',
+    goal_id: SCHEDULED_GOAL_ID,
+    freq: 'monthly',
+    interval_count: 2,
+    byweekday: null,
+    start_date: '2026-08-01',
+    until_date: '2026-11-30',
+    start_time: null,
+    end_time: null,
+    time_zone: 'Europe/Madrid',
+    generated_through: null,
+    is_active: false,
+    created_at: '2026-08-01T08:00:00+00:00',
+    updated_at: '2026-08-02T09:30:00+00:00',
+  },
+];
+
 /** A signed-in visitor's request. Every /api route needs one. */
 function get(path: string, app = createApp()): request.Test {
   return request(app).get(path).set('Authorization', `Bearer ${ACCESS_TOKEN}`);
@@ -408,6 +450,7 @@ const ROUTES = [
   ['/api/goals', '/api/goals'],
   ['/api/calendar', '/api/calendar?from=2026-09-01&to=2026-09-30'],
   ['/api/areas', '/api/areas'],
+  ['/api/goals/:goalId/recurrences', `/api/goals/${SCHEDULED_GOAL_ID}/recurrences`],
 ] as const;
 
 // --- Identity: who may call, and as whom ------------------------------------------------------
@@ -900,7 +943,111 @@ describe('GET /api/areas', () => {
   });
 });
 
-// --- Failure modes, shared by all three routes -------------------------------------------------
+describe('GET /api/goals/:goalId/recurrences', () => {
+  const path = `/api/goals/${SCHEDULED_GOAL_ID}/recurrences`;
+
+  it("returns the goal's rules, paused ones included", async () => {
+    respond = () => rows(RECURRENCE_ROWS);
+
+    const res = await get(path);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      recurrences: [
+        {
+          id: 'd1000000-0000-4000-8000-000000000002',
+          goalId: SCHEDULED_GOAL_ID,
+          freq: 'weekly',
+          interval: 1,
+          byWeekday: [2, 4],
+          startDate: '2026-07-02',
+          untilDate: null,
+          startTime: '19:00:00',
+          endTime: '20:00:00',
+          timeZone: 'Europe/Madrid',
+          generatedThrough: '2026-12-15',
+          isActive: true,
+          createdAt: '2026-07-02T08:00:00.000Z',
+          updatedAt: '2026-07-02T08:00:00.000Z',
+        },
+        {
+          id: 'd1000000-0000-4000-8000-000000000009',
+          goalId: SCHEDULED_GOAL_ID,
+          freq: 'monthly',
+          interval: 2,
+          byWeekday: null,
+          startDate: '2026-08-01',
+          untilDate: '2026-11-30',
+          startTime: null,
+          endTime: null,
+          timeZone: 'Europe/Madrid',
+          generatedThrough: null,
+          isActive: false,
+          createdAt: '2026-08-01T08:00:00.000Z',
+          updatedAt: '2026-08-02T09:30:00.000Z',
+        },
+      ],
+    });
+    expectNoSecrets(res.text);
+  });
+
+  it('filters on the goal alone and lets the policy decide whose it is', async () => {
+    respond = () => rows(RECURRENCE_ROWS);
+
+    await get(path);
+
+    expect(queries[0]?.table).toBe('recurrences');
+    expect(queries[0]?.ops).toEqual([
+      `eq:goal_id=${SCHEDULED_GOAL_ID}`,
+      'order:start_date:asc',
+      'order:created_at:asc',
+      'order:id:asc',
+    ]);
+    expect(queries[0]?.columns).not.toContain('user_id');
+    expect(queries[0]?.ops.join(' ')).not.toContain('user_id');
+  });
+
+  it('answers with an empty list, not a 404, when the goal has no rules', async () => {
+    respond = () => rows([]);
+
+    const res = await get(path);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ recurrences: [] });
+  });
+
+  it("answers the same empty list for an id that is not the caller's", async () => {
+    // What the database returns for another session's goal: the rows exist and are invisible.
+    respond = () => rows([]);
+
+    const res = await get(`/api/goals/d0000000-0000-4000-8000-0000000000ff/recurrences`);
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ recurrences: [] });
+  });
+
+  it('rejects a malformed goal id before touching Supabase', async () => {
+    const res = await get('/api/goals/not-an-id/recurrences');
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: 'invalid_request',
+      message: 'goalId must be an id.',
+      field: 'goalId',
+    });
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(createClientMock).not.toHaveBeenCalled();
+    expect(rpcCalls).toHaveLength(0);
+  });
+
+  it('is charged against the read quota, not the write one', async () => {
+    await get(path);
+
+    expect(rpcCalls[0]?.args).toEqual({ p_kind: 'read' });
+  });
+});
+
+// --- Failure modes, shared by every read route -------------------------------------------------
 
 describe.each(ROUTES)('%s when the data layer is unavailable', (_name, path) => {
   it('reports 503 missing_env, and builds no client, when Supabase is not configured', async () => {

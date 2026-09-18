@@ -164,6 +164,7 @@ describe('fetchCalendar', () => {
       kind: 'rejected',
       error: 'invalid_range',
       message: 'from must be on or before to.',
+      field: null,
     });
   });
 });

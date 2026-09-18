@@ -4,6 +4,7 @@ import {
   addDays,
   addMonths,
   endOfWeek,
+  isoDateIn,
   isSameMonth,
   monthGridDates,
   nowLabelFor,
@@ -21,6 +22,12 @@ import {
 function local(year: number, month: number, day: number): Date {
   return new Date(year, month - 1, day);
 }
+
+/** ISO Monday, as GET /api/session reports it. */
+const MONDAY = 1;
+
+/** ISO Sunday — roughly half the world, and what the old hardcoded 1 got wrong. */
+const SUNDAY = 7;
 
 describe('toIsoDate / parseIsoDate', () => {
   it('round-trips a local date without slipping a day', () => {
@@ -44,27 +51,27 @@ describe('toIsoDate / parseIsoDate', () => {
 
 describe('week bounds (Monday start)', () => {
   it('leaves a Monday where it is', () => {
-    expect(toIsoDate(startOfWeek(local(2026, 9, 14)))).toBe('2026-09-14');
+    expect(toIsoDate(startOfWeek(local(2026, 9, 14), MONDAY))).toBe('2026-09-14');
   });
 
   it('pulls a Sunday back to the Monday six days earlier, not forward', () => {
     // The Sunday-start bug this catches would give 2026-09-20.
-    expect(toIsoDate(startOfWeek(local(2026, 9, 20)))).toBe('2026-09-14');
-    expect(toIsoDate(endOfWeek(local(2026, 9, 20)))).toBe('2026-09-20');
+    expect(toIsoDate(startOfWeek(local(2026, 9, 20), MONDAY))).toBe('2026-09-14');
+    expect(toIsoDate(endOfWeek(local(2026, 9, 20), MONDAY))).toBe('2026-09-20');
   });
 
   it('puts a midweek day in the week that contains it', () => {
-    expect(toIsoDate(startOfWeek(local(2026, 9, 17)))).toBe('2026-09-14');
-    expect(toIsoDate(endOfWeek(local(2026, 9, 17)))).toBe('2026-09-20');
+    expect(toIsoDate(startOfWeek(local(2026, 9, 17), MONDAY))).toBe('2026-09-14');
+    expect(toIsoDate(endOfWeek(local(2026, 9, 17), MONDAY))).toBe('2026-09-20');
   });
 
   it('crosses a month end', () => {
-    expect(toIsoDate(startOfWeek(local(2026, 10, 1)))).toBe('2026-09-28');
-    expect(toIsoDate(endOfWeek(local(2026, 8, 31)))).toBe('2026-09-06');
+    expect(toIsoDate(startOfWeek(local(2026, 10, 1), MONDAY))).toBe('2026-09-28');
+    expect(toIsoDate(endOfWeek(local(2026, 8, 31), MONDAY))).toBe('2026-09-06');
   });
 
   it('lists seven days in order', () => {
-    expect(weekDates(local(2026, 9, 17))).toEqual([
+    expect(weekDates(local(2026, 9, 17), MONDAY)).toEqual([
       '2026-09-14',
       '2026-09-15',
       '2026-09-16',
@@ -97,14 +104,14 @@ describe('addDays / addMonths', () => {
 
 describe('rangeForView', () => {
   it('asks for one day in the day view', () => {
-    expect(rangeForView('day', local(2026, 9, 17))).toEqual({
+    expect(rangeForView('day', local(2026, 9, 17), MONDAY)).toEqual({
       from: '2026-09-17',
       to: '2026-09-17',
     });
   });
 
   it('asks for Monday to Sunday in the week view', () => {
-    expect(rangeForView('week', local(2026, 9, 17))).toEqual({
+    expect(rangeForView('week', local(2026, 9, 17), MONDAY)).toEqual({
       from: '2026-09-14',
       to: '2026-09-20',
     });
@@ -113,7 +120,7 @@ describe('rangeForView', () => {
   it('asks for the whole month grid, padding included, in the month view', () => {
     // September 2026 starts on a Tuesday and ends on a Wednesday: both edges are padded, and
     // the padded days have entries of their own to show.
-    expect(rangeForView('month', local(2026, 9, 17))).toEqual({
+    expect(rangeForView('month', local(2026, 9, 17), MONDAY)).toEqual({
       from: '2026-08-31',
       to: '2026-10-04',
     });
@@ -121,7 +128,7 @@ describe('rangeForView', () => {
 
   it('pads a month that starts on a Sunday by a whole week', () => {
     // February 2026 starts on a Sunday — the hard case for a Monday-start grid.
-    expect(rangeForView('month', local(2026, 2, 10))).toEqual({
+    expect(rangeForView('month', local(2026, 2, 10), MONDAY)).toEqual({
       from: '2026-01-26',
       to: '2026-03-01',
     });
@@ -130,7 +137,7 @@ describe('rangeForView', () => {
 
 describe('monthGridDates', () => {
   it('returns whole weeks and marks the days either side as outside', () => {
-    const grid = monthGridDates(local(2026, 2, 10));
+    const grid = monthGridDates(local(2026, 2, 10), MONDAY);
 
     expect(grid).toHaveLength(35);
     expect(grid[0]).toEqual({ date: '2026-01-26', outside: true });
@@ -141,7 +148,7 @@ describe('monthGridDates', () => {
   });
 
   it('needs no padding for a 28-day month that starts on a Monday', () => {
-    const grid = monthGridDates(local(2021, 2, 15));
+    const grid = monthGridDates(local(2021, 2, 15), MONDAY);
 
     expect(grid).toHaveLength(28);
     expect(grid.some((day) => day.outside)).toBe(false);
@@ -149,7 +156,7 @@ describe('monthGridDates', () => {
 
   it('runs to six rows when a 31-day month starts on a Saturday', () => {
     // August 2026: Sat 1st, so the grid needs 42 cells.
-    const grid = monthGridDates(local(2026, 8, 1));
+    const grid = monthGridDates(local(2026, 8, 1), MONDAY);
 
     expect(grid).toHaveLength(42);
     expect(grid[0]?.date).toBe('2026-07-27');
@@ -159,7 +166,7 @@ describe('monthGridDates', () => {
 
 describe('weekdayLabels', () => {
   it('starts on Monday', () => {
-    const labels = weekdayLabels();
+    const labels = weekdayLabels(MONDAY);
     expect(labels).toHaveLength(7);
     // 1 January 2024 was a Monday, 7 January a Sunday.
     expect(labels[0]).toBe(formatCalendarDate('2024-01-01', { weekday: 'short' }));
@@ -167,7 +174,7 @@ describe('weekdayLabels', () => {
   });
 
   it('gives seven distinct labels, because CalendarMonth keys its headings by label', () => {
-    expect(new Set(weekdayLabels()).size).toBe(7);
+    expect(new Set(weekdayLabels(MONDAY)).size).toBe(7);
   });
 });
 
@@ -209,9 +216,75 @@ describe('isSameMonth', () => {
 
 describe('periodLabel', () => {
   it('names the period the controls are pointing at', () => {
-    expect(periodLabel('month', local(2026, 9, 17))).toContain('2026');
-    expect(periodLabel('day', local(2026, 9, 17))).toContain('2026');
+    expect(periodLabel('month', local(2026, 9, 17), MONDAY)).toContain('2026');
+    expect(periodLabel('day', local(2026, 9, 17), MONDAY)).toContain('2026');
     // A week label carries both ends of the span.
-    expect(periodLabel('week', local(2026, 9, 17))).toContain('–');
+    expect(periodLabel('week', local(2026, 9, 17), MONDAY)).toContain('–');
+  });
+});
+
+describe('week start, as the profile reports it', () => {
+  it('starts the week on Sunday when the profile says 7', () => {
+    // The same Thursday, in two different weeks, because the two profiles disagree about where a
+    // week begins. This is exactly what the hardcoded Monday could not express.
+    expect(toIsoDate(startOfWeek(local(2026, 9, 17), SUNDAY))).toBe('2026-09-13');
+    expect(toIsoDate(endOfWeek(local(2026, 9, 17), SUNDAY))).toBe('2026-09-19');
+  });
+
+  it('leaves a Sunday where it is when the week starts on Sunday', () => {
+    expect(toIsoDate(startOfWeek(local(2026, 9, 20), SUNDAY))).toBe('2026-09-20');
+  });
+
+  it('lists the seven days from the day the profile names', () => {
+    const days = weekDates(local(2026, 9, 17), SUNDAY);
+
+    expect(days[0]).toBe('2026-09-13');
+    expect(days[6]).toBe('2026-09-19');
+  });
+
+  it('heads the month grid with the profile day, not with Monday', () => {
+    const labels = weekdayLabels(SUNDAY);
+    const monday = weekdayLabels(MONDAY);
+
+    expect(labels).toHaveLength(7);
+    expect(labels[0]).not.toBe(monday[0]);
+    expect(labels[1]).toBe(monday[0]);
+  });
+
+  it('asks the API for the range the week of that profile actually covers', () => {
+    expect(rangeForView('week', local(2026, 9, 17), SUNDAY)).toEqual({
+      from: '2026-09-13',
+      to: '2026-09-19',
+    });
+  });
+
+  it('falls back to Monday rather than throwing on a value it cannot use', () => {
+    expect(toIsoDate(startOfWeek(local(2026, 9, 17), Number.NaN))).toBe('2026-09-14');
+  });
+});
+
+describe('isoDateIn', () => {
+  /*
+   * The bug this exists to stop: the backend resolves "complete today" in the profile's zone, so
+   * a browser in another zone would tick the wrong day — most often late in the evening, which is
+   * when people actually tick things off.
+   */
+  const lateEvening = new Date('2026-09-17T23:30:00.000Z');
+
+  it('reads an instant as the day it is in the zone given, not the browser zone', () => {
+    expect(isoDateIn(lateEvening, 'UTC')).toBe('2026-09-17');
+    // 01:30 the next morning in Madrid.
+    expect(isoDateIn(lateEvening, 'Europe/Madrid')).toBe('2026-09-18');
+    // 19:30 the same evening in New York.
+    expect(isoDateIn(lateEvening, 'America/New_York')).toBe('2026-09-17');
+  });
+
+  it('crosses the date line the right way', () => {
+    expect(isoDateIn(lateEvening, 'Pacific/Auckland')).toBe('2026-09-18');
+    expect(isoDateIn(lateEvening, 'Pacific/Honolulu')).toBe('2026-09-17');
+  });
+
+  it('falls back to the local day rather than throwing on a zone it does not know', () => {
+    expect(isoDateIn(local(2026, 9, 17), 'Not/AZone')).toBe('2026-09-17');
   });
 });

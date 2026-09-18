@@ -345,13 +345,16 @@ What this buys: editing or completing one occurrence is just an `UPDATE` on one 
 index on `(recurrence_id, entry_date)` makes expansion idempotent (`ON CONFLICT DO NOTHING`),
 so re-expanding **never** touches an existing row and a completed lesson always survives.
 Mark a hand-edited occurrence `is_exception = true`; when a rule changes, the backend deletes
-only future `planned` non-exception rows and re-expands:
+only future `planned` non-exception rows and re-expands **from today onwards** — the past plan is
+never rewritten (see [Editing a rule](#editing-a-rule-and-what-it-does-to-the-calendar)):
 
 ```sql
 delete from public.calendar_entries
-where recurrence_id = $1 and status = 'planned' and not is_exception and entry_date > current_date;
-update public.recurrences set generated_through = null where id = $1;
-select public.expand_recurrence($1, current_date + 90);
+where recurrence_id = $1 and status = 'planned' and not is_exception
+  and entry_date > public.current_today();
+-- today, NOT null: expansion resumes after the past, instead of restarting at start_date
+update public.recurrences set generated_through = public.current_today() where id = $1;
+select public.expand_recurrence($1, public.current_today() + 90);
 ```
 
 ### Progress is computed, never stored
@@ -723,24 +726,63 @@ another", and this release's tile is a toggle — the second tap is undo.
 
 ### Editing a rule, and what it does to the calendar
 
-`update_recurrence` follows the three steps this file has documented since `0.1.1`: delete future
-**planned, non-exception** occurrences of that rule, reset `generated_through`, expand again to
-today + `recurrence_horizon_days()` (90). Completed and skipped sessions are never touched, a
-hand-edited occurrence (`is_exception`) is left alone, and ad-hoc completions have no
-`recurrence_id` at all, so they are outside the whole operation.
+**Editing a rule only ever changes the future.** That is a product rule before it is a technical
+one: "no failure states, ever" cannot survive an app that quietly rewrites what somebody owed last
+month. Switching a goal from Tue/Thu to Mon/Wed/Fri must not decide, retroactively, that they were
+due on Mondays they never planned.
 
-_Verified on PostgreSQL 17:_ a Tue/Thu rule with two completed sessions, one skipped day and one
-occurrence dragged two hours later was edited to Mon/Wed/Fri at 20:00 with an end date. The two
-completed rows came back byte-identical (same id, same `completed_at`), the skipped one and the
-exception survived, the future materialised on the new weekdays at 20:00 local across the DST
-change, and `generated_through` moved to the new `until_date`.
+`update_recurrence` is three steps:
 
-**One honest consequence.** Resetting `generated_through` re-expands from the rule's `start_date`,
-so the edit also materialises occurrences in the **past** for the new weekdays — the plan is
-rewritten in both directions, while history is rewritten in neither. For an open-ended scheduled
-goal that moves `due_count`, and therefore `session_adherence`. Keeping the past plan frozen
-instead is a one-line change (set `generated_through` to today rather than NULL) and is worth the
-human's opinion; the current behaviour is the one this file documented first.
+1. delete future **planned, non-exception** occurrences of that rule;
+2. set `generated_through` to **today** — the boundary expansion resumes from;
+3. expand again, to today + `recurrence_horizon_days()` (90).
+
+Completed and skipped sessions are never touched, a hand-edited occurrence (`is_exception`) is
+left alone, and ad-hoc completions have no `recurrence_id` at all, so they are outside the whole
+operation.
+
+**Whose today.** `public.current_today()` — the caller's own zone, read from their profile, read
+once per call and used for both the delete and the horizon. A rule edited at 23:00 in New York
+must not regenerate that day's occurrence because it is already tomorrow in UTC. Step 1 deletes
+`entry_date > today` and step 3 resumes at `generated_through + 1` = today + 1, so the two meet
+exactly: no planned row is stranded between the old boundary and the new one, and no day between
+them is skipped.
+
+Step 2 used to be `generated_through = null`. On the old weekdays that was harmless — expansion is
+`ON CONFLICT DO NOTHING`, so existing past rows were left alone — but on the **new** weekdays
+there was nothing to conflict with, so every past Monday back to `start_date` appeared as a
+planned occurrence that had never been planned. `goal_dashboard.due_count` is the denominator of
+`session_adherence`, so a person's adherence dropped for days they had already lived, through no
+action of their own. `today` is the honest value: after step 1 everything up to and including
+today is settled, and expansion may only write past it.
+
+Creating a rule is deliberately **not** subject to this. A new rule with a past `start_date`
+materialises from that date, because "I have been doing this since September" is the person's own
+account of their history rather than something the app inferred and applied to them.
+
+_Verified on PostgreSQL 17_ (all migrations + seed, as an anonymous session, against an
+open-ended scheduled goal so the basis is `session_adherence`): a Tue/Thu rule four weeks old with
+two completed sessions, one skipped day and one future occurrence dragged two hours later, edited
+to Mon/Wed/Fri at 20:00 with an end date.
+
+| The past (`entry_date <= today`) | Before  | After       |
+| -------------------------------- | ------- | ----------- |
+| rows                             | 8       | 8           |
+| `md5` of every row, ordered      | _x_     | _x_ — equal |
+| weekdays present                 | `{2,4}` | `{2,4}`     |
+| `due_count`                      | 8       | 8           |
+| `progress_fraction`              | 0.2500  | 0.2500      |
+
+`EXCEPT` in both directions returns nothing: 0 rows lost, 0 rows gained, every id, status,
+`completed_at` and instant identical. The future did change — weekdays `{1,3,5}` from tomorrow
+onwards at 20:00 local, 0 stranded old-weekday rows and 0 gaps at the boundary — and the dragged
+Tuesday exception is still there, untouched, at its 21:00. With the old `generated_through = null`
+the same edit took the past from 8 rows to 21, `due_count` from 8 to 21, and adherence from
+**0.2500 to 0.0952**.
+
+The zone boundary was checked the same way, by giving the caller a UTC+14 profile so their today is
+the server's tomorrow: the occurrence on the caller's today kept its old time, and the first
+regenerated day was after it.
 
 Deleting a rule sweeps the same future planned rows and then drops the rule. Everything that
 already happened survives, detached: the composite FK is `ON DELETE SET NULL (recurrence_id)`, so

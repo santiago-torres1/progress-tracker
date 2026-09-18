@@ -24,6 +24,11 @@
   --fs-lg: 1.125rem;
   --fs-xl: 1.625rem;
 
+  /* The one size outside the scale, and only for what a person types into. Below 16px, iOS Safari
+     zooms the page when a field takes focus and never zooms back out — which on a 400px screen
+     leaves the form half off the side. It is a device fact, not a type decision. */
+  --fs-field: 1rem;
+
   --fw-medium: 500;
   --fw-semibold: 600;
   --lh-tight: 1.25;
@@ -105,6 +110,13 @@
   --accent: #2f6f5c;
   --accent-contrast: #ffffff;
   --accent-soft: #dcebe4;
+
+  /* What a person types into. A field's edge is the boundary of a control rather than a seam
+     between two surfaces, so --border-strong cannot carry it: as a hairline it sits well under the
+     3:1 that a control's outline has to clear. Mixed towards --muted until it does, in one place,
+     so both themes move together — the dark values come from the dark block below for free. */
+  --field: var(--surface-2);
+  --field-border: color-mix(in srgb, var(--border-strong) 45%, var(--muted));
 
   /* Layered depth, not one stamped box-shadow */
   --sh-1:
