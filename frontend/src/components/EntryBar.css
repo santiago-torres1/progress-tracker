@@ -22,11 +22,13 @@
   transition:
     background-color var(--mo) var(--ease),
     border-color var(--mo) var(--ease),
+    opacity var(--mo) var(--ease),
     transform var(--mo) var(--ease-out);
 }
 
 button.entry-bar {
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 /* Untimed: it belongs to the whole day, so it takes the whole width. */
@@ -72,6 +74,8 @@ button.entry-bar {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  /* ticking an entry done quiets its name rather than striking it out */
+  transition: color var(--mo) var(--ease);
 }
 
 .entry-bar__area {
@@ -94,6 +98,7 @@ button.entry-bar {
   width: 0.875rem;
   height: 0.875rem;
   color: var(--goal);
+  animation: pt-tick var(--mo) var(--ease-out) backwards;
 }
 
 .entry-bar--done .entry-bar__name {
@@ -130,6 +135,12 @@ button.entry-bar {
       color-mix(in srgb, var(--goal) var(--tint-bar-2), var(--surface))
     );
   }
+}
+
+/* The write is optimistic, so the press — not the response — is what says a tick landed. */
+button.entry-bar:active {
+  transform: translateX(0) scale(0.99);
+  transition-duration: var(--mo-fast);
 }
 
 /* Narrow: the area name leaves the layout but stays in the accessibility tree, so the colour

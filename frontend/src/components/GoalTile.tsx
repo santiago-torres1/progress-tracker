@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import type {
   GoalProgress,
   GoalSize,
@@ -24,6 +25,20 @@ export interface GoalTileProps {
   note?: string;
   /** Omit for a plain, non-interactive tile. With it, the whole glass becomes one button. */
   onSelect?: (goal: GoalSummary) => void;
+  /**
+   * The tile's own control — a tick, a "+1". Supplying it turns the tile into a plain box with a
+   * full-bleed target underneath, because a button cannot contain a button; `onSelect` keeps
+   * working through that target. Give the element `className="goal-tile__action"` to inherit the
+   * app's press feedback, and `aria-pressed` if it toggles. Omitted, the tile is exactly as it
+   * was.
+   */
+  action?: ReactNode;
+  /**
+   * The tile is on its way out — deleted, or archived to "My full glasses". It fades and settles
+   * away with its water still in it, over `--mo-slow` (320ms); keep it mounted that long before
+   * removing it from the list. Defaults to false, which is today's behaviour.
+   */
+  leaving?: boolean;
 }
 
 const SIZE_CLASS: Record<GoalSize, string> = {
@@ -61,6 +76,11 @@ interface TileDetail {
   /** A short, encouraging clause. Never a failure, because nothing here can produce one. */
   stateText: string | null;
   stateTick: boolean;
+  /**
+   * The habit is above the line that keeps it alive. Only the etched minimum reacts to this, and
+   * only by setting solid — it is a threshold that has been crossed, not a score.
+   */
+  keptAlive: boolean;
   /** One quiet line for a goal that slipped. No colour, no badge. */
   driftText: string | null;
 }
@@ -106,6 +126,7 @@ function describeScheduled(state: ScheduledState, progress: GoalProgress): TileD
     compactMeasure: measure,
     stateText: null,
     stateTick: false,
+    keptAlive: false,
     driftText: null,
   };
 }
@@ -126,6 +147,7 @@ function describeMeasured(state: MeasuredState, progress: GoalProgress): TileDet
     compactMeasure: measure,
     stateText: null,
     stateTick: false,
+    keptAlive: false,
     driftText: previousLevel === null ? null : driftLine(state.previousMeasuredOn),
   };
 }
@@ -193,6 +215,7 @@ function describeHabit(state: HabitState, progress: GoalProgress): TileDetail {
     compactMeasure: null,
     stateText,
     stateTick: minimumMet,
+    keptAlive: minimumMet,
     driftText: null,
   };
 }
@@ -201,8 +224,20 @@ function describeHabit(state: HabitState, progress: GoalProgress): TileDetail {
  * A goal is a glass. The liquid is a still body of its area's colour; the surface is a 2px line
  * with a meniscus climbing both walls. Nothing else in the app uses this treatment, so "full"
  * always means the same thing.
+ *
+ * The level travels as `--p` and the water animates itself: a re-render with a new `--p` is a
+ * pour, a re-render with a smaller one is the same pour backwards. There is no animation state
+ * in here, and none is needed — every class below is derived from the goal as it stands, so a
+ * board that loads with a full glass on it simply shows a full glass rather than performing one.
  */
-export function GoalTile({ goal, index = 0, note, onSelect }: GoalTileProps) {
+export function GoalTile({
+  goal,
+  index = 0,
+  note,
+  onSelect,
+  action,
+  leaving = false,
+}: GoalTileProps) {
   const detail = describeGoal(goal);
   const areaName = goal.area?.name ?? 'No area';
   const compact = goal.size === 'small';
@@ -220,7 +255,20 @@ export function GoalTile({ goal, index = 0, note, onSelect }: GoalTileProps) {
     ...(detail.minimumLevel === null ? {} : { '--min': detail.minimumLevel }),
   };
 
-  const className = `goal-tile ${SIZE_CLASS[goal.size]}`;
+  // Every one of these is a fact about the goal right now, never a record of something that just
+  // happened. CSS turns the change from one paint to the next into the motion.
+  const classes = ['goal-tile', SIZE_CLASS[goal.size]];
+  if (detail.level >= 100) {
+    classes.push('goal-tile--full');
+  }
+  if (detail.keptAlive) {
+    classes.push('goal-tile--kept');
+  }
+  if (leaving) {
+    classes.push('goal-tile--leaving');
+  }
+
+  const className = classes.join(' ');
   const footFilled = detail.measure !== null || stateText !== null || detail.driftText !== null;
   const showFoot = !compact && footFilled;
 
@@ -267,6 +315,26 @@ export function GoalTile({ goal, index = 0, note, onSelect }: GoalTileProps) {
       )}
     </>
   );
+
+  // A control inside the tile means the tile cannot itself be a button. The whole-glass target
+  // becomes a transparent overlay instead, placed after the copy so it takes the click and
+  // before the control so the control takes its own.
+  if (action !== undefined) {
+    return (
+      <div className={className} data-area={goal.area?.slug} style={style}>
+        {content}
+        {onSelect !== undefined && (
+          <button
+            className="goal-tile__open"
+            type="button"
+            aria-label={goal.title}
+            onClick={handleClick}
+          />
+        )}
+        <span className="goal-tile__actions">{action}</span>
+      </div>
+    );
+  }
 
   if (onSelect === undefined) {
     return (
