@@ -21,7 +21,7 @@
     "format:check:repo": "prettier --check \"*.{json,md}\" \".github/**/*.{yml,yaml}\" \"scripts/**/*.mjs\""
   },
   "devDependencies": {
-    "concurrently": "^9.2.4",
+    "concurrently": "^10.0.5",
     "prettier": "^3.9.6"
   }
 }
