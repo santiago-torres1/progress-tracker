@@ -38,6 +38,9 @@ export type HabitPeriod = (typeof HABIT_PERIODS)[number];
 export const ENTRY_STATUSES = ['planned', 'completed', 'skipped', 'cancelled'] as const;
 export type EntryStatus = (typeof ENTRY_STATUSES)[number];
 
+export const RECURRENCE_FREQS = ['daily', 'weekly', 'monthly'] as const;
+export type RecurrenceFreq = (typeof RECURRENCE_FREQS)[number];
+
 /**
  * Not a PostgreSQL enum: a `text` CASE in public.goal_progress. The five values are exhaustive
  * over goal_kind, so the view can produce nothing else — see the `progress_basis` expression in
@@ -152,4 +155,77 @@ export interface LifeAreaRow {
   sort_order: number;
   /** Generated column: true when user_id IS NULL, i.e. a built-in area shared by everyone. */
   is_system: boolean;
+}
+
+// --- public.goal_templates -------------------------------------------------------------------
+
+/**
+ * The goal catalogue, as GET /api/goal-templates reads it.
+ *
+ * Every `suggested_*` column is nullable by design: "Reach a weight" cannot know which weight.
+ * NULL means "the person supplies this", which is a different fact from 0. `user_id` does not
+ * exist on this table at all — the catalogue is shared reference data, like the six life areas.
+ */
+export interface GoalTemplateRow {
+  id: string;
+  life_area_id: string;
+  slug: string;
+  title: string;
+  kind: GoalKind;
+
+  suggested_measurement_unit: string | null;
+  suggested_start_value: number | string | null;
+  suggested_target_value: number | string | null;
+
+  // NOT NULL for kind = 'habit' (goal_templates_kind_fields), NULL for every other kind.
+  suggested_target_count: number | null;
+  suggested_minimum_count: number | null;
+  suggested_habit_period: HabitPeriod | null;
+
+  suggested_target_sessions: number | null;
+
+  suggested_freq: RecurrenceFreq | null;
+  suggested_interval_count: number | null;
+
+  sort_order: number;
+}
+
+// --- public.recurrences ----------------------------------------------------------------------
+
+/**
+ * A repeat rule, as the write RPCs in 20260918100200 return it.
+ *
+ * `start_time` / `end_time` are LOCAL wall clock (`HH:MM:SS`) and mean nothing without
+ * `time_zone`; see the schema notes on why they are not instants.
+ */
+export interface RecurrenceRow {
+  id: string;
+  goal_id: string;
+  freq: RecurrenceFreq;
+  interval_count: number;
+  byweekday: number[] | null;
+  start_date: string;
+  until_date: string | null;
+  start_time: string | null;
+  end_time: string | null;
+  time_zone: string;
+  /** How far occurrences have been materialised. NULL before the first expansion. */
+  generated_through: string | null;
+  is_active: boolean;
+  created_at: string;
+  updated_at: string;
+}
+
+// --- public.progress_entries -----------------------------------------------------------------
+
+/** A numeric check-in. One per goal per day (progress_entries_goal_day_uidx). */
+export interface ProgressEntryRow {
+  id: string;
+  goal_id: string;
+  calendar_entry_id: string | null;
+  occurred_on: string;
+  value: number | string;
+  note: string | null;
+  created_at: string;
+  updated_at: string;
 }

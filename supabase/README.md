@@ -4,8 +4,9 @@ Design notes for the `progress-tracker` data layer.
 
 **The `20260916*` migrations are applied to the hosted Supabase project. They are immutable —
 never edit one in place again.** The `20260917*` files are `0.2.0-alpha` Phase 1 (anonymous
-accounts, real RLS, expiry, limits) and have not been applied; applying them is a human decision
-(see [Applying](#applying-the-migrations)).
+accounts, real RLS, expiry, limits) and the `20260918*` files are Phase 2 (the goal catalogue and
+the writes). Neither set has been applied; applying them is a human decision (see
+[Applying](#applying-the-migrations)).
 
 | Path                                                   | What it is                                                           |
 | ------------------------------------------------------ | -------------------------------------------------------------------- |
@@ -30,6 +31,8 @@ erDiagram
     users ||--o{ life_areas : "owns (NULL owner = built-in)"
     users ||--o{ goals : has
     life_areas ||--o{ goals : "colours + groups"
+    life_areas ||--o{ goal_templates : "files under"
+
     goals ||--o{ recurrences : "repeats by"
     goals ||--o{ calendar_entries : "tracked by"
     goals ||--o{ progress_entries : "measured by"
@@ -105,6 +108,23 @@ erDiagram
         entry_status status "planned|completed|skipped|cancelled"
         timestamptz completed_at
         boolean is_exception "edited away from its rule"
+        boolean created_by_completion "row exists only to record a completion"
+        entry_status pre_completion_status "what undo restores"
+    }
+    goal_templates {
+        uuid id PK
+        uuid life_area_id FK "which area files it"
+        text slug UK
+        text title "second person, deliberately unspecific"
+        goal_kind kind
+        numeric suggested_start_value "NULL = the person supplies it"
+        numeric suggested_target_value
+        integer suggested_target_count "habit"
+        integer suggested_minimum_count "habit; well below target"
+        habit_period suggested_habit_period
+        integer suggested_target_sessions "scheduled"
+        recurrence_freq suggested_freq "cadence for the rule editor"
+        boolean is_active "retire, never delete"
     }
     progress_entries {
         uuid id PK
@@ -572,6 +592,153 @@ A, squat A's `(recurrence_id, entry_date)`, attach a check-in to A's entry, rena
 `is_anonymous`/`last_seen_at`, call `consume_rate_limit`, read `rate_limits`, or run the expiry
 job. The login-less demo row is invisible to both.
 
+### The goal catalogue (`goal_templates`)
+
+`docs/goal-catalogue.md` is the approved list — six suggestions per area, 36 in all — and
+`20260918100000` is that list as reference data. A table rather than an enum or a constant in
+TypeScript for the same reason `life_areas` is one: the catalogue is expected to be edited as the
+app is used, and growing it should be a migration, not a redeploy of the browser bundle.
+
+**Two product rules are enforced by the shape of the model, not by a route.**
+
+1. _Everything a template suggests is editable._ `public.goals` gains **no** `template_id`, and
+   there is no foreign key in either direction. A template's numbers are copied into a form, the
+   person edits them, and `POST /api/goals` is sent plain fields — so editing a template later
+   cannot reach into anybody's goal, and no field can be read-only because of where it came from.
+   Every column is named `suggested_*` to say so at the point of use.
+2. _Every area also offers a custom goal._ Nothing special-cases "Something else", because the
+   write path never mentions a template at all. `GET /api/goal-templates` returns **every** area,
+   including one with no templates left, so the picker gets "six areas, each with its suggestions
+   and a blank option" out of the response rather than out of hardcoded UI.
+
+Every suggestion is nullable, deliberately: "Reach a weight" cannot know which weight, and NULL
+means _the person supplies this_, which is a different fact from 0. A `goal_templates_kind_fields`
+CHECK mirrors `goals_kind_fields` minus the "must be present" half, so a suggestion belonging to
+another kind is unstorable while an absent one is fine.
+
+Rows are retired with `is_active = false`, never deleted, and the SELECT policy filters on it — so
+a route that forgot `.eq('is_active', true)` cannot resurrect one. Nobody holds INSERT, UPDATE or
+DELETE on the table: the only way it changes is a migration.
+
+**Three places the catalogue's prose does not fit the schema**, resolved in the migration and
+recorded here because they are product decisions, not encoding details:
+
+| Catalogue says           | Stored as                | Why                                                                      |
+| ------------------------ | ------------------------ | ------------------------------------------------------------------------ |
+| "daily, minimum 3/week"  | weekly, target 7, min 3  | A habit has one period and the minimum lives inside it. Intent survives. |
+| "weekly, min 1/month"    | monthly, target 4, min 1 | Same two numbers, expressed in the window the minimum is stated in.      |
+| "monthly, min 1/quarter" | monthly, target 1, min 1 | There is no quarter period, and inventing one for one template is worse. |
+
+Scheduled templates whose entry is a cadence rather than a count ("3 sessions/week", "weekly")
+carry `suggested_freq` and no `suggested_target_sessions`: they are open-ended goals that repeat.
+`byweekday` is deliberately absent — which days somebody runs is not something a catalogue can
+guess, and a weekly rule needs real days before it can be saved.
+
+### Writes: what is a statement and what is a function
+
+A write that is **one statement** (create a goal, rename it, archive it, correct a check-in,
+delete one) goes through PostgREST from the backend. A write that is **a decision plus a
+statement**, or several statements that must not half-happen, is a function in
+`20260918100200_write_rpcs.sql`. PostgREST runs one request in one transaction, so an exception
+anywhere inside one of those functions takes the whole thing back.
+
+Every one of them is **SECURITY INVOKER** (the default), which is the entire safety argument: they
+run as `authenticated` with the caller's JWT, so the policies apply to every statement inside
+them, and none of them takes a `user_id` — ownership comes from `public.current_user_id()`.
+`begin_request()` remains the only SECURITY DEFINER function on a request path.
+
+They fail with **fixed machine tokens** (`goal_not_found`, `entry_not_found`,
+`recurrence_not_found`, `wrong_goal_kind`, `layout_mismatch`, `layout_duplicate`, `empty_batch`)
+and nothing else: no id, no count, no caller input. The backend maps those tokens to status codes
+through an allowlist, so an unrecognised error can only become a generic 5xx. "Not found"
+deliberately also means "not yours" — RLS makes the two indistinguishable, which is the answer we
+want to give.
+
+| Function                                  | What it decides                                                    |
+| ----------------------------------------- | ------------------------------------------------------------------ |
+| `complete_occurrence(goal, on, entry)`    | which occurrence "I did it today" means, creating one if none      |
+| `undo_occurrence(goal, entry)`            | restore the previous status, or delete the row the completion made |
+| `log_measurement(goal, value, on, note)`  | kind check + upsert on (goal, day)                                 |
+| `set_goal_layout(items)`                  | one UPDATE for a whole drag, all or nothing                        |
+| `create_recurrence` / `update_recurrence` | write the rule and re-materialise it, in one transaction           |
+| `delete_recurrence(goal, rule)`           | drop the rule and its future plan, keep the history                |
+| `resync_recurrence(rule)`                 | the three documented steps, shared by the two above                |
+| `current_today()`                         | today in the caller's own zone, not the server's                   |
+
+### Undo has to be exact, so two facts are stored
+
+"Tapping again takes it back" means two different things, and neither is derivable afterwards:
+
+- The occurrence **already existed** (a session from a rule, a day the person planned). Undo puts
+  its previous status back — and `'planned'` is not always right, because a day that had been
+  _skipped_ and was then ticked must come back skipped.
+- There **was no occurrence**. "I ran today" on a day the rule never named creates the row, so
+  undo has to delete it. Leaving a planned occurrence behind would be a plan the person never
+  made: invisible on a habit, but it moves `planned_count` and `due_count` on a scheduled goal —
+  the denominator of `session_adherence`. Undo would quietly change the number it restored.
+
+So `calendar_entries` gains `created_by_completion boolean` (provenance, set once at insert) and
+`pre_completion_status entry_status` (the restore point, cleared by the trigger whenever the row
+stops being completed, exactly like `completed_at`). Both are false/NULL for every row that
+existed before. The alternative — have the client send back what the state used to be — was
+rejected: it is the caller's word for something the database already knows, and it is lost the
+moment the page is reloaded between the tap and the untap.
+
+`coalesce(pre_completion_status, 'planned')` covers rows completed before this release existed
+(the demo seed, `0.1.x` data), which have no restore point stored.
+
+### Idempotence, one operation at a time
+
+The API is open and the clients are phones on bad connections, so every write had to answer "what
+happens if this arrives twice?".
+
+| Operation         | Answer                                                                                                                                                                                                                                                                                        |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Complete          | **Idempotent.** An already-completed day is returned untouched, `created: false`. A transaction-scoped advisory lock on (goal, day) makes that true under concurrency rather than usually: two taps arriving together would otherwise both find nothing and both insert.                      |
+| Undo              | **Idempotent while the row exists**: an occurrence that is not completed comes back `noop`. After the delete case, a retry is a 404 — the client should read that as "already taken back".                                                                                                    |
+| Log a measurement | **Idempotent.** An UPSERT on `(goal_id, occurred_on)`, which is the shape of the fact: a measured goal stores where the number _is_ on a day, not a list of readings. A new unique index makes it so, and it is also why logging the same day twice is a correction rather than a second row. |
+| Create a goal     | **Not idempotent**, and deliberately not: two goals with the same title are a legitimate thing to want, and an idempotency key is machinery this release does not need. A retry makes a second goal, which the person can delete.                                                             |
+| Reorder / resize  | Naturally idempotent — the same batch applied twice leaves the same board.                                                                                                                                                                                                                    |
+| Delete            | The first succeeds (204), a retry is a 404.                                                                                                                                                                                                                                                   |
+
+The cost of idempotent completion, stated plainly: somebody who genuinely did the thing **twice in
+one day** gets one completion. Two ad-hoc rows are storable (the unique index on
+`(recurrence_id, entry_date)` does not apply to them), but recording both needs an explicit "add
+another", and this release's tile is a toggle — the second tap is undo.
+
+### Editing a rule, and what it does to the calendar
+
+`update_recurrence` follows the three steps this file has documented since `0.1.1`: delete future
+**planned, non-exception** occurrences of that rule, reset `generated_through`, expand again to
+today + `recurrence_horizon_days()` (90). Completed and skipped sessions are never touched, a
+hand-edited occurrence (`is_exception`) is left alone, and ad-hoc completions have no
+`recurrence_id` at all, so they are outside the whole operation.
+
+_Verified on PostgreSQL 17:_ a Tue/Thu rule with two completed sessions, one skipped day and one
+occurrence dragged two hours later was edited to Mon/Wed/Fri at 20:00 with an end date. The two
+completed rows came back byte-identical (same id, same `completed_at`), the skipped one and the
+exception survived, the future materialised on the new weekdays at 20:00 local across the DST
+change, and `generated_through` moved to the new `until_date`.
+
+**One honest consequence.** Resetting `generated_through` re-expands from the rule's `start_date`,
+so the edit also materialises occurrences in the **past** for the new weekdays — the plan is
+rewritten in both directions, while history is rewritten in neither. For an open-ended scheduled
+goal that moves `due_count`, and therefore `session_adherence`. Keeping the past plan frozen
+instead is a one-line change (set `generated_through` to today rather than NULL) and is worth the
+human's opinion; the current behaviour is the one this file documented first.
+
+Deleting a rule sweeps the same future planned rows and then drops the rule. Everything that
+already happened survives, detached: the composite FK is `ON DELETE SET NULL (recurrence_id)`, so
+a completed session becomes an ordinary entry. The progress it records is a fact, and removing the
+plan it came from does not unmake it.
+
+### One check-in per goal per day
+
+`progress_entries_goal_day_uidx` is new, and it is what makes logging a measurement idempotent.
+The cost is that two weigh-ins on one day cannot both be stored — which the product has no way to
+ask for and no way to display, since `goal_progress` reads only the latest. Repetition is the
+other table, and two runs on one day are still two `calendar_entries`.
+
 ### Constraints as documentation
 
 Enforced, and each verified to reject the bad row: an untimed entry may not carry an end time;
@@ -705,8 +872,15 @@ and pass `Database` to `createClient<Database>()` in `backend/src/lib/supabase.t
 - **User-defined life areas.** The six built-ins are final for `0.1.x`. The mechanism for
   user areas already exists (`user_id IS NOT NULL`) and needs no migration — only UI. The cap
   (`life_areas_per_user`) is already enforced.
-- **Write routes in the API.** Phase 1 is identity and safety only: the policies, the caps, the
-  quotas and the `'write'` bucket in `begin_request` are all in place and waiting for Phase 2.
+- **A horizon job.** Rules are re-materialised when they change, and a rule with no end date is
+  only real as far as it has been expanded (90 days). Nothing yet extends that horizon on a
+  schedule or lazily when the calendar is read past `generated_through` — the same `pg_cron`
+  recommendation as the expiry sweep applies.
+- **Editing a single occurrence** (move a session, skip a day, write a note on one). The schema
+  has carried `is_exception` and the statuses for it since `0.1.1`, and the write routes leave
+  both alone; the endpoints are a later release.
+- **Plain calendar items** (a dentist appointment) through the API. The seed makes them and the
+  calendar renders them; nothing writes one yet.
 - **Converting an anonymous account to a permanent one from the UI.** The database side is done
   (`on_auth_user_updated` flips `is_anonymous` and the account stops expiring); the sign-up flow
   that triggers it is a later release.

@@ -1041,21 +1041,40 @@ describe.each(ROUTES)('%s when the data layer is unavailable', (_name, path) => 
   });
 });
 
-// --- The API must not have grown a write path --------------------------------------------------
+// --- The read surface is still exactly the read surface -----------------------------------------
 
-describe('the read-only contract', () => {
-  it.each(['post', 'patch', 'put', 'delete'] as const)(
-    'has no %s handler on any /api route',
-    async (method) => {
-      const app = createApp();
+describe('the shape of the API', () => {
+  /**
+   * Phase 2 added writes under /api/goals only. Everything else is still read-only, and this is
+   * the test that says so: a write to a reference-data route is a 404 from the router, before any
+   * session is resolved, rather than a handler nobody meant to add.
+   */
+  it.each([
+    ['post', '/api/calendar'],
+    ['patch', '/api/calendar'],
+    ['delete', '/api/calendar'],
+    ['post', '/api/areas'],
+    ['patch', '/api/areas'],
+    ['delete', '/api/areas'],
+    ['post', '/api/goal-templates'],
+    ['patch', '/api/goal-templates'],
+    ['delete', '/api/goal-templates'],
+    // The goals collection takes POST, but a PUT over the whole board is not a thing.
+    ['put', '/api/goals'],
+  ] as const)('has no %s handler on %s', async (method, path) => {
+    const res = await request(createApp())
+      [method](path)
+      .set('Authorization', `Bearer ${ACCESS_TOKEN}`);
 
-      for (const [, path] of ROUTES) {
-        const res = await request(app)
-          [method](path.split('?')[0] ?? path)
-          .set('Authorization', `Bearer ${ACCESS_TOKEN}`);
-        expect(res.status).toBe(404);
-        expect(res.body).toEqual({ error: 'not_found' });
-      }
-    },
-  );
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'not_found' });
+    expect(createClientMock).not.toHaveBeenCalled();
+  });
+
+  it('serves the reads on exactly the paths they have always been on', async () => {
+    for (const [, path] of ROUTES) {
+      const res = await get(path);
+      expect(res.status).toBe(200);
+    }
+  });
 });
