@@ -55,3 +55,6 @@ Thumbs.db
 # Terraform partial backend config (bucket/table names — not secret, but environment-specific)
 infra/**/backend.hcl
 !infra/**/backend.hcl.example
+
+# Agent worktrees (isolated checkouts created inside the repo)
+.claude/worktrees/

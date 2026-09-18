@@ -1,0 +1,270 @@
+/*
+ * One form, used to make a goal and to edit one. It is never a screen of its own: it stands inside
+ * the composer's card or the detail panel's, so it brings no surface, no shadow and no width — only
+ * a column of fields and the air between them.
+ *
+ * Two things this file is trying not to be. It is not a wizard: every field is plain, every value a
+ * template suggested is editable, and nothing is greyed out because of where it came from. And it
+ * is not an admin panel: the groups have no boxes around them, because a card inside a card inside
+ * a page is how a calm product turns into a settings screen. Whitespace does the grouping and a
+ * small uppercase label says what each group is — the same eyebrow the rest of the app uses.
+ */
+
+.goal-form {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+.goal-form__row {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.goal-form__label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+/* --- fields --------------------------------------------------------------- */
+
+/*
+ * A field is a recessed surface with an edge that clears 3:1 against it (see --field-border in
+ * tokens.css). --fs-field is 16px and deliberately off the type scale: anything smaller and iOS
+ * Safari zooms the page the moment the field takes focus.
+ */
+.goal-form__input {
+  width: 100%;
+  min-height: 2.5rem;
+  padding: var(--sp-2) var(--sp-3);
+  font-family: inherit;
+  font-size: var(--fs-field);
+  line-height: var(--lh-tight);
+  color: var(--text);
+  background-color: var(--field);
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-md);
+  transition:
+    border-color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease);
+}
+
+.goal-form__input:focus-visible {
+  background-color: var(--surface);
+  border-color: var(--accent);
+}
+
+/* A count is three characters wide; a date and a period are what they are. Left to stretch, each
+   of them would be a 34rem box holding the word "4". */
+.goal-form__input--number {
+  max-width: 7rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.goal-form__input[type='date'] {
+  max-width: 12rem;
+}
+
+select.goal-form__input {
+  max-width: 16rem;
+}
+
+.goal-form__input--text {
+  min-height: 4.5rem;
+  line-height: var(--lh-body);
+  resize: vertical;
+}
+
+@media (pointer: coarse) {
+  .goal-form__input {
+    min-height: 2.75rem;
+  }
+}
+
+/* --- groups --------------------------------------------------------------- */
+
+/*
+ * A fieldset with no box. `min-width: 0` matters more than it looks: a fieldset's intrinsic minimum
+ * is min-content, which at 400px would push the form wider than the card holding it.
+ */
+.goal-form__group {
+  display: grid;
+  gap: var(--sp-3);
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.goal-form__legend {
+  padding: 0;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* --- choices -------------------------------------------------------------- */
+
+/*
+ * A radio and its explanation, as one pressable row. The native control keeps its own focus ring —
+ * it is the thing that moves under the arrow keys, so it is the thing that should show where the
+ * keyboard is — and the row only answers with its border and a wash of the accent.
+ */
+.goal-form__choice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 0 var(--sp-3);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition:
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease);
+}
+
+.goal-form__choice input {
+  grid-row: span 2;
+  align-self: center;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.goal-form__choice-label {
+  font-size: var(--fs-md);
+}
+
+.goal-form__choice-hint {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+@media (hover: hover) {
+  .goal-form__choice:hover {
+    background-color: var(--surface-2);
+    border-color: var(--border-strong);
+  }
+}
+
+/* Chosen. More specific than the hover above on its own, so the order of the two cannot matter. */
+.goal-form__choice:has(input:checked) {
+  background-color: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.goal-form__choice:has(input:focus-visible) {
+  border-color: var(--accent);
+}
+
+/* --- notes, and what did not fit ------------------------------------------ */
+
+.goal-form__note {
+  max-width: 54ch;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/*
+ * A validation message is information, so it is set in the reading colour and given the same rail
+ * the app puts beside any other aside. No red, no icon, no shake: nothing here has gone wrong, a
+ * value simply cannot be used yet, and the sentence says which one.
+ */
+.goal-form__problem {
+  padding-inline-start: var(--sp-3);
+  font-size: var(--fs-sm);
+  border-inline-start: 2px solid var(--border-strong);
+}
+
+/* --- saving --------------------------------------------------------------- */
+
+.goal-form__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
+.goal-form__submit {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding-inline: var(--sp-5);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--accent-contrast);
+  background-color: var(--accent);
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  box-shadow: var(--sh-1);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease),
+    transform var(--mo) var(--ease-out),
+    box-shadow var(--mo) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .goal-form__submit:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--sh-2);
+  }
+}
+
+.goal-form__submit:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+  box-shadow: var(--sh-1);
+  transition-duration: var(--mo-fast);
+}
+
+/* Saving. It steps out of the accent rather than fading in it: a translucent accent with white on
+   it is unreadable, and "Saving…" is the one word somebody actually wants to read here. */
+.goal-form__submit:disabled {
+  color: var(--muted);
+  background-color: var(--surface-2);
+  border-color: var(--border-strong);
+  box-shadow: none;
+  cursor: default;
+}
+
+.goal-form__cancel {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding-inline: var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color var(--mo) var(--ease);
+}
+
+@media (hover: hover) {
+  .goal-form__cancel:hover {
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+}
+
+@media (pointer: coarse) {
+  .goal-form__submit,
+  .goal-form__cancel {
+    min-height: 2.75rem;
+  }
+}

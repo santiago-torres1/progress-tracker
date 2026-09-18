@@ -13,9 +13,11 @@ import { CalendarViewSwitcher, type CalendarView } from '../components/CalendarV
 import { CalendarWeek } from '../components/CalendarWeek';
 import { ChevronLeftIcon, ChevronRightIcon } from '../components/icons';
 import { fetchCalendar } from '../lib/api';
+import { useAppSession } from '../lib/sessionContext';
 import { failureCopy, weekCopy } from '../lib/copy';
 import {
   isSameMonth,
+  isoDateIn,
   monthGridDates,
   nowLabelFor,
   parseIsoDate,
@@ -56,31 +58,36 @@ const PANEL_IDS: Readonly<Record<CalendarView, string>> = {
 const NO_ENTRIES: readonly CalendarEntry[] = [];
 
 export function CalendarScreen({ now }: CalendarScreenProps) {
+  const { call, profile } = useAppSession();
+
   // The week is the view that shows a shape without asking anyone to scan a grid.
   const [view, setView] = useState<CalendarView>('week');
   const [anchor, setAnchor] = useState(() => startOfDay(now));
   const [selected, setSelected] = useState<string | null>(null);
 
-  const todayIso = toIsoDate(now);
-  const { from, to } = rangeForView(view, anchor);
+  // Both come from the profile now. The week start used to be a hardcoded Monday, which put a
+  // weekly habit's period boundary in the wrong place for anyone whose week starts on Sunday.
+  const weekStartsOn = profile.weekStartsOn;
+  const todayIso = isoDateIn(now, profile.timeZone);
+  const { from, to } = rangeForView(view, anchor, weekStartsOn);
 
   const loadCalendar = useCallback(
-    (signal: AbortSignal) => fetchCalendar(from, to, { signal }),
-    [from, to],
+    (signal: AbortSignal) => call((options) => fetchCalendar(from, to, options), signal),
+    [call, from, to],
   );
   const calendar = useApiResource(loadCalendar);
 
   const entries = calendar.state.kind === 'ok' ? calendar.state.data.entries : NO_ENTRIES;
   const byDate = useMemo(() => groupEntriesByDate(entries), [entries]);
   const displayFor = useMemo(() => displayForToday(todayIso, entries), [todayIso, entries]);
-  const labels = useMemo(() => weekdayLabels(), []);
+  const labels = useMemo(() => weekdayLabels(weekStartsOn), [weekStartsOn]);
 
   const entriesOn = useCallback(
     (date: string): readonly CalendarEntry[] => byDate.get(date) ?? NO_ENTRIES,
     [byDate],
   );
 
-  const label = periodLabel(view, anchor);
+  const label = periodLabel(view, anchor, weekStartsOn);
 
   // Month navigation keeps its own selected day only while it is still in the month on screen.
   const monthDefault = isSameMonth(anchor, now) ? todayIso : toIsoDate(startOfMonth(anchor));
@@ -137,7 +144,7 @@ export function CalendarScreen({ now }: CalendarScreenProps) {
         );
       }
       case 'week': {
-        const days = weekDates(anchor).map((date) => ({
+        const days = weekDates(anchor, weekStartsOn).map((date) => ({
           date,
           entries: entriesOn(date),
           isToday: date === todayIso,
@@ -154,7 +161,7 @@ export function CalendarScreen({ now }: CalendarScreenProps) {
         );
       }
       case 'month': {
-        const days = monthGridDates(anchor).map((day) => ({
+        const days = monthGridDates(anchor, weekStartsOn).map((day) => ({
           date: day.date,
           outside: day.outside,
           entries: entriesOn(day.date),

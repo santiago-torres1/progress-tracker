@@ -1,0 +1,298 @@
+/*
+ * Target days and times.
+ *
+ * It lives inside the detail panel, so like the goal form it brings no surface of its own — only a
+ * column, and groups separated by air rather than by boxes.
+ *
+ * The one piece of real furniture is the week: seven chips, because seven checkboxes stacked down
+ * the page is a list of chores and a week is a shape people already know. Each chip shows its short
+ * name and carries the full one for a screen reader, and the checkbox inside it stays exactly where
+ * it was — clipped rather than removed, so it is still focusable, still in the accessibility tree,
+ * and still the thing the space bar toggles. The chip wears the focus ring on its behalf.
+ *
+ * Nothing in here is ever styled as a warning. Changing a rule only ever moves days that have not
+ * happened yet; the sentence that says so appears above this form, and it is the calm one.
+ */
+
+.recurrence {
+  display: grid;
+  gap: var(--sp-4);
+}
+
+/*
+ * Plain block fieldsets. `display: grid` on a fieldset is where the rendered legend starts behaving
+ * differently between engines, and none of these groups needs a grid: `min-width: 0` is the part
+ * that matters, because a fieldset's intrinsic minimum is min-content and at 400px that would push
+ * the panel wider than the screen.
+ */
+.recurrence__group {
+  display: block;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.recurrence__legend {
+  padding: 0;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/* --- how often ------------------------------------------------------------ */
+
+.recurrence__choice {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-top: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  font-size: var(--fs-md);
+  border: 1px solid var(--border);
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition:
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease);
+}
+
+.recurrence__choice input {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+  .recurrence__choice:hover {
+    background-color: var(--surface-2);
+    border-color: var(--border-strong);
+  }
+}
+
+.recurrence__choice:has(input:checked) {
+  background-color: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+.recurrence__choice:has(input:focus-visible) {
+  border-color: var(--accent);
+}
+
+/* --- which days ----------------------------------------------------------- */
+
+.recurrence__day {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 3.25rem;
+  min-height: 2.5rem;
+  margin-top: var(--sp-2);
+  margin-inline-end: var(--sp-2);
+  padding-inline: var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--muted);
+  background-color: var(--field);
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-full);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease);
+}
+
+/* Clipped, not removed: it is still focusable, still checkable, still announced. */
+.recurrence__day input,
+.recurrence__day-name {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+@media (hover: hover) {
+  .recurrence__day:hover {
+    color: var(--text);
+    border-color: var(--border-strong);
+  }
+}
+
+.recurrence__day:has(input:checked) {
+  color: var(--accent);
+  background-color: var(--accent-soft);
+  border-color: var(--accent);
+}
+
+/* The chip wears the ring, because the control that earned it is one clipped pixel wide. */
+.recurrence__day:has(input:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse) {
+  .recurrence__day {
+    min-width: 3.5rem;
+    min-height: 2.75rem;
+  }
+}
+
+/* --- dates and times ------------------------------------------------------ */
+
+/* A row is a field and its label. Two of them stand on their own in the form's grid and two live
+   inside the "at a time?" group, which is a plain block — so only the inner ones carry a margin. */
+.recurrence__row {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+}
+
+.recurrence__group .recurrence__row {
+  margin-top: var(--sp-3);
+}
+
+.recurrence__label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+.recurrence__input {
+  width: 100%;
+  max-width: 12rem;
+  min-height: 2.5rem;
+  padding: var(--sp-2) var(--sp-3);
+  font-family: inherit;
+  font-size: var(--fs-field);
+  line-height: var(--lh-tight);
+  color: var(--text);
+  background-color: var(--field);
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-md);
+  font-variant-numeric: tabular-nums;
+  transition:
+    border-color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease);
+}
+
+.recurrence__input:focus-visible {
+  background-color: var(--surface);
+  border-color: var(--accent);
+}
+
+@media (pointer: coarse) {
+  .recurrence__input {
+    min-height: 2.75rem;
+  }
+}
+
+/* --- what did not fit ----------------------------------------------------- */
+
+/*
+ * "Which days of the week? A weekly rule needs at least one." A question, in the reading colour,
+ * with the same rail every other aside in the app gets. No red: the form is not accusing anybody of
+ * anything, it is finishing a sentence.
+ */
+.recurrence__problem {
+  padding-inline-start: var(--sp-3);
+  font-size: var(--fs-sm);
+  border-inline-start: 2px solid var(--border-strong);
+}
+
+/* --- saving --------------------------------------------------------------- */
+
+.recurrence__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.recurrence__submit {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding-inline: var(--sp-5);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--accent-contrast);
+  background-color: var(--accent);
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  box-shadow: var(--sh-1);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease),
+    transform var(--mo) var(--ease-out),
+    box-shadow var(--mo) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .recurrence__submit:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--sh-2);
+  }
+}
+
+.recurrence__submit:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+  box-shadow: var(--sh-1);
+  transition-duration: var(--mo-fast);
+}
+
+.recurrence__submit:disabled {
+  color: var(--muted);
+  background-color: var(--surface-2);
+  border-color: var(--border-strong);
+  box-shadow: none;
+  cursor: default;
+}
+
+/* Stopping a rule is not destructive — the days that already happened stay — so it is a sentence,
+   not a red button. */
+.recurrence__remove {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding-inline: var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color var(--mo) var(--ease);
+}
+
+@media (hover: hover) {
+  .recurrence__remove:hover:not(:disabled) {
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+}
+
+@media (pointer: coarse) {
+  .recurrence__submit,
+  .recurrence__remove {
+    min-height: 2.75rem;
+  }
+}

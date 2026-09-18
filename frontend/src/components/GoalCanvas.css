@@ -3,6 +3,12 @@
  * place spans — every other decision belongs to the tile inside the cell.
  */
 
+/*
+ * The hint, the board and the live region are a fragment, not a box: whichever screen renders the
+ * canvas lays all three out in its own column. That is why nothing here sets a margin — the
+ * dashboard's rhythm is the dashboard's business.
+ */
+
 .goal-canvas {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -60,4 +66,48 @@
     grid-column: span 2;
     grid-row: span 2;
   }
+}
+
+/* --- rearranging ---------------------------------------------------------- */
+
+/*
+ * The keyboard is the real way to move a tile, so the keys are written down rather than left to be
+ * discovered by dragging. It is a caption, at caption size: instructions that shout are a worse
+ * bargain than instructions that are simply there.
+ */
+.goal-canvas__hint {
+  max-width: 64ch;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+/*
+ * "Picked up. 2 of 7." — said to a screen reader, and shown, because somebody moving tiles with
+ * the arrow keys while watching the screen deserves the same sentence.
+ *
+ * It keeps its place in the layout while it is empty instead of being display: none. A live region
+ * that is taken out of the accessibility tree between messages is a live region that several
+ * screen readers stop announcing, and the whole point of it is the announcement.
+ */
+.goal-canvas__live {
+  min-height: 1.25em;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+/*
+ * Held. The tile lifts the way it does under a cursor, one step further, and takes the accent —
+ * the only place on the board where a colour means something other than a life area, and it lasts
+ * exactly as long as the tile is off the ground. The cell is raised so the lift is not clipped by
+ * whatever tile comes next in the grid.
+ */
+.goal-canvas__cell--held {
+  position: relative;
+  z-index: 1;
+}
+
+.goal-canvas__cell--held .goal-tile {
+  transform: translateY(-2px) scale(1.015);
+  border-color: var(--accent);
+  box-shadow: var(--sh-2), var(--sh-rim);
 }

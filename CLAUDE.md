@@ -14,10 +14,14 @@ Single-user for now; may go public later.
 deploys automatically to a real URL, and the deploy fails unless the live `/health` reports the
 pushed commit.
 
-**Current milestone: `0.1.1-alpha` — the goals dashboard as a read-only live demo.** The app
-renders real Supabase rows and **writes nothing**: no login, no create flow, example data only
-(`supabase/seed.sql` is therefore the product's content, not a fixture). Writing and Supabase Auth
-are `0.1.2-alpha`.
+**`0.1.1-alpha` — the read-only Meadow dashboard — is done, live and tagged.**
+
+**Current milestone: `0.2.0-alpha` — the first version people can actually use.** Visitors get an
+**anonymous account** (Supabase anonymous sign-in: no sign-in screen, a real `auth.users` row and
+token), create their own goals, complete them, and log measurements. The seeded demo data stops
+being the product — a new visitor sees an empty board. A session whose owner has not returned for
+**90 days** is deleted, freeing its rows. Converting an anonymous account into a real one
+(email/OAuth) keeps every row and is a later release.
 
 **Product rules that the code must not quietly break:**
 
@@ -33,6 +37,26 @@ are `0.1.2-alpha`.
 - Goal kinds are `scheduled` (sessions), `measured` (a value toward a target) and `habit`
   (repetition in a period); progress for all three is computed by `goal_dashboard`, never in
   TypeScript.
+
+## Security posture — an open API with no login
+
+`0.2.0-alpha` accepts writes from anyone with the URL, and every request costs money. These are
+requirements, not suggestions; a change that weakens one needs the human's agreement.
+
+- **Row-level security does the isolating, not our code.** Requests carry the caller's Supabase
+  access token and the backend acts _as that user_, so a bug in a route handler cannot leak
+  another session's goals. The service-role key is only for maintenance jobs (e.g. expiry
+  cleanup), never for serving a request.
+- **Limits live in the database**, where a forgotten check in a route cannot bypass them: a cap on
+  goals per user, on entries per goal, and on the length of every free-text field.
+- **Rate limiting** on writes, keyed by session and by IP, plus Supabase's own anonymous sign-in
+  rate limit so one machine cannot mint thousands of accounts.
+- **Cost ceilings are part of security**: Lambda reserved concurrency and an AWS Budgets alert
+  bound the blast radius of abuse. Unbounded spend is the real vulnerability here.
+- **Never echo upstream errors, tokens or IDs** in a response body. Short reason codes only.
+- Request bodies are size-limited and every field is validated at the boundary; no `as` casts on
+  anything that arrived over the wire.
+- Deleting a session's data must actually delete it (cascade), not just hide it.
 
 ## Fixed stack — do not deviate without asking the human
 
@@ -129,7 +153,11 @@ in dev, so the browser sees a single origin locally and no CORS is involved.
 - `GET /health/db` → reports whether Supabase env vars are present and a trivial probe
   succeeds. Never echoes secrets or raw upstream error messages.
 
-**Product API (read-only in `0.1.1-alpha` — there are no write routes, by design):**
+**Product API.** Every `/api` route requires `Authorization: Bearer <supabase access token>`
+from the caller's anonymous session, responds `private, no-store` + `Vary: Authorization`, and is
+served by a per-request client so RLS applies as that user — the service-role key never serves a
+request. Missing or invalid token → 401 with a short reason code; over quota → 429 with
+`Retry-After`. `/health*` stays anonymous.
 
 - `GET /api/goals` → the dashboard: one entry per active goal, a union discriminated on `kind`
   with a `habit` / `measured` / `scheduled` block. Carries `size`, the area and its colour, and
@@ -138,17 +166,38 @@ in dev, so the browser sees a single origin locally and no CORS is involved.
 - `GET /api/calendar?from=&to=` → entries in an inclusive date range (max 366 days), each with an
   explicit `timing: 'timed' | 'untimed'` discriminant, plus enough of its goal to render.
 - `GET /api/areas` → the six life areas.
+- `GET`/`PATCH /api/session` → the caller's profile: `timeZone`, `weekStartsOn`, `isAnonymous`,
+  `expiresAt`. The client should send the browser's zone on first run — **nothing sets it
+  automatically, and a visitor left on UTC completes things on the wrong day.** No account id is
+  ever returned by any route; the token is the identity.
+- `GET /api/goal-templates` → the catalogue (`docs/goal-catalogue.md` is its source of truth),
+  grouped by area, plus a `custom` block. There is no `template_id` on a goal and no foreign key
+  either way: a template seeds a form and is then forgotten, so editing one later cannot reach a
+  goal someone already created, and "a custom goal" is the only write path rather than a special
+  case.
+- `GET /api/goals/:id/recurrences` → a goal's repeat rules, paused ones included. Another
+  session's goal and a goal with no rules both answer `200 { recurrences: [] }` — RLS makes those
+  one fact, so a 404 would leak which ids exist.
+- Writes: `POST`/`PATCH`/`DELETE /api/goals`, `PATCH /api/goals/layout` (batched reorder and
+  resize — one request, all-or-nothing), `POST`/`DELETE /api/goals/:id/completions` (complete and
+  undo), `POST`/`PATCH`/`DELETE /api/goals/:id/measurements`, and
+  `POST`/`PUT`/`DELETE /api/goals/:id/recurrences`.
+- Every mutating response returns the **recomputed goal**, so a tile refills from the response
+  without refetching. `404` on an undo or delete means "already gone" — treat it as success. `409`
+  carries `limit`, and its copy must stay encouraging: a cap is not a failure.
+- Completing is idempotent per (goal, day); measurements upsert per (goal, day); undo restores the
+  exact prior state, including returning a skipped day to skipped.
+- **Editing a repeat rule freezes the past.** Only occurrences after the caller's today change; days
+  already lived keep the plan they were lived under. Rewriting them would retroactively add "was
+  due" days and drop adherence for doing nothing — which is the failure state this product does not
+  have.
 
 Shapes live in `backend/src/types/api.ts` and are the contract the frontend imports. Successful
 responses carry `Cache-Control: public, max-age=60`; errors carry `no-store`. `backend/src/types/database.ts`
 is hand-written and must be replaced by `supabase gen types typescript` once the project is linked.
 
 **Backend env vars** (see `backend/.env.example`): `PORT`, `SUPABASE_URL`,
-`SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GIT_SHA`, `DEFAULT_USER_ID`.
-
-`DEFAULT_USER_ID` identifies the single login-less user and **defaults to the constant documented
-in `supabase/README.md`** — so it must NOT become a GitHub secret and `deploy.yml`'s environment
-map needs no change for it (that map is replaced wholesale on every deploy).
+`SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GIT_SHA`.
 
 **Frontend build-time env vars:** `VITE_API_BASE_URL` (empty locally → same-origin via
 proxy; in deploys, the Lambda Function URL discovered at runtime), `VITE_COMMIT_SHA`.
@@ -168,7 +217,9 @@ On push to `main`, after the reusable CI workflow passes:
 3. `aws lambda update-function-code --image-uri …:<sha>` → `aws lambda wait function-updated`.
 4. `aws lambda update-function-configuration` to set `SUPABASE_*` from GitHub secrets → wait.
 5. `aws lambda get-function-url-config` → smoke-test `GET /health`, assert `commit == <sha>`.
-6. Build frontend with `VITE_API_BASE_URL=<function url>`; `aws s3 sync` to `S3_FRONTEND_BUCKET`
+6. Build frontend with `VITE_API_BASE_URL=<function url>`, `VITE_COMMIT_SHA`, and
+   `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (from the existing `SUPABASE_*` secrets — the
+   anon key is public by design; `SUPABASE_SERVICE_ROLE_KEY` must never enter a frontend build); `aws s3 sync` to `S3_FRONTEND_BUCKET`
    (hashed `assets/` immutable-cached, `index.html` `no-cache`); stale files removed last.
 7. `aws cloudfront create-invalidation --paths "/*"`.
 

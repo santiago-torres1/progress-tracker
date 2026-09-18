@@ -11,7 +11,15 @@
  */
 
 import { vi, type Mock } from 'vitest';
-import type { AreasResponse, CalendarEntry, CalendarResponse, GoalsResponse } from '../types/api';
+import type {
+  AreasResponse,
+  CalendarEntry,
+  CalendarResponse,
+  GoalSummary,
+  GoalTemplatesResponse,
+  GoalsResponse,
+  SessionResponse,
+} from '../types/api';
 
 /** Thursday 17 September 2026, 09:30, local. */
 export const NOW = new Date(2026, 8, 17, 9, 30);
@@ -373,6 +381,120 @@ export function calendarPayload(from: string, to: string): CalendarResponse {
   return { from, to, entries: ENTRIES.filter((entry) => entry.date >= from && entry.date <= to) };
 }
 
+/** The profile a signed-in visitor reads back: a real zone, and a week that starts on Monday. */
+export function sessionPayload(
+  overrides: Partial<SessionResponse['session']> = {},
+): SessionResponse {
+  return {
+    session: {
+      timeZone: 'Europe/Madrid',
+      weekStartsOn: 1,
+      isAnonymous: true,
+      expiresAt: '2026-12-16T09:30:00.000Z',
+      ...overrides,
+    },
+  };
+}
+
+/** Two areas' worth of catalogue — enough to walk the picker without reciting all thirty-six. */
+export function templatesPayload(): GoalTemplatesResponse {
+  const areas = areasPayload().areas;
+  const health = areas[0];
+  const learning = areas[1];
+  if (health === undefined || learning === undefined) throw new Error('fixture areas missing');
+
+  return {
+    areas: [
+      {
+        area: health,
+        templates: [
+          {
+            id: 'tpl-move',
+            slug: 'move-your-body',
+            title: 'Move your body',
+            areaId: health.id,
+            sortOrder: 10,
+            repeat: { freq: 'weekly', interval: 1 },
+            kind: 'habit',
+            habit: { targetCount: 3, minimumCount: 1, period: 'week' },
+          },
+          {
+            id: 'tpl-weight',
+            slug: 'reach-a-weight',
+            title: 'Reach a weight',
+            areaId: health.id,
+            sortOrder: 20,
+            repeat: null,
+            kind: 'measured',
+            measured: { unit: 'kg', startValue: null, targetValue: null },
+          },
+        ],
+      },
+      {
+        area: learning,
+        templates: [
+          {
+            id: 'tpl-course',
+            slug: 'finish-a-course',
+            title: 'Finish a course',
+            areaId: learning.id,
+            sortOrder: 10,
+            repeat: null,
+            kind: 'scheduled',
+            scheduled: { targetSessions: 12 },
+          },
+        ],
+      },
+    ],
+    custom: { kinds: ['habit', 'measured', 'scheduled'], defaultSize: 'medium' },
+  };
+}
+
+/** One goal from the board, by id, for a write response to hand back recomputed. */
+export function goalById(id: string): GoalSummary {
+  const goal = goalsPayload().goals.find((item) => item.id === id);
+  if (goal === undefined) throw new Error(`No fixture goal ${id}`);
+  return goal;
+}
+
+/** The same habit with one more completion in the period — what the server would recompute. */
+export function habitAfterTick(id: string): GoalSummary {
+  const goal = goalById(id);
+  if (goal.kind !== 'habit') throw new Error(`${id} is not a habit`);
+
+  const completedCount = goal.habit.completedCount + 1;
+  return {
+    ...goal,
+    progress: { basis: 'period_completion', fraction: completedCount / goal.habit.targetCount },
+    habit: { ...goal.habit, completedCount, minimumMet: true, minimumFraction: 1 },
+  };
+}
+
+/** A completed occurrence, as POST /api/goals/:id/completions returns it. */
+export function completionEntry(goalId: string, date = TODAY_ISO): CalendarEntry {
+  const goal = goalById(goalId);
+  return {
+    id: `entry-new-${goalId}`,
+    date,
+    timing: 'untimed',
+    startAt: null,
+    endAt: null,
+    timeZone: LOCAL_ZONE,
+    title: goal.title,
+    notes: null,
+    status: 'completed',
+    completedAt: `${date}T09:30:00.000Z`,
+    recurrenceId: null,
+    goal: {
+      id: goal.id,
+      title: goal.title,
+      kind: goal.kind,
+      color: goal.color,
+      area: goal.area,
+    },
+  };
+}
+
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -380,31 +502,97 @@ export function jsonResponse(body: unknown, status = 200): Response {
   });
 }
 
+/** One request the stub saw, reduced to what a test wants to assert on. */
+export interface SeenRequest {
+  method: string;
+  path: string;
+  search: string;
+  authorization: string | null;
+  body: unknown;
+}
+
 export interface FetchRoutes {
-  goals?: () => Response;
+  goals?: (statuses: string | null) => Response;
   areas?: () => Response;
-  calendar?: (from: string, to: string) => Response;
+  calendar?: (from: string, to: string) => Response | Promise<Response>;
   health?: () => Response;
+  session?: (method: string, body: unknown) => Response;
+  templates?: () => Response;
+  /** Anything that writes. Return undefined to fall through to a generic 200. */
+  write?: (request: SeenRequest) => Response | undefined;
 }
 
 const HEALTH_PAYLOAD = {
   status: 'ok',
-  version: '0.1.1-alpha',
+  version: '0.2.0-alpha',
   commit: 'local',
   timestamp: '2026-09-17T09:30:00.000Z',
 };
 
+export interface ApiStub {
+  fetchImpl: Mock<typeof fetch>;
+  /** Every request the app made, in order. */
+  seen: SeenRequest[];
+  /** Just the ones that changed something — what "one request per gesture" is measured against. */
+  writes: () => SeenRequest[];
+}
+
+function readInit(init: RequestInit | undefined): {
+  method: string;
+  body: unknown;
+  auth: string | null;
+} {
+  const method = init?.method ?? 'GET';
+  const headers = init?.headers;
+  let auth: string | null = null;
+  if (headers !== undefined && !(headers instanceof Headers) && !Array.isArray(headers)) {
+    auth = headers.authorization ?? headers.Authorization ?? null;
+  }
+
+  let body: unknown = null;
+  if (typeof init?.body === 'string') {
+    try {
+      body = JSON.parse(init.body);
+    } catch {
+      body = init.body;
+    }
+  }
+  return { method, body, auth };
+}
+
 /**
- * Stubs `fetch` for the three product endpoints and /health, and returns the mock so a test can
- * assert on the URLs that were asked for.
+ * Stubs `fetch` for the whole product API.
+ *
+ * It records every request, including the Authorization header, because "does this build put a
+ * token on its requests" is a thing the tests have to be able to ask — the deployed app answers
+ * 401 to everything without one.
  */
-export function stubFetch(routes: FetchRoutes = {}): Mock<typeof fetch> {
-  const impl = vi.fn<typeof fetch>((input) => {
+export function stubFetch(routes: FetchRoutes = {}): ApiStub {
+  const seen: SeenRequest[] = [];
+
+  const impl = vi.fn<typeof fetch>((input, init) => {
     const href = typeof input === 'string' ? input : input instanceof URL ? input.href : input.url;
     const url = new URL(href, 'http://localhost');
+    const { method, body, auth } = readInit(init);
 
-    if (url.pathname === '/api/goals') {
-      return Promise.resolve(routes.goals?.() ?? jsonResponse(goalsPayload()));
+    const request: SeenRequest = {
+      method,
+      path: url.pathname,
+      search: url.search,
+      authorization: auth,
+      body,
+    };
+    seen.push(request);
+
+    if (url.pathname === '/api/session') {
+      return Promise.resolve(routes.session?.(method, body) ?? jsonResponse(sessionPayload()));
+    }
+    if (url.pathname === '/api/goal-templates') {
+      return Promise.resolve(routes.templates?.() ?? jsonResponse(templatesPayload()));
+    }
+    if (url.pathname === '/api/goals' && method === 'GET') {
+      const statuses = url.searchParams.get('status');
+      return Promise.resolve(routes.goals?.(statuses) ?? jsonResponse(goalsPayload()));
     }
     if (url.pathname === '/api/areas') {
       return Promise.resolve(routes.areas?.() ?? jsonResponse(areasPayload()));
@@ -419,17 +607,24 @@ export function stubFetch(routes: FetchRoutes = {}): Mock<typeof fetch> {
     if (url.pathname === '/health') {
       return Promise.resolve(routes.health?.() ?? jsonResponse(HEALTH_PAYLOAD));
     }
+    if (method !== 'GET') {
+      const answer = routes.write?.(request);
+      return Promise.resolve(answer ?? jsonResponse({ ok: true }));
+    }
     return Promise.resolve(jsonResponse({ error: 'not_found' }, 404));
   });
 
   vi.stubGlobal('fetch', impl);
-  return impl;
+  return {
+    fetchImpl: impl,
+    seen,
+    writes: () => seen.filter((request) => request.method !== 'GET'),
+  };
 }
 
 /** Every calendar range the stub was asked for, in order. */
-export function calendarRanges(impl: Mock<typeof fetch>): string[] {
-  return impl.mock.calls
-    .map(([input]) => (typeof input === 'string' ? input : input instanceof URL ? input.href : ''))
-    .filter((href) => href.startsWith('/api/calendar'))
-    .map((href) => href.slice('/api/calendar?'.length));
+export function calendarRanges(stub: ApiStub): string[] {
+  return stub.seen
+    .filter((request) => request.path === '/api/calendar')
+    .map((request) => request.search.replace(/^\?/, ''));
 }

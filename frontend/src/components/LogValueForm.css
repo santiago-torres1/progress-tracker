@@ -1,0 +1,174 @@
+/*
+ * The number a measured goal takes instead of a tick.
+ *
+ * The smallest surface in the app, and the one that should feel least like a form: two fields, both
+ * already filled in with the truthful answer, and a sentence above them saying where the goal
+ * stands so nobody has to remember. It is narrower than the composer and the detail panel on
+ * purpose — a card the width of the thing it is asking for reads as a question, where a full-width
+ * one would read as a section.
+ *
+ * Inline, like the others: the dashboard puts it where the board was. A weight typed into a modal
+ * on a 400px phone is a modal covering the number you were trying to check.
+ */
+
+.log-value {
+  width: 100%;
+  max-width: 28rem;
+  margin-inline: auto;
+  padding: var(--sp-5);
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-2xl);
+  box-shadow: var(--sh-1), var(--sh-rim);
+  animation: pt-settle var(--mo-slow) var(--ease-out) backwards;
+}
+
+@media (min-width: 40rem) {
+  .log-value {
+    padding: var(--sp-6);
+  }
+}
+
+/* Where it stands now, and what it is heading for. Never how far behind that is. */
+.log-value__standing {
+  max-width: 44ch;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.log-value__row {
+  display: grid;
+  gap: var(--sp-1);
+  min-width: 0;
+  margin-top: var(--sp-4);
+}
+
+.log-value__label {
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+}
+
+/* The same field as everywhere else: recessed surface, an edge that clears 3:1 against it, and
+   16px type so iOS does not zoom the page when it takes focus. */
+.log-value__input {
+  width: 100%;
+  max-width: 12rem;
+  min-height: 2.5rem;
+  padding: var(--sp-2) var(--sp-3);
+  font-family: inherit;
+  font-size: var(--fs-field);
+  line-height: var(--lh-tight);
+  color: var(--text);
+  background-color: var(--field);
+  border: 1px solid var(--field-border);
+  border-radius: var(--r-md);
+  font-variant-numeric: tabular-nums;
+  transition:
+    border-color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease);
+}
+
+.log-value__input:focus-visible {
+  background-color: var(--surface);
+  border-color: var(--accent);
+}
+
+@media (pointer: coarse) {
+  .log-value__input {
+    min-height: 2.75rem;
+  }
+}
+
+/* "A number is all this needs" — information, in the reading colour, with the rail the app puts
+   beside any aside. Not an error: nothing has gone wrong yet. */
+.log-value__problem {
+  margin-top: var(--sp-4);
+  padding-inline-start: var(--sp-3);
+  font-size: var(--fs-sm);
+  border-inline-start: 2px solid var(--border-strong);
+}
+
+.log-value__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-5);
+}
+
+.log-value__submit {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding-inline: var(--sp-5);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--accent-contrast);
+  background-color: var(--accent);
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  box-shadow: var(--sh-1);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease),
+    transform var(--mo) var(--ease-out),
+    box-shadow var(--mo) var(--ease-out);
+}
+
+@media (hover: hover) {
+  .log-value__submit:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: var(--sh-2);
+  }
+}
+
+.log-value__submit:active:not(:disabled) {
+  transform: translateY(0) scale(0.97);
+  box-shadow: var(--sh-1);
+  transition-duration: var(--mo-fast);
+}
+
+.log-value__submit:disabled {
+  color: var(--muted);
+  background-color: var(--surface-2);
+  border-color: var(--border-strong);
+  box-shadow: none;
+  cursor: default;
+}
+
+.log-value__cancel {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.5rem;
+  padding-inline: var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  background: none;
+  border: 0;
+  border-radius: var(--r-sm);
+  cursor: pointer;
+  transition: color var(--mo) var(--ease);
+}
+
+@media (hover: hover) {
+  .log-value__cancel:hover {
+    color: var(--text);
+    text-decoration: underline;
+    text-underline-offset: 0.2em;
+  }
+}
+
+@media (pointer: coarse) {
+  .log-value__submit,
+  .log-value__cancel {
+    min-height: 2.75rem;
+  }
+}

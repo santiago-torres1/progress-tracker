@@ -24,6 +24,11 @@
   --fs-lg: 1.125rem;
   --fs-xl: 1.625rem;
 
+  /* The one size outside the scale, and only for what a person types into. Below 16px, iOS Safari
+     zooms the page when a field takes focus and never zooms back out — which on a 400px screen
+     leaves the form half off the side. It is a device fact, not a type decision. */
+  --fs-field: 1rem;
+
   --fw-medium: 500;
   --fw-semibold: 600;
   --lh-tight: 1.25;
@@ -47,13 +52,21 @@
   --r-2xl: 1.5rem;
   --r-full: 999px;
 
-  /* Motion — water settling, never a dashboard booting */
+  /* Motion — water settling, never a dashboard booting.
+     The scale is one step at a time: a press (fast), a hover (mo), a tile arriving (slow), a
+     level acknowledging itself (settle), and the pour. The pour is the longest duration in the
+     app on purpose — it is the only moment the product asks anyone to watch. */
   --mo-fast: 150ms;
   --mo: 200ms;
   --mo-slow: 320ms;
   --mo-settle: 420ms;
+  --mo-pour: 560ms;
   --ease: cubic-bezier(0.4, 0, 0.2, 1);
   --ease-out: cubic-bezier(0.22, 0.61, 0.36, 1);
+  /* Water finding its level: quick off the mark, a long settle, and a single overshoot of about
+     2% near the very end — the slosh of a surface arriving, not a spring. There is no second
+     swing, because nothing in this app bounces. */
+  --ease-pour: cubic-bezier(0.22, 0.68, 0.45, 1.14);
 
   /* Layout */
   --shell-width: 68rem;
@@ -70,9 +83,17 @@
   --area-neutral: #64748b;
 
   /* How much of a goal's hue is mixed into a surface. Tokenised so dark mode can be more
-     generous without any structural change. */
+     generous without any structural change.
+
+     The `-full` pair is the one step deeper a glass goes when it reaches the brim: the same hue,
+     never a different one. It is deliberately a small step, and it is capped by contrast rather
+     than by taste — a full tile's copy sits on `-bot-full`, and past about 23% (27% in dark) the
+     darkest life areas take `--muted` text below 4.5:1. The rim and the full-strength surface
+     line carry the rest of the moment. */
   --tint-top: 9%;
   --tint-bot: 17%;
+  --tint-top-full: 14%;
+  --tint-bot-full: 22%;
   --tint-bar: 12%;
   --tint-bar-2: 19%;
 
@@ -89,6 +110,13 @@
   --accent: #2f6f5c;
   --accent-contrast: #ffffff;
   --accent-soft: #dcebe4;
+
+  /* What a person types into. A field's edge is the boundary of a control rather than a seam
+     between two surfaces, so --border-strong cannot carry it: as a hairline it sits well under the
+     3:1 that a control's outline has to clear. Mixed towards --muted until it does, in one place,
+     so both themes move together — the dark values come from the dark block below for free. */
+  --field: var(--surface-2);
+  --field-border: color-mix(in srgb, var(--border-strong) 45%, var(--muted));
 
   /* Layered depth, not one stamped box-shadow */
   --sh-1:
@@ -116,6 +144,8 @@
 
     --tint-top: 13%;
     --tint-bot: 24%;
+    --tint-top-full: 18%;
+    --tint-bot-full: 27%;
     --tint-bar: 18%;
     --tint-bar-2: 26%;
 

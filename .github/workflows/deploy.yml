@@ -3,7 +3,8 @@
 #   ci        -> the full CI workflow (ci.yml) must pass first
 #   backend   -> build + push the Lambda image, point the function at it, set its environment,
 #                smoke-test GET /health
-#   frontend  -> build the SPA against the Function URL, upload to S3, invalidate CloudFront
+#   frontend  -> build the SPA against the Function URL, with the public Supabase URL + anon
+#                key the browser signs in with, upload to S3, invalidate CloudFront
 #
 # AWS access: GitHub OIDC -> the IAM role in infra/main/github_oidc.tf. There are no stored AWS
 # keys. Every `aws` call below maps to an action that role grants; adding a call means adding its
@@ -254,13 +255,37 @@ jobs:
           fi
           echo "function_url=${function_url}" >> "${GITHUB_OUTPUT}"
 
-      # The Function URL is public by design (it is inlined into the JS bundle).
+      # Every VITE_* value here is inlined into the public JS bundle, and all four are meant to be:
+      # the Function URL, the commit, and the Supabase project + anon key the browser signs in
+      # against. The anon key grants nothing on its own — row-level security is what protects the
+      # data — which is exactly why SUPABASE_SERVICE_ROLE_KEY is NOT in this list and must never
+      # be. It is referenced once in this workflow, in the backend job's Lambda environment, and
+      # nothing in frontend/ reads it (Vite only inlines names beginning with VITE_, so it could
+      # not reach the bundle even by accident).
+      #
+      # Both values are read from `secrets` HERE rather than passed down from the backend job, for
+      # the same reason the Function URL is looked up again above: AWS_REGION is a secret, so the
+      # runner drops any job output that might contain one, and job outputs are not the way to move
+      # anything in this workflow.
       - name: Build
         working-directory: frontend
         env:
           VITE_API_BASE_URL: ${{ steps.api.outputs.function_url }}
           VITE_COMMIT_SHA: ${{ github.sha }}
+          VITE_SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
         run: |
+          # A build without these still deploys and still renders; it just says it has nowhere to
+          # keep goals, and nothing can be saved. That is worth a warning, not a failure — the same
+          # judgement the backend job makes about the Lambda's Supabase variables.
+          missing=()
+          for name in VITE_SUPABASE_URL VITE_SUPABASE_ANON_KEY; do
+            [[ -n "${!name}" ]] || missing+=("${name}")
+          done
+          if (( ${#missing[@]} > 0 )); then
+            echo "::warning title=Supabase secrets not set::${missing[*]} (from SUPABASE_URL / SUPABASE_ANON_KEY). The deployed app will render but will not be able to sign anyone in, so nothing can be saved."
+          fi
+
           # The build needs no AWS access, so its tooling does not get the credentials.
           env -u AWS_ACCESS_KEY_ID -u AWS_SECRET_ACCESS_KEY -u AWS_SESSION_TOKEN npm run build
 

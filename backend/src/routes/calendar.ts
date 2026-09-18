@@ -1,6 +1,12 @@
 import { Router } from 'express';
 
-import { READ_CACHE_CONTROL, respondBadRequest, respondUnavailable } from './read-support.js';
+import {
+  READ_CACHE_CONTROL,
+  requireSession,
+  respondBadRequest,
+  respondUnavailable,
+  type SessionOptions,
+} from './read-support.js';
 import { fetchCalendarEntries } from '../lib/calendar-entries.js';
 import { inclusiveDaySpan, parseIsoDate } from '../lib/dates.js';
 import type { CalendarResponse } from '../types/api.js';
@@ -16,10 +22,9 @@ import type { CalendarResponse } from '../types/api.js';
  */
 export const MAX_CALENDAR_RANGE_DAYS = 366;
 
-export interface CalendarRouterOptions {
-  /** Upper bound on each Supabase round-trip. Overridable for tests. */
-  readTimeoutMs?: number;
-}
+export type CalendarRouterOptions = SessionOptions;
+
+const CONTEXT = '[api/calendar]';
 
 interface ValidRange {
   from: string;
@@ -84,6 +89,11 @@ export function validateRange(query: Record<string, unknown>): ValidRange | Rang
 /**
  * GET /api/calendar?from=YYYY-MM-DD&to=YYYY-MM-DD — entries whose local day falls in the
  * inclusive range, each carrying enough of its goal to render without a second call.
+ *
+ * The range is validated BEFORE the session is resolved, deliberately: validation is pure and
+ * free, session resolution is a network round trip, and a malformed request should not be able
+ * to make us spend one. It also keeps the 0.1.1 guarantee that a rejected request never reached
+ * Supabase at all.
  */
 export function createCalendarRouter(options: CalendarRouterOptions = {}): Router {
   const router = Router();
@@ -95,12 +105,20 @@ export function createCalendarRouter(options: CalendarRouterOptions = {}): Route
       return;
     }
 
+    const session = await requireSession(req, res, CONTEXT, options);
+    if (session === undefined) return;
+
     try {
-      const entries = await fetchCalendarEntries(range.from, range.to, options.readTimeoutMs);
+      const entries = await fetchCalendarEntries(
+        session.client,
+        range.from,
+        range.to,
+        options.readTimeoutMs,
+      );
       const body: CalendarResponse = { from: range.from, to: range.to, entries };
       res.set('Cache-Control', READ_CACHE_CONTROL).json(body);
     } catch (error) {
-      respondUnavailable(res, error, '[api/calendar]');
+      respondUnavailable(res, error, CONTEXT);
     }
   });
 

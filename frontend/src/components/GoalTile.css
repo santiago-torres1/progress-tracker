@@ -4,6 +4,19 @@
  * A goal is a vessel: a still body of its area's colour, with a 2px surface line whose meniscus
  * climbs both walls. Only this component draws water, so a full glass always means the same
  * thing. The level, the old level and the habit minimum arrive as --p, --from and --min.
+ *
+ * Motion — the level is never a height. The body is a full-bleed box scaled from its bottom edge
+ * and the surface is a full-height sheet slid down by (100 - --p)% of the glass. Both are
+ * transforms and nothing else on the tile animates its geometry, so a pour, an undo, or a whole
+ * board changing at once never touches layout: animating the body's `height` instead would put
+ * every tile through layout and repaint on every frame, which is the only thing on this screen
+ * capable of dropping them.
+ *
+ * Because both layers read --p and nothing else, changing --p *is* the animation: React writes
+ * one number and the water finds its level. Undo is the same declaration arriving at a smaller
+ * number, so it runs the same duration and the same curve backwards without a second rule — undo
+ * looks like undo, not like a new event. (The transition only runs on an updated tile: keep the
+ * tile's React key stable across an optimistic write, or it remounts and the level jumps.)
  */
 
 .goal-tile {
@@ -23,7 +36,9 @@
   border-radius: var(--r-xl);
   box-shadow: var(--sh-1), var(--sh-rim);
   animation: pt-settle var(--mo-slow) var(--ease-out) backwards;
-  animation-delay: calc(var(--i, 0) * 45ms);
+  /* Capped: a board settles in one after another, but a goal created onto a board of twenty
+     should not wait most of a second for its turn to exist. */
+  animation-delay: calc(min(var(--i, 0), 8) * 40ms);
   transition:
     transform var(--mo-slow) var(--ease-out),
     box-shadow var(--mo-slow) var(--ease-out),
@@ -32,6 +47,7 @@
 
 button.goal-tile {
   cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
 }
 
 @media (min-width: 40rem) {
@@ -47,24 +63,48 @@ button.goal-tile {
   }
 }
 
+/* --- hover and press ------------------------------------------------------ */
+
+/*
+ * The writes are optimistic, so the press is what actually tells someone their tap landed — the
+ * data confirming it arrives later and silently. Down is fast (--mo-fast) and up is slow
+ * (--mo-slow): the tile answers immediately and relaxes at its own pace.
+ *
+ * --surface-nudge is a separate, quick flinch given to the surface line alone. It rides the
+ * pseudo-elements rather than the sheet, so the 560ms pour and the 150ms nudge never have to
+ * share one transition.
+ */
+
 @media (hover: hover) {
-  button.goal-tile:hover {
+  button.goal-tile:hover,
+  .goal-tile:has(> .goal-tile__open:hover) {
+    --surface-nudge: -1px;
+
     transform: translateY(-2px);
     border-color: var(--border-strong);
     box-shadow: var(--sh-2), var(--sh-rim);
   }
-
-  button.goal-tile:hover .goal-tile__line {
-    transform: translateY(-1px);
-  }
 }
 
-button.goal-tile:active {
-  transform: translateY(0) scale(0.998);
+button.goal-tile:active,
+.goal-tile:has(> .goal-tile__open:active) {
+  --surface-nudge: 0.5px;
+
+  transform: translateY(0) scale(0.988);
+  box-shadow: var(--sh-1), var(--sh-rim);
+  transition:
+    transform var(--mo-fast) var(--ease-out),
+    box-shadow var(--mo-fast) var(--ease-out),
+    border-color var(--mo-fast) var(--ease);
 }
 
-/* everything except the two absolutely-placed layers sits above the water */
-.goal-tile > :not(.goal-tile__glass):not(.goal-tile__min) {
+/* The copy sits above the water. Everything else on the tile — the glass, the etched minimum,
+   the whole-tile target, the control — places itself, so this names the copy rather than
+   excluding a list that grows every time the tile gains a layer. */
+.goal-tile__head,
+.goal-tile__name,
+.goal-tile__val,
+.goal-tile__foot {
   position: relative;
 }
 
@@ -80,54 +120,79 @@ button.goal-tile:active {
 
 .goal-tile__body {
   position: absolute;
-  inset: auto 0 0 0;
-  height: calc(var(--p) * 1%);
+  inset: 0;
+  transform-origin: bottom;
+  transform: scaleY(calc(var(--p, 0) / 100));
   background-color: var(--surface-2);
   background-image: linear-gradient(
     to bottom,
     color-mix(in srgb, var(--goal) var(--tint-top), var(--surface)),
     color-mix(in srgb, var(--goal) var(--tint-bot), var(--surface))
   );
-  box-shadow: inset 0 2px 7px -5px color-mix(in srgb, var(--goal) 60%, transparent);
   animation: goal-tile-rise var(--mo-settle) var(--ease-out) backwards;
-  animation-delay: calc(var(--i, 0) * 45ms + 90ms);
+  animation-delay: calc(min(var(--i, 0), 8) * 40ms + 90ms);
+  transition: transform var(--mo-pour) var(--ease-pour);
 }
 
+/* One step deeper, for a glass that has reached the brim. A second gradient at opacity 0 rather
+   than a different --tint, because opacity is the only way a gradient can arrive gradually. */
+.goal-tile__body::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--goal) var(--tint-top-full), var(--surface)),
+    color-mix(in srgb, var(--goal) var(--tint-bot-full), var(--surface))
+  );
+  transition: opacity var(--mo-settle) var(--ease);
+}
+
+/* The surface, as a full-height sheet whose top edge is the waterline. */
 .goal-tile__line {
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(var(--p) * 1%);
-  /* pulls the line back inside the vessel so a 100%-full glass still shows its surface
-     flush with the rim */
-  margin-bottom: -2px;
-  height: 2px;
-  background-color: var(--goal);
-  opacity: 0.9;
+  inset: 0;
+  transform: translateY(calc((100 - var(--p, 0)) * 1%));
   animation: goal-tile-rise-line var(--mo-settle) var(--ease-out) backwards;
-  animation-delay: calc(var(--i, 0) * 45ms + 90ms);
-  transition: transform var(--mo-slow) var(--ease-out);
+  animation-delay: calc(min(var(--i, 0), 8) * 40ms + 90ms);
+  transition: transform var(--mo-pour) var(--ease-pour);
 }
 
-/* the meniscus: a thinning film climbing each wall */
-.goal-tile__line::before,
+/* the meniscus: one line, thinning as it climbs each wall */
+.goal-tile__line::before {
+  content: '';
+  position: absolute;
+  top: -3px;
+  left: 0;
+  right: 0;
+  height: 5px;
+  /* drawn just inside the vessel, so a full glass still shows its surface flush with the rim */
+  border-bottom: 2px solid color-mix(in srgb, var(--goal) 90%, transparent);
+  border-bottom-left-radius: 15px 5px;
+  border-bottom-right-radius: 15px 5px;
+  transform: translateY(var(--surface-nudge, 0px));
+  transition:
+    transform var(--mo-fast) var(--ease-out),
+    border-color var(--mo-settle) var(--ease);
+}
+
+/* Light caught just under the surface. A fixed depth so it reads the same on a small tile as on
+   a large one, clamped to the water so a nearly empty glass never shades the glass below it. */
 .goal-tile__line::after {
   content: '';
   position: absolute;
-  bottom: 0;
-  width: 15px;
-  height: 5px;
-  border-bottom: 2px solid var(--goal);
-}
-
-.goal-tile__line::before {
+  top: 0;
   left: 0;
-  border-bottom-left-radius: 15px 5px;
-}
-
-.goal-tile__line::after {
   right: 0;
-  border-bottom-right-radius: 15px 5px;
+  height: min(6px, calc(var(--p, 0) * 1%));
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--goal) 22%, transparent),
+    transparent
+  );
+  transform: translateY(var(--surface-nudge, 0px));
+  transition: transform var(--mo-fast) var(--ease-out);
 }
 
 /* where the level used to be, for a goal that has gone backwards.
@@ -140,6 +205,47 @@ button.goal-tile:active {
   border-top: 1px dashed var(--border-strong);
 }
 
+/* --- full ----------------------------------------------------------------- */
+
+/*
+ * The one moment the app is allowed to be pleased, and it is pleased quietly: the water darkens
+ * a step, the surface reaches full strength, and a hairline rim appears inside the glass. Three
+ * small things, all of them inside the vessel, none of them new furniture — no badge, no mark,
+ * nothing to collect. It lands 180ms after the pour begins, so it reads as a consequence of the
+ * water arriving rather than as a separate announcement, and then it holds still.
+ *
+ * The rim is the goal's own area colour, one more place the hue already appears — colour still
+ * means area here, not status, and "full" is said in words on the tile regardless.
+ *
+ * A glass that was already full when the board loaded transitions nothing: the class is there
+ * from the first paint, so there is no change to animate. Full is a state, not an event.
+ */
+
+.goal-tile__glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--goal) 32%, transparent);
+  opacity: 0;
+  transition: opacity var(--mo-settle) var(--ease);
+}
+
+.goal-tile--full .goal-tile__glass::after,
+.goal-tile--full .goal-tile__body::after {
+  opacity: 1;
+  transition-delay: 180ms;
+}
+
+.goal-tile--full .goal-tile__line::before {
+  border-bottom-color: var(--goal);
+  transition:
+    transform var(--mo-fast) var(--ease-out),
+    border-color var(--mo-settle) var(--ease) 180ms;
+}
+
+/* --- the habit minimum ---------------------------------------------------- */
+
 /* etched on the glass, not drawn in the water: the minimum that keeps a habit alive */
 .goal-tile__min {
   position: absolute;
@@ -150,6 +256,31 @@ button.goal-tile:active {
   justify-content: flex-end;
   border-top: 1px dashed var(--border-strong);
   pointer-events: none;
+}
+
+/*
+ * Crossed. The etch stops being a dashed intention and sets solid in the goal's own colour: the
+ * water passed it, and the line acknowledges that once. It waits 240ms so the water is past it
+ * before it answers, which is the whole point — the line is reacting, not announcing.
+ *
+ * It is drawn as an overlay rather than by swapping border-style, because a style cannot fade
+ * and a line that snaps would read as a verdict.
+ */
+.goal-tile__min::before {
+  content: '';
+  position: absolute;
+  top: -1px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: color-mix(in srgb, var(--goal) 65%, transparent);
+  opacity: 0;
+  transition: opacity var(--mo-settle) var(--ease);
+}
+
+.goal-tile--kept .goal-tile__min::before {
+  opacity: 1;
+  transition-delay: 240ms;
 }
 
 .goal-tile__min span {
@@ -165,6 +296,274 @@ button.goal-tile:active {
 /* the smallest tile keeps the etch but not the word — no room */
 .goal-tile--sm .goal-tile__min span {
   display: none;
+}
+
+/* --- leaving -------------------------------------------------------------- */
+
+/*
+ * Archived to "My full glasses", or deleted. The glass keeps its water and is simply carried
+ * off — draining it first would say something had been lost, and nothing here was. The board
+ * closes the gap instantly afterwards, which is a reflow no CSS can smooth; by then the tile has
+ * already gone, so nothing appears to jump.
+ */
+.goal-tile--leaving {
+  pointer-events: none;
+  animation: goal-tile-leave var(--mo-slow) var(--ease) forwards;
+}
+
+/* --- the tile's own control ----------------------------------------------- */
+
+/*
+ * A button cannot contain a button, so a tile that carries its own control becomes a plain box
+ * with a full-bleed target underneath it. The target comes after the copy in the DOM so it wins
+ * the click, and the control comes after the target so it wins over that.
+ */
+.goal-tile__open {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+/* the tile clips its children, so this ring is drawn inside the glass rather than half-eaten */
+.goal-tile__open:focus-visible {
+  outline-offset: -3px;
+}
+
+.goal-tile__actions {
+  position: absolute;
+  top: var(--sp-3);
+  right: var(--sp-3);
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.goal-tile--sm > .goal-tile__actions {
+  gap: var(--sp-1);
+}
+
+/*
+ * The head runs under the controls, so it gives them room rather than eliding into them. How much
+ * room depends on what is up there: a tick and a grip are two round-ish things, and an undo — which
+ * is only ever there for a moment after a tap — is a word as well. The area name ellipses into
+ * whatever is left, which is the right thing to lose: it is the quietest line on the tile and its
+ * colour is still on the dot beside it.
+ */
+.goal-tile:has(> .goal-tile__actions) .goal-tile__head {
+  padding-right: 7rem;
+}
+
+.goal-tile--sm:has(> .goal-tile__actions) .goal-tile__head {
+  padding-right: 4rem;
+}
+
+.goal-tile:has(.goal-tile__undo) .goal-tile__head {
+  padding-right: 10.5rem;
+}
+
+.goal-tile--sm:has(.goal-tile__undo) .goal-tile__head {
+  padding-right: 7rem;
+}
+
+@media (min-width: 40rem) {
+  .goal-tile:not(.goal-tile--sm) > .goal-tile__actions {
+    top: var(--sp-4);
+    right: var(--sp-4);
+  }
+}
+
+/*
+ * Every control on a glass is the same object: a pill with a hairline, sitting on a backdrop of
+ * its own so that it reads whether the water behind it is at the brim or nowhere near it. The
+ * backdrop is the tile's own surface at 78% rather than a blur — it is the same colour the copy
+ * sits on, so nothing about the glass has to be dimmed for a button to be legible.
+ */
+.goal-tile__action {
+  position: relative;
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-1);
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding: 0;
+  font: inherit;
+  font-size: var(--fs-xs);
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--muted);
+  background-color: color-mix(in srgb, var(--surface) 78%, transparent);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    transform var(--mo-slow) var(--ease-out);
+}
+
+.goal-tile--sm .goal-tile__action {
+  min-width: 1.5rem;
+  height: 1.5rem;
+}
+
+/* Done. It stays pressable, because undo is the same button pressed again — so it reads as a
+   state the control is in, never as a control that has been spent. */
+.goal-tile__action[aria-pressed='true'] {
+  color: var(--goal);
+  border-color: color-mix(in srgb, var(--goal) 55%, var(--border-strong));
+  background-color: color-mix(in srgb, var(--goal) 12%, var(--surface));
+}
+
+@media (hover: hover) {
+  .goal-tile__action:hover:not(:disabled) {
+    color: var(--goal);
+    border-color: var(--goal);
+    background-color: color-mix(in srgb, var(--goal) 10%, var(--surface));
+  }
+}
+
+.goal-tile__action:active {
+  transform: scale(0.88);
+  transition-duration: var(--mo-fast);
+}
+
+/* In flight. The write is optimistic, so the control already shows the answer — there is nothing
+   here to grey out, only a press that should not repeat. */
+.goal-tile__action:disabled {
+  cursor: default;
+}
+
+/* --- the tick ------------------------------------------------------------- */
+
+/*
+ * The most-pressed thing in the product. It is the only control that carries a word as well as a
+ * mark, and the only one with ink at full strength: at a glance on a busy board it has to be
+ * findable without anybody hunting for a circle.
+ *
+ * It grows with the tile rather than staying one size, because a large glass is a goal somebody
+ * said mattered more, and the tick on it is pressed more often. On the smallest tile the word goes
+ * (the button keeps saying it to a screen reader through its own label) and what is left is a mark
+ * in a circle — still 28px, which is larger than the tile's other controls, not smaller.
+ */
+.goal-tile__tick {
+  padding-inline: var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--text);
+  background-color: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.goal-tile:not(.goal-tile--sm) .goal-tile__tick {
+  height: 2rem;
+  padding-inline: var(--sp-2) var(--sp-3);
+}
+
+.goal-tile--lg .goal-tile__tick {
+  height: 2.25rem;
+  font-size: var(--fs-md);
+}
+
+.goal-tile__tick-mark {
+  flex: none;
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.goal-tile--lg .goal-tile__tick-mark {
+  width: 1rem;
+  height: 1rem;
+}
+
+/* One row tall: the mark alone, in a circle that is still the biggest control on the tile. The gap
+   goes with the word, or the clipped span it leaves behind would push the mark off centre. */
+.goal-tile--sm .goal-tile__tick {
+  gap: 0;
+  min-width: 1.75rem;
+  height: 1.75rem;
+  padding-inline: 0;
+}
+
+.goal-tile--sm .goal-tile__action-text {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* --- the other three ------------------------------------------------------ */
+
+/* A number instead of a tick, for a goal that cannot be ticked. Same weight as the tick, because
+   it is the same thing: this glass's one control. */
+.goal-tile__log {
+  padding-inline: var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background-color: color-mix(in srgb, var(--surface) 88%, transparent);
+}
+
+.goal-tile:not(.goal-tile--sm) .goal-tile__log {
+  height: 2rem;
+}
+
+.goal-tile--sm .goal-tile__log {
+  height: 1.75rem;
+  padding-inline: var(--sp-2);
+  font-size: var(--fs-xs);
+}
+
+/* Taking something back is never the loud option — but it is one tap, so it is never hidden. */
+.goal-tile__undo {
+  padding-inline: var(--sp-2);
+}
+
+/* The grip. It says what it is by the cursor it takes and by what happens when it is held; the
+   held state comes free from [aria-pressed], which useArrange already sets. */
+.goal-tile__grip {
+  font-size: var(--fs-sm);
+  line-height: 1;
+  cursor: grab;
+  -webkit-user-select: none;
+  user-select: none;
+}
+
+.goal-tile__grip[aria-pressed='true'] {
+  cursor: grabbing;
+}
+
+@media (pointer: coarse) {
+  .goal-tile__action {
+    min-width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .goal-tile--sm .goal-tile__action {
+    min-width: 2rem;
+    height: 2rem;
+  }
+
+  .goal-tile__tick,
+  .goal-tile:not(.goal-tile--sm) .goal-tile__tick,
+  .goal-tile--sm .goal-tile__tick {
+    min-width: 2.5rem;
+    height: 2.5rem;
+  }
+
+  .goal-tile:not(.goal-tile--sm) .goal-tile__log {
+    height: 2.5rem;
+  }
 }
 
 /* --- what the tile says --------------------------------------------------- */
@@ -256,10 +655,13 @@ button.goal-tile:active {
   color: var(--muted);
 }
 
+/* the tick turns up the moment the minimum is met, so it arrives with the etch rather than
+   before it */
 .goal-tile__tick {
   width: 0.8125rem;
   height: 0.8125rem;
   color: var(--goal);
+  animation: pt-tick var(--mo) var(--ease-out) 240ms backwards;
 }
 
 /* one quiet line for a goal that slipped */
@@ -270,22 +672,37 @@ button.goal-tile:active {
 
 /* --- motion: water settling ----------------------------------------------- */
 
+/* The entrance. --from is the level a goal has fallen back from, so a glass that went backwards
+   arrives by settling down to where it now is, which is the truth about it. */
+
 @keyframes goal-tile-rise {
   from {
-    height: calc(var(--from, 0) * 1%);
+    transform: scaleY(calc(var(--from, 0) / 100));
   }
 
   to {
-    height: calc(var(--p) * 1%);
+    transform: scaleY(calc(var(--p, 0) / 100));
   }
 }
 
 @keyframes goal-tile-rise-line {
   from {
-    bottom: calc(var(--from, 0) * 1%);
+    transform: translateY(calc((100 - var(--from, 0)) * 1%));
   }
 
   to {
-    bottom: calc(var(--p) * 1%);
+    transform: translateY(calc((100 - var(--p, 0)) * 1%));
+  }
+}
+
+@keyframes goal-tile-leave {
+  from {
+    opacity: 1;
+    transform: none;
+  }
+
+  to {
+    opacity: 0;
+    transform: translateY(6px) scale(0.97);
   }
 }

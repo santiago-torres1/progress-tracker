@@ -110,6 +110,7 @@ describe('failureCopy', () => {
       kind: 'rejected',
       error: 'invalid_range',
       message: 'from must be on or before to.',
+      field: null,
     });
 
     expect(copy.body).toBe('from must be on or before to.');
@@ -121,7 +122,7 @@ describe('failureCopy', () => {
       failureCopy({ kind: 'unavailable', reason: 'invalid_config', missing: [] }),
       failureCopy({ kind: 'unavailable', reason: 'timeout', missing: [] }),
       failureCopy({ kind: 'unavailable', reason: 'upstream_error', missing: [] }),
-      failureCopy({ kind: 'rejected', error: 'bad', message: null }),
+      failureCopy({ kind: 'rejected', error: 'bad', message: null, field: null }),
       failureCopy({ kind: 'failed', reason: 'network', status: null }),
       failureCopy({ kind: 'failed', reason: 'timeout', status: null }),
       failureCopy({ kind: 'failed', reason: 'http', status: 500 }),

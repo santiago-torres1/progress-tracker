@@ -1,5 +1,5 @@
 import { fetchGoalsByIds } from './goal-dashboard.js';
-import { getReadClient, runQuery } from './read.js';
+import { runQuery } from './read.js';
 import {
   readDate,
   readEnum,
@@ -9,7 +9,7 @@ import {
   readString,
   type UnknownRow,
 } from './row.js';
-import { getDefaultUserId } from './user.js';
+import type { SupabaseUserClient } from './supabase.js';
 import { ENTRY_STATUSES } from '../types/database.js';
 import type { CalendarEntry, CalendarEntryGoal } from '../types/api.js';
 
@@ -20,7 +20,11 @@ import type { CalendarEntry, CalendarEntryGoal } from '../types/api.js';
  * calendar item with no goal at all are all rows in this table.
  */
 
-/** `user_id` and `is_exception` are deliberately absent: a filter and a write-side flag. */
+/**
+ * `user_id` and `is_exception` are deliberately absent. `is_exception` is a write-side flag, and
+ * `user_id` is neither selected nor filtered on: the calendar_entries_select policy scopes the
+ * table to the caller, and a second filter here would only mask a policy regression.
+ */
 export const CALENDAR_ENTRY_COLUMNS = [
   'id',
   'goal_id',
@@ -85,19 +89,16 @@ export function toCalendarEntry(
  * skipped entirely when the range contains no goal-linked entries.
  */
 export async function fetchCalendarEntries(
+  client: SupabaseUserClient,
   from: string,
   to: string,
   timeoutMs?: number,
 ): Promise<CalendarEntry[]> {
-  const userId = getDefaultUserId();
-  const client = getReadClient();
-
   const rows = await runQuery(
     (signal) =>
       client
         .from('calendar_entries')
         .select(CALENDAR_ENTRY_COLUMNS)
-        .eq('user_id', userId)
         .gte('entry_date', from)
         .lte('entry_date', to)
         .order('entry_date', { ascending: true })
@@ -114,7 +115,7 @@ export async function fetchCalendarEntries(
         .filter((goalId): goalId is string => goalId !== null),
     ),
   ];
-  const goalsById = await fetchGoalsByIds(goalIds, timeoutMs);
+  const goalsById = await fetchGoalsByIds(client, goalIds, timeoutMs);
 
   return rows.map((row) => toCalendarEntry(row, goalsById));
 }
