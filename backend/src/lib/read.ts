@@ -1,12 +1,16 @@
 import { asRows, RowShapeError, type UnknownRow } from './row.js';
-import { getSupabaseAdmin, SupabaseConfigError, type SupabaseAdminClient } from './supabase.js';
+import { SupabaseConfigError } from './supabase.js';
 import { TimeoutError, withTimeout } from './timeout.js';
-import { InvalidUserConfigError } from './user.js';
 import type { UnavailableReason } from '../types/api.js';
 
 /**
- * Shared plumbing for the read-only API: get a client, run one query under a deadline, and turn
- * anything that goes wrong into a single opaque failure the routes can render as a 503.
+ * Shared plumbing for the product API: run one query under a deadline and turn anything that
+ * goes wrong into a single opaque failure the routes can render as a 503.
+ *
+ * The client is NOT obtained here. Every query runs through the caller's own client
+ * (lib/session.ts), so PostgREST applies row-level security as that user — which is what
+ * isolates one anonymous session from another. Handing this module a client to reuse is
+ * precisely the shortcut that would put the service-role key back on a request path.
  *
  * The discipline is the one GET /health/db already follows: a short reason code, never an
  * upstream message, never a secret. Detail goes to the server log (CloudWatch on Lambda).
@@ -36,25 +40,6 @@ export class ReadUnavailableError extends Error {
     this.reason = reason;
     this.missing = options?.missing;
   }
-}
-
-/**
- * The service-role client, or a ReadUnavailableError if Supabase is not configured.
- *
- * Reads use the service-role key for the same reason GET /health/db does: there is no login
- * yet, so there is no user token to read on behalf of. RLS is enabled and dormant, and
- * service_role has BYPASSRLS — which is exactly why every query here filters on user_id
- * explicitly rather than trusting a policy that cannot fire.
- *
- * Throwing (rather than returning a union) is deliberate: routes are unusable without a client,
- * and the throw lands in the same handler as every other failure.
- */
-export function getReadClient(): SupabaseAdminClient {
-  const supabase = getSupabaseAdmin();
-  if (!supabase.configured) {
-    throw new ReadUnavailableError('missing_env', { missing: [...supabase.missing] });
-  }
-  return supabase.client;
 }
 
 /** The parts of a PostgREST response this module cares about. */
@@ -128,7 +113,7 @@ export function toReadUnavailable(error: unknown, context: string): ReadUnavaila
     console.error(`${context} read timed out`, describeError(error));
     return new ReadUnavailableError('timeout', { cause: error });
   }
-  if (error instanceof SupabaseConfigError || error instanceof InvalidUserConfigError) {
+  if (error instanceof SupabaseConfigError) {
     console.error(`${context} configuration is unusable`, describeError(error));
     return new ReadUnavailableError('invalid_config', { cause: error });
   }

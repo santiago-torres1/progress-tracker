@@ -3,18 +3,22 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { createApp } from '../app.js';
 import type { SupabaseAdminClient } from '../lib/supabase.js';
-import { DEFAULT_USER_ID } from '../lib/user.js';
 
 /*
- * Route tests for the read-only API, against a MOCKED Supabase client.
+ * Route tests for the product API, against a MOCKED Supabase client.
  *
- * What these prove: response shape, ordering, the caching and error contracts, input
- * validation, and that nothing upstream leaks into a body. What they cannot prove is that the
- * columns and filters below exist in the database — that is checked separately by running the
- * exact selects (see GOAL_DASHBOARD_COLUMNS et al.) through psql against a real PostgreSQL with
- * the migrations and seed.sql applied.
+ * What these prove: that every /api route refuses a caller it cannot identify, that the client
+ * it serves them with carries their token and the anon key (never the service-role key), the
+ * response shapes, ordering, the caching and error contracts, input validation, and that
+ * nothing upstream — including the access token — leaks into a body.
  *
- * Fixtures are copied from that same seeded database, so the two halves line up.
+ * What they cannot prove is the thing that actually isolates one visitor from another. RLS lives
+ * in the database, so it is verified in the database: see the psql transcripts in the PR notes,
+ * where a second session reads zero of the first session's goals, entries and check-ins. A mock
+ * would happily "prove" isolation that does not exist.
+ *
+ * Fixtures are copied from a seeded PostgreSQL 17 with all migrations applied, so the two halves
+ * line up.
  */
 
 const { createClientMock } = vi.hoisted(() => ({ createClientMock: vi.fn() }));
@@ -28,12 +32,15 @@ const FAKE_URL = 'https://fake-project-ref.supabase.co';
 const FAKE_ANON_KEY = 'fake-anon-key-do-not-echo';
 const FAKE_SERVICE_ROLE_KEY = 'fake-service-role-key-do-not-echo';
 
+/** Shaped like a JWS compact serialisation, which is all readBearerToken checks. */
+const ACCESS_TOKEN = 'eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiJhbm9uLXZpc2l0b3IifQ.not-a-real-signature';
+const SESSION_USER_ID = '7f3c1a2b-0000-4000-8000-00000000abcd';
+
 function stubSupabaseEnv(overrides: Record<string, string | undefined> = {}): void {
   const values: Record<string, string | undefined> = {
     SUPABASE_URL: FAKE_URL,
     SUPABASE_ANON_KEY: FAKE_ANON_KEY,
     SUPABASE_SERVICE_ROLE_KEY: FAKE_SERVICE_ROLE_KEY,
-    DEFAULT_USER_ID: undefined,
     ...overrides,
   };
   for (const [name, value] of Object.entries(values)) vi.stubEnv(name, value);
@@ -45,7 +52,8 @@ function expectNoSecrets(text: string): void {
     'fake-project-ref',
     FAKE_ANON_KEY,
     FAKE_SERVICE_ROLE_KEY,
-    DEFAULT_USER_ID,
+    ACCESS_TOKEN,
+    SESSION_USER_ID,
     'user_id',
   ]) {
     expect(text).not.toContain(secret);
@@ -68,6 +76,13 @@ interface RecordedQuery {
   signal: AbortSignal | undefined;
 }
 
+/** One public.begin_request() call. */
+interface RecordedRpc {
+  fn: string;
+  args: unknown;
+  signal: AbortSignal | undefined;
+}
+
 interface FakeBuilder extends PromiseLike<PostgrestLikeResult> {
   select(columns: string): FakeBuilder;
   eq(column: string, value: unknown): FakeBuilder;
@@ -79,8 +94,14 @@ interface FakeBuilder extends PromiseLike<PostgrestLikeResult> {
   abortSignal(signal: AbortSignal): FakeBuilder;
 }
 
+interface FakeRpcBuilder extends PromiseLike<PostgrestLikeResult> {
+  abortSignal(signal: AbortSignal): FakeRpcBuilder;
+}
+
 const queries: RecordedQuery[] = [];
+const rpcCalls: RecordedRpc[] = [];
 let respond: (query: RecordedQuery) => Promise<PostgrestLikeResult>;
+let respondRpc: (call: RecordedRpc) => Promise<PostgrestLikeResult>;
 
 function rows(data: unknown): Promise<PostgrestLikeResult> {
   return Promise.resolve({ data, error: null, status: 200 });
@@ -133,13 +154,42 @@ function createBuilder(table: string): FakeBuilder {
   return builder;
 }
 
-// One stable client object: src/lib/supabase.ts caches by URL + key, so createClient is not
-// called again between tests. Behaviour is swapped through `respond`, not through the client.
+function createRpcBuilder(fn: string, args: unknown): FakeRpcBuilder {
+  const record: RecordedRpc = { fn, args, signal: undefined };
+  rpcCalls.push(record);
+
+  const builder: FakeRpcBuilder = {
+    abortSignal(signal) {
+      record.signal = signal;
+      return builder;
+    },
+    then(onfulfilled, onrejected) {
+      return respondRpc(record).then(onfulfilled, onrejected);
+    },
+  };
+  return builder;
+}
+
+// One stable client object. Behaviour is swapped through `respond` / `respondRpc`, not through
+// the client, so the per-request client construction stays observable via createClientMock.
 const fakeClient = {
   from: (table: string) => createBuilder(table),
+  rpc: (fn: string, args: unknown) => createRpcBuilder(fn, args),
 } as unknown as SupabaseAdminClient;
 
-// --- Fixtures, lifted from the seeded demo database -------------------------------------------
+// --- Fixtures ----------------------------------------------------------------------------------
+
+/** One row of public.begin_request(): an anonymous session, in good standing. */
+const SESSION_ROW = {
+  user_id: SESSION_USER_ID,
+  display_name: 'Me',
+  time_zone: 'UTC',
+  week_starts_on: 1,
+  is_anonymous: true,
+  last_seen_at: '2026-09-17T06:00:00+00:00',
+  expires_at: '2026-12-16T06:00:00+00:00',
+  retry_after_seconds: 0,
+};
 
 const HABIT_GOAL_ROW = {
   id: 'd0000000-0000-4000-8000-000000000001',
@@ -288,7 +338,7 @@ const TIMED_ENTRY_ROW = {
   id: '36305d32-ece1-42c4-879e-4980f04ca553',
   goal_id: 'd0000000-0000-4000-8000-000000000001',
   recurrence_id: 'd1000000-0000-4000-8000-000000000001',
-  // NULL title: 97 of the demo's 120 entries look like this, and mean "show the goal's title"
+  // NULL title: most of the demo's entries look like this, and mean "show the goal's title"
   title: null,
   notes: null,
   entry_date: '2026-09-17',
@@ -334,10 +384,17 @@ const LIFE_AREA_ROWS = [
   },
 ];
 
+/** A signed-in visitor's request. Every /api route needs one. */
+function get(path: string, app = createApp()): request.Test {
+  return request(app).get(path).set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+}
+
 beforeEach(() => {
   createClientMock.mockReset().mockReturnValue(fakeClient);
   queries.length = 0;
+  rpcCalls.length = 0;
   respond = () => rows([]);
+  respondRpc = () => rows([SESSION_ROW]);
   stubSupabaseEnv();
   vi.spyOn(console, 'error').mockImplementation(() => undefined);
 });
@@ -347,13 +404,129 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+const ROUTES = [
+  ['/api/goals', '/api/goals'],
+  ['/api/calendar', '/api/calendar?from=2026-09-01&to=2026-09-30'],
+  ['/api/areas', '/api/areas'],
+] as const;
+
+// --- Identity: who may call, and as whom ------------------------------------------------------
+
+describe.each(ROUTES)('%s identity', (_name, path) => {
+  it('refuses a request with no Authorization header, without touching Supabase', async () => {
+    const res = await request(createApp()).get(path);
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'unauthorized', reason: 'missing_token' });
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(createClientMock).not.toHaveBeenCalled();
+    expect(rpcCalls).toHaveLength(0);
+    expect(queries).toHaveLength(0);
+  });
+
+  it.each([
+    ['a bare token', 'not-a-bearer-token'],
+    ['the wrong scheme', 'Basic dXNlcjpwYXNz'],
+    ['Bearer with nothing after it', 'Bearer'],
+    ['a token that is not JWT-shaped', 'Bearer abcdef'],
+    ['a token with too many segments', 'Bearer a.b.c.d'],
+  ])('refuses %s as malformed, without touching Supabase', async (_case, header) => {
+    const res = await request(createApp()).get(path).set('Authorization', header);
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'unauthorized', reason: 'malformed_token' });
+    expect(createClientMock).not.toHaveBeenCalled();
+  });
+
+  it('reports invalid_token, and no upstream detail, when Supabase rejects the token', async () => {
+    respondRpc = () =>
+      Promise.resolve({
+        data: null,
+        error: { code: 'PGRST301', message: 'JWT expired', details: null, hint: null },
+        status: 401,
+      });
+
+    const res = await get(path);
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'unauthorized', reason: 'invalid_token' });
+    expect(res.text).not.toContain('PGRST301');
+    expect(res.text).not.toContain('JWT expired');
+    expectNoSecrets(res.text);
+    // Rejected before any product query ran.
+    expect(queries).toHaveLength(0);
+  });
+
+  it('reports no_profile when the token is accepted but maps to no account', async () => {
+    respondRpc = () => rows([]);
+
+    const res = await get(path);
+
+    expect(res.status).toBe(401);
+    expect(res.body).toEqual({ error: 'unauthorized', reason: 'no_profile' });
+    expect(queries).toHaveLength(0);
+  });
+
+  it('builds a client from the anon key plus the caller token — never the service-role key', async () => {
+    await get(path);
+
+    expect(createClientMock).toHaveBeenCalledTimes(1);
+    const [url, key, options] = createClientMock.mock.calls[0] as [
+      string,
+      string,
+      { global?: { headers?: Record<string, string> } },
+    ];
+    expect(url).toBe(FAKE_URL);
+    expect(key).toBe(FAKE_ANON_KEY);
+    expect(key).not.toBe(FAKE_SERVICE_ROLE_KEY);
+    expect(options.global?.headers?.Authorization).toBe(`Bearer ${ACCESS_TOKEN}`);
+  });
+
+  it('builds a fresh client per request, so no token outlives the request that brought it', async () => {
+    const app = createApp();
+    await get(path, app);
+    await get(path, app);
+
+    expect(createClientMock).toHaveBeenCalledTimes(2);
+  });
+
+  it('charges the request against the read quota, under the same deadline as the query', async () => {
+    await get(path);
+
+    expect(rpcCalls).toHaveLength(1);
+    expect(rpcCalls[0]?.fn).toBe('begin_request');
+    expect(rpcCalls[0]?.args).toEqual({ p_kind: 'read' });
+    expect(rpcCalls[0]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('refuses a caller over quota with 429 and Retry-After, and runs no query', async () => {
+    respondRpc = () => rows([{ ...SESSION_ROW, retry_after_seconds: 19 }]);
+
+    const res = await get(path);
+
+    expect(res.status).toBe(429);
+    expect(res.body).toEqual({ error: 'rate_limited', retryAfterSeconds: 19 });
+    expect(res.headers['retry-after']).toBe('19');
+    expect(res.headers['cache-control']).toBe('no-store');
+    expect(queries).toHaveLength(0);
+  });
+
+  it('never lets a response be reused for another caller', async () => {
+    const res = await get(path);
+
+    expect(res.status).toBe(200);
+    expect(res.headers['cache-control']).toBe('private, no-store');
+    expect(res.headers.vary).toContain('Authorization');
+  });
+});
+
 // --- GET /api/goals ---------------------------------------------------------------------------
 
 describe('GET /api/goals', () => {
   it('shapes each kind of goal for the tile that renders it', async () => {
     respond = () => rows([HABIT_GOAL_ROW, MEASURED_GOAL_ROW, SCHEDULED_GOAL_ROW]);
 
-    const res = await request(createApp()).get('/api/goals');
+    const res = await get('/api/goals');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -454,42 +627,42 @@ describe('GET /api/goals', () => {
     });
   });
 
-  it('asks goal_dashboard for active goals in canvas order, scoped to the default user', async () => {
+  it('asks goal_dashboard for active goals in canvas order, and names no user anywhere', async () => {
     respond = () => rows([HABIT_GOAL_ROW]);
 
-    await request(createApp()).get('/api/goals');
+    await get('/api/goals');
 
     expect(queries).toHaveLength(1);
     const [query] = queries;
     expect(query?.table).toBe('goal_dashboard');
     expect(query?.columns.split(',')).toContain('period_minimum_fraction');
     expect(query?.columns.split(',')).not.toContain('user_id');
+    // No user_id filter: the goals_select policy is the filter, and duplicating it here would
+    // mask a broken policy instead of defending against one.
     expect(query?.ops).toEqual([
-      `eq:user_id=${DEFAULT_USER_ID}`,
       'eq:status=active',
       'order:sort_order:asc',
       'order:created_at:asc',
     ]);
+    expect(query?.ops.join(' ')).not.toContain('user_id');
     // The timeout budget is real only if the signal actually reaches the query.
     expect(query?.signal).toBeInstanceOf(AbortSignal);
   });
 
-  it('scopes reads to DEFAULT_USER_ID when it is set', async () => {
-    const otherUser = '00000000-0000-4000-8000-0000000000ff';
-    stubSupabaseEnv({ DEFAULT_USER_ID: otherUser });
+  it('returns an empty board for a brand-new visitor rather than somebody else’s goals', async () => {
     respond = () => rows([]);
 
-    await request(createApp()).get('/api/goals');
+    const res = await get('/api/goals');
 
-    expect(queries[0]?.ops).toContain(`eq:user_id=${otherUser}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({ goals: [] });
   });
 
-  it('is cacheable for a minute and leaks no identifiers', async () => {
+  it('leaks no identifiers', async () => {
     respond = () => rows([HABIT_GOAL_ROW, MEASURED_GOAL_ROW]);
 
-    const res = await request(createApp()).get('/api/goals');
+    const res = await get('/api/goals');
 
-    expect(res.headers['cache-control']).toBe('public, max-age=60');
     expectNoSecrets(res.text);
   });
 });
@@ -507,7 +680,7 @@ describe('GET /api/calendar', () => {
   it('returns timed, untimed and goal-less entries, each carrying its goal', async () => {
     respondWithCalendar();
 
-    const res = await request(createApp()).get('/api/calendar?from=2026-09-17&to=2026-09-18');
+    const res = await get('/api/calendar?from=2026-09-17&to=2026-09-18');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -581,19 +754,17 @@ describe('GET /api/calendar', () => {
         },
       ],
     });
-    expect(res.headers['cache-control']).toBe('public, max-age=60');
     expectNoSecrets(res.text);
   });
 
   it('queries the range on entry_date, untimed entries first, then looks up only the goals it saw', async () => {
     respondWithCalendar();
 
-    await request(createApp()).get('/api/calendar?from=2026-09-17&to=2026-09-18');
+    await get('/api/calendar?from=2026-09-17&to=2026-09-18');
 
     expect(queries).toHaveLength(2);
     expect(queries[0]?.table).toBe('calendar_entries');
     expect(queries[0]?.ops).toEqual([
-      `eq:user_id=${DEFAULT_USER_ID}`,
       'gte:entry_date=2026-09-17',
       'lte:entry_date=2026-09-18',
       'order:entry_date:asc',
@@ -601,15 +772,16 @@ describe('GET /api/calendar', () => {
     ]);
     expect(queries[1]?.table).toBe('goal_dashboard');
     expect(queries[1]?.ops).toEqual([
-      `eq:user_id=${DEFAULT_USER_ID}`,
       'in:id=d0000000-0000-4000-8000-000000000008|d0000000-0000-4000-8000-000000000001',
     ]);
+    // Both round-trips run as the caller, on the one client built for this request.
+    expect(createClientMock).toHaveBeenCalledTimes(1);
   });
 
   it('skips the goal lookup entirely when nothing in the range is goal-linked', async () => {
     respond = () => rows([GOAL_LESS_ENTRY_ROW]);
 
-    const res = await request(createApp()).get('/api/calendar?from=2026-09-18&to=2026-09-18');
+    const res = await get('/api/calendar?from=2026-09-18&to=2026-09-18');
 
     expect(res.status).toBe(200);
     expect(queries).toHaveLength(1);
@@ -650,29 +822,33 @@ describe('GET /api/calendar', () => {
     async (_case, query, error, hint) => {
       respondWithCalendar();
 
-      const res = await request(createApp()).get(`/api/calendar${query}`);
+      const res = await get(`/api/calendar${query}`);
 
       expect(res.status).toBe(400);
       expect((res.body as { error: unknown }).error).toBe(error);
       expect((res.body as { message: string }).message).toContain(hint);
       expect(res.headers['cache-control']).toBe('no-store');
-      // A rejected request must never have reached Supabase.
+      // A rejected request must never have reached Supabase — not even to resolve the session.
       expect(queries).toHaveLength(0);
+      expect(rpcCalls).toHaveLength(0);
     },
   );
 
-  it('accepts a range of exactly the maximum length', async () => {
-    respond = () => rows([]);
+  it('validates the range before authenticating, so a bad request costs no round trip', async () => {
+    const res = await request(createApp()).get('/api/calendar?from=2026-09-30&to=2026-09-01');
 
-    const res = await request(createApp()).get('/api/calendar?from=2026-01-01&to=2027-01-01');
+    expect(res.status).toBe(400);
+    expect(createClientMock).not.toHaveBeenCalled();
+  });
+
+  it('accepts a range of exactly the maximum length', async () => {
+    const res = await get('/api/calendar?from=2026-01-01&to=2027-01-01');
 
     expect(res.status).toBe(200);
   });
 
   it('accepts a single day', async () => {
-    respond = () => rows([]);
-
-    const res = await request(createApp()).get('/api/calendar?from=2026-09-17&to=2026-09-17');
+    const res = await get('/api/calendar?from=2026-09-17&to=2026-09-17');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({ from: '2026-09-17', to: '2026-09-17', entries: [] });
@@ -685,7 +861,7 @@ describe('GET /api/areas', () => {
   it('returns the life areas for the dashboard key', async () => {
     respond = () => rows(LIFE_AREA_ROWS);
 
-    const res = await request(createApp()).get('/api/areas');
+    const res = await get('/api/areas');
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
@@ -710,31 +886,21 @@ describe('GET /api/areas', () => {
         },
       ],
     });
-    expect(res.headers['cache-control']).toBe('public, max-age=60');
     expectNoSecrets(res.text);
   });
 
-  it("asks for built-in areas and the user's own, in legend order", async () => {
+  it('asks for areas in legend order and lets the policy decide which ones', async () => {
     respond = () => rows(LIFE_AREA_ROWS);
 
-    await request(createApp()).get('/api/areas');
+    await get('/api/areas');
 
     expect(queries[0]?.table).toBe('life_areas');
-    expect(queries[0]?.ops).toEqual([
-      `or:user_id.is.null,user_id.eq.${DEFAULT_USER_ID}`,
-      'order:sort_order:asc',
-      'order:name:asc',
-    ]);
+    expect(queries[0]?.ops).toEqual(['order:sort_order:asc', 'order:name:asc']);
+    expect(queries[0]?.ops.join(' ')).not.toContain('user_id');
   });
 });
 
 // --- Failure modes, shared by all three routes -------------------------------------------------
-
-const ROUTES = [
-  ['/api/goals', '/api/goals'],
-  ['/api/calendar', '/api/calendar?from=2026-09-01&to=2026-09-30'],
-  ['/api/areas', '/api/areas'],
-] as const;
 
 describe.each(ROUTES)('%s when the data layer is unavailable', (_name, path) => {
   it('reports 503 missing_env, and builds no client, when Supabase is not configured', async () => {
@@ -744,7 +910,7 @@ describe.each(ROUTES)('%s when the data layer is unavailable', (_name, path) => 
       SUPABASE_SERVICE_ROLE_KEY: undefined,
     });
 
-    const res = await request(createApp()).get(path);
+    const res = await get(path);
 
     expect(res.status).toBe(503);
     expect(res.body).toEqual({
@@ -760,7 +926,7 @@ describe.each(ROUTES)('%s when the data layer is unavailable', (_name, path) => 
   it('names only the variables that are actually missing', async () => {
     stubSupabaseEnv({ SUPABASE_SERVICE_ROLE_KEY: undefined });
 
-    const res = await request(createApp()).get(path);
+    const res = await get(path);
 
     expect(res.status).toBe(503);
     expect((res.body as { missing: unknown }).missing).toEqual(['SUPABASE_SERVICE_ROLE_KEY']);
@@ -779,7 +945,7 @@ describe.each(ROUTES)('%s when the data layer is unavailable', (_name, path) => 
         status: 404,
       });
 
-    const res = await request(createApp()).get(path);
+    const res = await get(path);
 
     expect(res.status).toBe(503);
     expect(res.body).toEqual({ error: 'unavailable', reason: 'upstream_error' });
@@ -788,6 +954,21 @@ describe.each(ROUTES)('%s when the data layer is unavailable', (_name, path) => 
     expect(res.text).not.toContain('check the schema');
     expectNoSecrets(res.text);
     expect(res.headers['cache-control']).toBe('no-store');
+  });
+
+  it('reports 503 upstream_error when the session RPC itself fails', async () => {
+    respondRpc = () =>
+      Promise.resolve({
+        data: null,
+        error: { code: '42883', message: 'function public.begin_request(text) does not exist' },
+        status: 404,
+      });
+
+    const res = await get(path);
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'unavailable', reason: 'upstream_error' });
+    expect(res.text).not.toContain('begin_request');
   });
 
   it('reports 503 upstream_error when a column is missing from the answer', async () => {
@@ -801,20 +982,19 @@ describe.each(ROUTES)('%s when the data layer is unavailable', (_name, path) => 
             : { id: 'a', title: 'x' },
       ]);
 
-    const res = await request(createApp()).get(path);
+    const res = await get(path);
 
     expect(res.status).toBe(503);
     expect(res.body).toEqual({ error: 'unavailable', reason: 'upstream_error' });
   });
 
-  it('reports 503 invalid_config when DEFAULT_USER_ID is not a UUID', async () => {
-    stubSupabaseEnv({ DEFAULT_USER_ID: 'the-default-user' });
+  it('reports 503 upstream_error when the session row has drifted', async () => {
+    respondRpc = () => rows([{ user_id: SESSION_USER_ID }]);
 
-    const res = await request(createApp()).get(path);
+    const res = await get(path);
 
     expect(res.status).toBe(503);
-    expect(res.body).toEqual({ error: 'unavailable', reason: 'invalid_config' });
-    expect(res.text).not.toContain('the-default-user');
+    expect(res.body).toEqual({ error: 'unavailable', reason: 'upstream_error' });
   });
 
   it('reports 503 timeout, and gives up, when Supabase does not answer in time', async () => {
@@ -835,7 +1015,7 @@ describe.each(ROUTES)('%s when the data layer is unavailable', (_name, path) => 
         });
       });
 
-    const res = await request(createApp({ readTimeoutMs: 25 })).get(path);
+    const res = await get(path, createApp({ readTimeoutMs: 25 }));
 
     expect(res.status).toBe(503);
     expect(res.body).toEqual({ error: 'unavailable', reason: 'timeout' });
@@ -845,7 +1025,16 @@ describe.each(ROUTES)('%s when the data layer is unavailable', (_name, path) => 
   it('reports 503 timeout even if the query never settles at all', async () => {
     respond = () => new Promise<PostgrestLikeResult>(() => undefined);
 
-    const res = await request(createApp({ readTimeoutMs: 25 })).get(path);
+    const res = await get(path, createApp({ readTimeoutMs: 25 }));
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'unavailable', reason: 'timeout' });
+  });
+
+  it('reports 503 timeout when the session RPC hangs', async () => {
+    respondRpc = () => new Promise<PostgrestLikeResult>(() => undefined);
+
+    const res = await get(path, createApp({ readTimeoutMs: 25 }));
 
     expect(res.status).toBe(503);
     expect(res.body).toEqual({ error: 'unavailable', reason: 'timeout' });
@@ -861,7 +1050,9 @@ describe('the read-only contract', () => {
       const app = createApp();
 
       for (const [, path] of ROUTES) {
-        const res = await request(app)[method](path.split('?')[0] ?? path);
+        const res = await request(app)
+          [method](path.split('?')[0] ?? path)
+          .set('Authorization', `Bearer ${ACCESS_TOKEN}`);
         expect(res.status).toBe(404);
         expect(res.body).toEqual({ error: 'not_found' });
       }

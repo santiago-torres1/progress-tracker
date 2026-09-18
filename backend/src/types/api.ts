@@ -8,7 +8,7 @@ import type {
 } from './database.js';
 
 /*
- * The read-only API contract for v0.1.1-alpha.
+ * The product API contract.
  *
  * This is the shared shape: the backend produces it and the frontend will import it verbatim
  * rather than redeclaring it. Two rules keep it honest.
@@ -201,12 +201,27 @@ export type UnavailableReason =
   | 'timeout' // no answer within the route's budget
   | 'upstream_error'; // Supabase answered with an error, or sent an unexpected shape
 
+/**
+ * Why a caller could not be identified. Short codes only.
+ *
+ * The first two describe the request and the caller can act on them. The last two deliberately
+ * do not distinguish "expired" from "forged" from "unknown subject": telling an attacker which
+ * of those they hit tells them how to get closer.
+ */
+export type AuthReason =
+  | 'missing_token' // no Authorization header
+  | 'malformed_token' // present, but not `Bearer <jwt>`
+  | 'invalid_token' // Supabase would not accept it
+  | 'no_profile'; // accepted, but it maps to no account here
+
 export interface ApiErrorResponse {
   error: string;
   /** Present on 400s: says what was wrong with the request. Never echoes anything upstream. */
   message?: string;
-  /** Present on 503s. */
-  reason?: UnavailableReason;
+  /** Present on 401s and 503s. */
+  reason?: UnavailableReason | AuthReason;
   /** Present when `reason` is `missing_env`: the names of the unset variables, never values. */
   missing?: string[];
+  /** Present on 429s, mirroring the Retry-After header. */
+  retryAfterSeconds?: number;
 }

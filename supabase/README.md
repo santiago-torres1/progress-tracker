@@ -1,18 +1,27 @@
 # Supabase schema — goals, progress, calendar
 
-Design notes for the `progress-tracker` data layer (milestone `0.1.1-alpha`).
-**Nothing here has been applied to the hosted Supabase project.** These are SQL files
-for review; applying them is a human decision (see [Applying](#applying-the-migrations)).
+Design notes for the `progress-tracker` data layer.
 
-| Path                                                   | What it is                                        |
-| ------------------------------------------------------ | ------------------------------------------------- |
-| `migrations/20260916090000_init_types_and_helpers.sql` | enums + table-independent functions               |
-| `migrations/20260916090100_core_tables.sql`            | the six tables and their constraints              |
-| `migrations/20260916090200_indexes_and_triggers.sql`   | indexes, triggers, `expand_recurrence()`          |
-| `migrations/20260916090300_progress_views.sql`         | `goal_progress`, `goal_dashboard`                 |
-| `migrations/20260916090400_row_level_security.sql`     | RLS, policies, grants, identity helpers           |
-| `migrations/20260916090500_reference_data.sql`         | the six built-in life areas + the login-less user |
-| `seed.sql`                                             | **the read-only demo's content** — eight goals    |
+**The `20260916*` migrations are applied to the hosted Supabase project. They are immutable —
+never edit one in place again.** The `20260917*` files are `0.2.0-alpha` Phase 1 (anonymous
+accounts, real RLS, expiry, limits) and have not been applied; applying them is a human decision
+(see [Applying](#applying-the-migrations)).
+
+| Path                                                   | What it is                                                           |
+| ------------------------------------------------------ | -------------------------------------------------------------------- |
+| `migrations/20260916090000_init_types_and_helpers.sql` | enums + table-independent functions                                  |
+| `migrations/20260916090100_core_tables.sql`            | the six tables and their constraints                                 |
+| `migrations/20260916090200_indexes_and_triggers.sql`   | indexes, triggers, `expand_recurrence()`                             |
+| `migrations/20260916090300_progress_views.sql`         | `goal_progress`, `goal_dashboard`                                    |
+| `migrations/20260916090400_row_level_security.sql`     | RLS, policies, grants, identity helpers                              |
+| `migrations/20260916090500_reference_data.sql`         | the six built-in life areas + the login-less user                    |
+| `migrations/20260917100000_anonymous_identity.sql`     | `last_seen_at`, `is_anonymous`, the `auth.users` FK + signup trigger |
+| `migrations/20260917100100_ownership_hardening.sql`    | composite FKs that close two cross-tenant holes                      |
+| `migrations/20260917100200_usage_limits.sql`           | per-account caps and free-text length limits                         |
+| `migrations/20260917100300_rate_limits.sql`            | the shared request counter                                           |
+| `migrations/20260917100400_session_expiry.sql`         | `delete_expired_anonymous_users()`                                   |
+| `migrations/20260917100500_session_rpc.sql`            | `begin_request()` — identity + quota + touch                         |
+| `seed.sql`                                             | eight demo goals, local development only                             |
 
 ## ERD
 
@@ -29,11 +38,12 @@ erDiagram
 
     users {
         uuid id PK
-        uuid auth_user_id UK "NULL until login exists; future FK to auth.users"
+        uuid auth_user_id UK "FK to auth.users, ON DELETE CASCADE"
         text display_name
         text time_zone "IANA; defines this user's today"
         smallint week_starts_on "ISO 1=Mon..7=Sun"
-        boolean is_default "the single login-less user"
+        boolean is_anonymous "throwaway session; only these expire"
+        timestamptz last_seen_at "sliding 90-day expiry clock"
     }
     life_areas {
         uuid id PK
@@ -387,52 +397,180 @@ where user_id = $1 and entry_date between $2 and $3
 order by entry_date, start_at nulls first;
 ```
 
-### Identity while there is no login
+### Identity: anonymous accounts
 
-`20260916090500_reference_data.sql` inserts exactly one user with a fixed, documented id:
+Every visitor is signed in. Supabase **anonymous sign-in** mints a real `auth.users` row and an
+access token in the browser with no sign-in screen, the browser sends it as
+`Authorization: Bearer …`, and PostgREST verifies the signature before anything of ours runs. So
+`auth.uid()` is a verified fact and the RLS policies written in `20260916090400` finally do the
+isolating. Converting the account later (email or OAuth) keeps every row: GoTrue flips
+`is_anonymous` on the _same_ `auth.users` row, and everything is keyed on its id.
 
+The chain that makes that work:
+
+1. `users.auth_user_id` → `auth.users(id)` **`ON DELETE CASCADE`**. Deleting the auth account
+   deletes the profile, and the profile's own FKs cascade to goals → rules, entries, check-ins.
+2. `on_auth_user_created`, a `SECURITY DEFINER` trigger on `auth.users`, inserts the
+   `public.users` row at signup, so a visitor has a profile before their first request.
+3. `on_auth_user_updated` keeps `public.users.is_anonymous` in step, so a converted account stops
+   expiring.
+4. `public.begin_request(kind)` — one round trip per request that proves the token maps to a
+   profile, charges the request against this account's quota, refreshes `last_seen_at`, and
+   returns the profile. It is the only `SECURITY DEFINER` function on a request path; it takes no
+   identity from its caller, only `(select auth.uid())`.
+
+**`is_default` and `public.default_user_id()` are gone.** They answered "which row is _the_
+user", and with a session per visitor there is no _the_ user. The backend's `DEFAULT_USER_ID` env
+var went with them.
+
+`20260916090500_reference_data.sql` still inserts its fixed-id row
+(`00000000-0000-4000-8000-000000000001`) and `seed.sql` still hangs the eight demo goals off it.
+That row now has `auth_user_id IS NULL`, which matches **no** policy (`auth_user_id = auth.uid()`
+is NULL, never true), so it is invisible to every session rather than visible to all of them, and
+`is_anonymous = false` keeps the expiry sweep away from it. Locally it is what gives
+`supabase db reset` a populated board. **In the hosted project it is `0.1.1-alpha`'s demo content
+sitting where nobody can see it** — harmless, but dead weight. Removing it is a deliberate act:
+
+```sql
+delete from public.users where id = '00000000-0000-4000-8000-000000000001';
 ```
-00000000-0000-4000-8000-000000000001
-```
 
-A partial unique index (`users_single_default_uidx`) allows at most one `is_default` row, so
-this cannot silently become two. **How the backend resolves it:** read a `DEFAULT_USER_ID`
-env var defaulting to that constant and use it as `user_id` on every write — no query needed.
-`public.default_user_id()` exists as a SQL-side fallback.
+### Expiry: 90 days, sliding, computed not stored
 
-`users.auth_user_id` is nullable and **intentionally unconstrained**: there is no `auth.users`
-row to point at yet. The column exists now so that claiming this row later is an `UPDATE`,
-not a data migration.
+An anonymous account whose owner has not returned for **90 days** is deleted, and its rows go with
+it. `public.delete_expired_anonymous_users()` deletes from **`auth.users`** — not `public.users` —
+because that is the root of the cascade; deleting only the profile would leave a live token
+pointing at nothing. It is `SECURITY DEFINER`, granted to `service_role` alone, idempotent,
+batched (`p_limit`) and concurrency-safe (`FOR UPDATE SKIP LOCKED`), and it returns how many
+accounts it removed.
 
-### RLS: enabled now, dormant until login
+**The deadline is computed from `last_seen_at`, not stored as an `expires_at`.** A stored column
+is the same fact written twice: every path that touched `last_seen_at` would have to remember to
+update it, and one that forgot would either delete somebody's data early or never delete it.
+Computing costs nothing (`users_anonymous_last_seen_idx` is the sweep's driving scan) and moving
+the window is a one-line change to `public.anonymous_retention()` instead of a backfill. A
+generated column is not even available as a compromise: generation expressions must be
+`IMMUTABLE`, and `timestamptz + interval` is only `STABLE`.
+
+`last_seen_at` is refreshed **at most once a day**, inside `begin_request`. Retention is measured
+in days, so writing it on every request would cost a row version, a WAL record and autovacuum work
+per request to record something nobody reads at that resolution.
+
+**Nothing schedules the sweep.** The recommendation is `pg_cron` inside Supabase rather than a
+scheduled GitHub Actions workflow: no credential to leak or rotate, no network path from GitHub
+into the database, and it cannot be silently disabled the way GitHub disables schedules on
+inactive repositories — which is exactly the failure that would quietly stop data being deleted
+while the app looks fine. The `cron.schedule` calls are written out at the bottom of
+`20260917100400_session_expiry.sql`.
+
+### Limits live in the database
+
+The API is open: anyone with the URL gets an account and can write. So the limits are where a
+route handler that forgets to check cannot bypass them.
+
+| Limit                                    | Value | Why that number                                                           |
+| ---------------------------------------- | ----- | ------------------------------------------------------------------------- |
+| `goals_per_user`                         | 100   | archived and completed included, because they are stored rows             |
+| `calendar_entries_per_goal`              | 750   | ~2 years of a daily habit; the demo's busiest goal holds 35               |
+| `calendar_entries_without_goal_per_user` | 750   | without it, one `NULL` goal_id bypasses the per-goal cap entirely         |
+| `progress_entries_per_goal`              | 750   | ~2 years of daily check-ins                                               |
+| `recurrences_per_goal`                   | 10    | rules multiply into calendar rows, so this is the cheapest cap to enforce |
+| `life_areas_per_user`                    | 20    | custom areas are a later release; the policy already allows them          |
+
+Free text: `display_name` ≤ 80, area `name` ≤ 60, goal `title` ≤ 200 (already), goal `description`
+≤ 2000, entry `title` ≤ 200, entry `notes` ≤ 2000, check-in `note` ≤ 1000.
+
+Lengths are `CHECK` constraints. Counts have to be triggers (a `CHECK` cannot hold a subquery),
+and they are `AFTER … FOR EACH STATEMENT` with a transition table, so expanding a recurrence runs
+**one** count rather than ninety. Each takes a transaction advisory lock on the scope before
+counting, which is what makes the cap exact rather than approximate under concurrency: at READ
+COMMITTED the waiting transaction takes a fresh snapshot and sees what the one ahead committed.
+
+They fire **on INSERT only**. No `UPDATE` can increase a row count — it can only move a row
+between two scopes the same person already owns, since RLS and the composite `(id, user_id)`
+foreign keys make moving one across an account boundary impossible. The worst an `UPDATE` can do
+is leave one goal temporarily over its share, which the next `INSERT` into that goal refuses.
+
+A cap says no as `errcode 23514`, message `limit_reached`, `DETAIL` naming the cap. No row, id,
+count or caller input appears in it.
+
+### Rate limiting
+
+`public.rate_limits` is a fixed-window counter, incremented inside `begin_request` and keyed on
+`public.users.id` **derived from the verified JWT** — never on anything the caller sent, so the key
+is unforgeable. Two windows per kind: reads 120/minute and 3000/hour, writes 60/minute and
+1000/hour.
+
+It is in Postgres rather than in the process because a token bucket in module scope does not mean
+what it says on Lambda: with no shared memory the limit becomes "per warm instance", the ceiling
+moves as the function scales out, every new instance starts with a full bucket, and an attacker
+can provoke recycling to reset it. A row in Postgres is one counter for every instance, and it
+costs no extra round trip because `begin_request` already makes one.
+
+What it does **not** stop, honestly:
+
+- **Requests with no token, or an invalid one.** They are refused before any database call, so they
+  never reach the counter. Their cost is a Lambda invocation, bounded by reserved concurrency —
+  not by this table.
+- **Mass account creation.** A fresh account is a fresh quota. The defence is Supabase's own per-IP
+  anonymous sign-in rate limit (Auth → Rate Limits in the dashboard), which has to be turned on
+  there, not here.
+- **A burst across a window boundary.** A fixed window allows up to 2× the limit spanning the edge;
+  the hourly window is what blunts that.
+- It is **not keyed by IP**. The database does not know the client's IP, and the value a Lambda
+  Function URL can be talked into reporting is not worth treating as identity.
+
+### Cross-tenant holes closed in `20260917100100`
+
+Two columns were plain single-column foreign keys where the rest of the schema uses composite
+`(child, user_id) → parent (id, user_id)` keys, and with real sessions both were exploitable:
+
+- **`calendar_entries.recurrence_id`** — a session could insert its _own_ entry citing _another_
+  session's rule. That row then occupies `(recurrence_id, entry_date)` in the unique index
+  `expand_recurrence()` relies on for `ON CONFLICT DO NOTHING`, so the real owner's expansion for
+  that day would silently do nothing. A handful of rows could blank out another person's calendar.
+- **`progress_entries.calendar_entry_id`** — the same shape, with smaller impact today (nothing
+  reads the link) but a foreign key pointing across a tenant boundary, which Phase 2's write
+  routes are exactly the code that would start trusting.
+
+Both are now composite, with `ON DELETE SET NULL (column)` — the PostgreSQL 15+ form, which is what
+makes the fix possible at all: the plain form would try to `NULL` `user_id` as well, and it is
+`NOT NULL`.
+
+### RLS: load-bearing
 
 Every table has RLS enabled and a full set of policies keyed on
-`auth.uid() = users.auth_user_id`, resolved through `public.current_user_id()`. Policies wrap
-it as `(select public.current_user_id())` so PostgreSQL evaluates it once per statement rather
-than once per row. Both views are `security_invoker = true` (PostgreSQL 15+) — without that a
-view runs as its owner and would hand every user's rows to everyone.
+`auth.uid() = users.auth_user_id`, resolved through `public.current_user_id()`. Policies wrap it as
+`(select public.current_user_id())` so PostgreSQL evaluates it once per statement rather than once
+per row. Both views are `security_invoker = true` (PostgreSQL 15+) — without that a view runs as
+its owner and would hand every user's rows to everyone.
 
-**What happens today:** the backend uses the **service-role key**, and `service_role` has
-`BYPASSRLS`. It sees everything; that is the only reason the app works before login exists,
-and the reason that key must never leave the server. Meanwhile `anon` is granted no table
-privileges and matched by no policy, so a leaked anon key reads exactly nothing.
+**The service-role key no longer serves requests.** The backend builds a client per request from
+the anon key plus the caller's access token, so PostgREST applies these policies as that user.
+`service_role` (which has `BYPASSRLS`) is kept for `GET /health/db` and maintenance jobs only, and
+`backend/src/lib/supabase.ts` says so where the client is built. The product queries have **had
+their `user_id` filters removed**: the policy is the filter, and a second copy would mask a broken
+policy rather than defend against one.
 
-_Verified on a real PostgreSQL 17:_ `anon` → permission denied; `authenticated` with no JWT →
-0 rows; `authenticated` whose JWT is not linked to a `users` row → 0 rows; after setting
-`auth_user_id`, that user sees their 8 goals, 120 entries and all 6 built-in areas; a _second_
-authenticated user sees 0 goals and 0 entries but still sees the 6 built-in areas.
+A session's privileges on its own profile are column-level, not blanket:
 
-**Exactly what must change when login arrives:**
+```sql
+revoke update on table public.users from authenticated;
+grant update (display_name, time_zone, week_starts_on) on table public.users to authenticated;
+```
 
-1. Set `public.users.auth_user_id` on the existing row to the new `auth.users` id.
-2. `alter table public.users add constraint users_auth_user_id_fkey foreign key (auth_user_id) references auth.users (id) on delete cascade;`
-3. Add a `SECURITY DEFINER` trigger on `auth.users` that inserts a `public.users` row on
-   signup; drop `is_default` and `public.default_user_id()`.
-4. Switch the backend's per-request reads to the caller's access token (anon key +
-   `Authorization` header) so these policies actually do the work; keep the service-role key
-   for administrative jobs only (e.g. the recurrence horizon).
+so a visitor cannot set `is_anonymous = false` to opt out of expiry, cannot rewrite `last_seen_at`
+to stay alive forever, and cannot touch `auth_user_id`. `last_seen_at` is written only by
+`begin_request`; `is_anonymous` only by the `auth.users` triggers.
 
-No policy needs rewriting for any of that.
+_Verified on a real PostgreSQL 17_, with the Supabase roles and `auth.uid()` stubbed and all
+migrations plus `seed.sql` applied. Two anonymous accounts, A and B. A creates a goal, a
+recurrence, a calendar entry and a check-in through RLS; B then sees `0` goals, `0` entries, `0`
+check-ins, `0` recurrences, `0` dashboard rows and `0` other profiles, while both see the 6
+built-in areas. Holding A's real ids, B cannot: write an entry into A's goal, insert a row owned by
+A, squat A's `(recurrence_id, entry_date)`, attach a check-in to A's entry, rename A, set its own
+`is_anonymous`/`last_seen_at`, call `consume_rate_limit`, read `rate_limits`, or run the expiry
+job. The login-less demo row is invisible to both.
 
 ### Constraints as documentation
 
@@ -442,7 +580,7 @@ cannot appear on a scheduled goal; a habit needs a period; **a habit's `minimum_
 at least 1 and no greater than its `target_count`**; **`minimum_count` cannot appear on a
 measured or scheduled goal**; **`size` outside `small|medium|large` is not a value the type
 has**; time zones must be real IANA names (trigger-checked — a name lookup is `STABLE`, so a
-CHECK is not allowed); at most one default user; a weekly rule needs weekdays and they must be
+CHECK is not allowed); a weekly rule needs weekdays and they must be
 1–7; one occurrence per rule per day; colours must be `#RRGGBB`; built-in area slugs are
 unique, so a seventh area cannot quietly reuse one.
 
@@ -450,21 +588,29 @@ unique, so a seventh area cannot quietly reuse one.
 has nowhere else to put its floor.
 
 Ownership is enforced structurally: child tables carry a denormalised `user_id` (RLS wants it
-on the row) and reference `goals (id, user_id)` via a composite FK, so a calendar entry cannot
-claim a goal belonging to someone else. For `calendar_entries.goal_id`, MATCH SIMPLE means the
-composite FK simply does not apply when `goal_id` is NULL — exactly right for a plain calendar
-item, while `user_id` stays anchored by its own FK.
+on the row) and reference their parent's `(id, user_id)` via a composite FK, so a calendar entry
+cannot claim a goal — or a recurrence, or a check-in a calendar entry — belonging to someone
+else. MATCH SIMPLE means each composite FK simply does not apply when the optional id is NULL:
+exactly right for a plain calendar item with no goal, or a one-off entry with no rule, while
+`user_id` stays anchored by its own FK. See [Cross-tenant holes closed in
+`20260917100100`](#cross-tenant-holes-closed-in-20260917100100) for the two that were missing.
 
 Triggers keep derived state honest: `updated_at` on every table, `entry_date` from `start_at`,
 `completed_at`/`archived_at` in step with `status` — including the case that a goal archived
 after being completed **keeps** its `completed_at`.
 
-## `seed.sql` is the demo's content, not a fixture
+## `seed.sql`: `0.1.1-alpha`'s content, now local development only
 
-`0.1.1-alpha` ships as a **read-only live demo**: the dashboard and the calendar render real
-rows from Supabase and nothing in the app writes. There is no login and no create flow. So
-`seed.sql` is not test data — it is the only thing any visitor will ever see, and a change to
-it is a copy change.
+In `0.1.1-alpha` this file **was** the product: a read-only demo where every visitor saw the same
+eight goals. `0.2.0-alpha` ends that. Every visitor gets their own anonymous account and an empty
+board, and the rows below belong to the login-less user nobody can see any more (see
+[Identity](#identity-anonymous-accounts)).
+
+It is still worth keeping and still worth reading, for two reasons: `supabase db reset` gives a
+developer a populated board in one command, and the eight goals are the only set anyone has
+assembled that exercises all three kinds, all three sizes, all six areas and every distinct shape
+of progress — which is what makes them useful fixtures for the dashboard and for these
+migrations' verification.
 
 Eight goals belonging to one fictional but coherent person, across all six areas, all three
 kinds and all three sizes, and deliberately in different shapes of progress — a dashboard
@@ -501,7 +647,7 @@ in the repo schedules it today.
 
 ## Applying the migrations
 
-Nothing below has been run against the hosted project.
+The `20260916*` files are already applied to the hosted project. The `20260917*` files are not.
 
 ```bash
 # Local (needs Docker + the Supabase CLI; supabase/config.toml is not committed yet,
@@ -514,13 +660,19 @@ supabase link --project-ref <ref>
 supabase db push             # migrations only; seed.sql is never pushed
 ```
 
-Without the CLI, paste the six migration files into the SQL editor **in filename order**.
+Without the CLI, paste the unapplied migration files into the SQL editor **in filename order**.
 
-`seed.sql` is deliberately not pushed by `db push`, because a seed reaching a real project
-should always be a conscious act. For the read-only demo it **is** the intended content, so
-applying it by hand is expected — see [`seed.sql` is the demo's
-content](#seedsql-is-the-demos-content-not-a-fixture). It is safe to re-run. Remove it again
-with:
+Two things `db push` cannot do, and should not:
+
+- **Enable the expiry schedule.** `pg_cron` and the two `cron.schedule` calls at the bottom of
+  `20260917100400_session_expiry.sql` are a deliberate, one-off act.
+- **Turn on Supabase's anonymous sign-in**, and its per-IP rate limit, in Auth → Providers and
+  Auth → Rate Limits. Without the first, nobody can sign in at all; without the second, nothing
+  stops one machine minting accounts, and no table in this schema can stand in for it.
+
+`seed.sql` is deliberately not pushed by `db push`, because a seed reaching a real project should
+always be a conscious act — and from `0.2.0-alpha` it has no business in the hosted project at
+all. It is safe to re-run locally. Remove it again with:
 
 ```sql
 delete from public.goals where id::text like 'd0000000-0000-4000-8000-%';
@@ -551,9 +703,17 @@ and pass `Database` to `createClient<Database>()` in `backend/src/lib/supabase.t
 - **Overnight sessions.** `end_time > start_time` is required, so a 23:00–01:00 session cannot
   be expressed yet.
 - **User-defined life areas.** The six built-ins are final for `0.1.x`. The mechanism for
-  user areas already exists (`user_id IS NOT NULL`) and needs no migration — only UI.
-- **Writes of any kind in the app.** `0.1.1-alpha` is a read-only demo; the RLS policies and
-  grants for writing are in place and dormant.
+  user areas already exists (`user_id IS NOT NULL`) and needs no migration — only UI. The cap
+  (`life_areas_per_user`) is already enforced.
+- **Write routes in the API.** Phase 1 is identity and safety only: the policies, the caps, the
+  quotas and the `'write'` bucket in `begin_request` are all in place and waiting for Phase 2.
+- **Converting an anonymous account to a permanent one from the UI.** The database side is done
+  (`on_auth_user_updated` flips `is_anonymous` and the account stops expiring); the sign-up flow
+  that triggers it is a later release.
+- **Telling a visitor their data expires.** `begin_request` already returns `expires_at`; nothing
+  in the UI shows it.
+- **An IP-keyed rate limit.** See [Rate limiting](#rate-limiting) for why it is not in the
+  database, and what covers it instead.
 - **Sub-goals / milestones / dependencies**, tags, attachments, and shared goals.
 - **`supabase/config.toml`.** Not committed, so nothing in the repo can be mistaken for a link
   to the hosted project. `supabase init` generates it.

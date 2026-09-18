@@ -1,4 +1,4 @@
-import { getReadClient, runQuery } from './read.js';
+import { runQuery } from './read.js';
 import {
   readBoolean,
   readDate,
@@ -13,7 +13,7 @@ import {
   readString,
   type UnknownRow,
 } from './row.js';
-import { getDefaultUserId } from './user.js';
+import type { SupabaseUserClient } from './supabase.js';
 import {
   GOAL_KINDS,
   GOAL_SIZES,
@@ -35,7 +35,10 @@ import type { CalendarEntryGoal, GoalArea, GoalSummary } from '../types/api.js';
  * Exactly the columns the dashboard needs, named so the query is greppable and can be run
  * verbatim against a real database (it has been: see the psql verification in the PR notes).
  *
- * `user_id` is deliberately absent — it is a filter, never a field the client sees.
+ * `user_id` is deliberately absent — it is neither selected nor filtered on. Row-level
+ * security scopes the view to the caller (goal_dashboard is security_invoker, so the policies on
+ * public.goals apply through it), and adding a redundant `user_id = …` filter on top would hide
+ * a broken policy from the isolation test rather than defend against one.
  * `completed_at` / `archived_at` are absent because this endpoint returns active goals only.
  */
 export const GOAL_DASHBOARD_COLUMNS = [
@@ -198,16 +201,15 @@ export function toGoalSummary(row: UnknownRow): GoalSummary {
  * `sort_order, created_at` is the schema's documented ordering: the canvas is unsorted, but the
  * layout still has to be identical across reloads.
  */
-export async function fetchActiveGoals(timeoutMs?: number): Promise<GoalSummary[]> {
-  const userId = getDefaultUserId();
-  const client = getReadClient();
-
+export async function fetchActiveGoals(
+  client: SupabaseUserClient,
+  timeoutMs?: number,
+): Promise<GoalSummary[]> {
   const rows = await runQuery(
     (signal) =>
       client
         .from('goal_dashboard')
         .select(GOAL_DASHBOARD_COLUMNS)
-        .eq('user_id', userId)
         .eq('status', 'active')
         .order('sort_order', { ascending: true })
         .order('created_at', { ascending: true })
@@ -229,20 +231,17 @@ export async function fetchActiveGoals(timeoutMs?: number): Promise<GoalSummary[
  * in the range, so it stays one indexed lookup.
  */
 export async function fetchGoalsByIds(
+  client: SupabaseUserClient,
   goalIds: string[],
   timeoutMs?: number,
 ): Promise<Map<string, CalendarEntryGoal>> {
   if (goalIds.length === 0) return new Map();
-
-  const userId = getDefaultUserId();
-  const client = getReadClient();
 
   const rows = await runQuery(
     (signal) =>
       client
         .from('goal_dashboard')
         .select(CALENDAR_GOAL_COLUMNS)
-        .eq('user_id', userId)
         .in('id', goalIds)
         .abortSignal(signal),
     '[api/calendar]',
