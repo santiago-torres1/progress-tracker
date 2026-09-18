@@ -135,6 +135,23 @@ svg {
   }
 }
 
+/* The one mark that means "this happened", arriving rather than appearing. Used wherever a tick
+   turns up in response to something the reader just did. */
+@keyframes pt-tick {
+  from {
+    opacity: 0;
+    transform: scale(0.72);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* Reduced motion removes the travel, never the news. Durations collapse to a hair rather than to
+   zero so a transition still ends on its real value, and delays collapse too — a delayed state
+   change with no animation to cover it would just be a wrong value held on screen. */
 @media (prefers-reduced-motion: reduce) {
   *,
   *::before,
@@ -143,5 +160,6 @@ svg {
     animation-delay: 0ms !important;
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
+    transition-delay: 0ms !important;
   }
 }
