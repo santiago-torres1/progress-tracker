@@ -28,7 +28,9 @@ import {
   fetchCalendar,
   fetchGoalTemplates,
   fetchGoals,
+  fetchRecurrences,
   replaceRecurrence,
+  type ApiResult,
 } from '../lib/api';
 import { areasInUse } from '../lib/areas';
 import {
@@ -44,6 +46,7 @@ import { useAppSession } from '../lib/sessionContext';
 import { useApiResource } from '../lib/useApiResource';
 import { useArrange } from '../lib/useArrange';
 import { useGoalBoard } from '../lib/useGoalBoard';
+import type { RecurrencesResponse } from '../types/api';
 import { StatusNote } from './StatusNote';
 import type { CalendarEntry, CreateGoalRequest, GoalSummary, RecurrenceInput } from '../types/api';
 import './Dashboard.css';
@@ -128,8 +131,29 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
     [entries, openGoal],
   );
 
-  const existingRecurrenceId =
+  const openGoalId = openGoal?.id ?? null;
+
+  // The goal's own rules, rather than whichever occurrence happened to fall inside the window the
+  // board fetched: a rule whose occurrences all sit outside it would otherwise look like no rule at
+  // all, and the editor would quietly offer to create a second one. Asks for nothing while no goal
+  // is open.
+  const loadRecurrences = useCallback(
+    (signal: AbortSignal): Promise<ApiResult<RecurrencesResponse>> =>
+      openGoalId === null
+        ? Promise.resolve({ kind: 'ok', data: { recurrences: [] } })
+        : call((o) => fetchRecurrences(openGoalId, o), signal),
+    [call, openGoalId],
+  );
+  const recurrences = useApiResource(loadRecurrences);
+
+  // While that read is in flight, the old scan is still the best guess available; once it lands it
+  // is authoritative, including when it says there is no rule.
+  const scannedRecurrenceId =
     goalEntries.find((entry) => entry.recurrenceId !== null)?.recurrenceId ?? null;
+  const existingRecurrenceId =
+    recurrences.state.kind === 'ok'
+      ? (recurrences.state.data.recurrences[0]?.id ?? null)
+      : scannedRecurrenceId;
 
   // A plain function, not a memoized one: nothing depends on its identity, and wrapping it would
   // only be a promise about stability that the React Compiler would have to verify.
