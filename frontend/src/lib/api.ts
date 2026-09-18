@@ -58,6 +58,7 @@ import type {
   RecurrenceFreq,
   RecurrenceInput,
   RecurrenceResponse,
+  RecurrencesResponse,
   ScheduledState,
   SessionProfile,
   SessionResponse,
@@ -649,6 +650,13 @@ function parseRecurrenceResponse(body: unknown): RecurrenceResponse | null {
   return recurrence === null || occurrences === null ? null : { recurrence, occurrences };
 }
 
+function parseRecurrencesResponse(body: unknown): RecurrencesResponse | null {
+  if (!isRecord(body)) return null;
+
+  const recurrences = parseArray(body.recurrences, parseRecurrence);
+  return recurrences === null ? null : { recurrences };
+}
+
 function parseDeleteRecurrenceResponse(body: unknown): DeleteRecurrenceResponse | null {
   if (!isRecord(body) || typeof body.id !== 'string') return null;
   if (!isRecord(body.occurrences)) return null;
@@ -953,6 +961,20 @@ export function deleteMeasurement(
 }
 
 /** POST /api/goals/:goalId/recurrences — target days and times. */
+/**
+ * GET /api/goals/:goalId/recurrences — the rules this goal already has.
+ *
+ * The editor needs this to replace a rule: a goal's occurrences may all sit outside the window the
+ * dashboard fetched, so looking for one there finds nothing and silently offers to create a second.
+ */
+export function fetchRecurrences(
+  goalId: string,
+  options: ApiRequestOptions = {},
+): Promise<ApiResult<RecurrencesResponse>> {
+  const path = `/api/goals/${encodeURIComponent(goalId)}/recurrences`;
+  return request({ path, parse: parseRecurrencesResponse }, options);
+}
+
 export function createRecurrence(
   goalId: string,
   body: RecurrenceInput,

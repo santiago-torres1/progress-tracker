@@ -539,6 +539,16 @@ export interface RecurrenceResponse {
   occurrences: OccurrenceChange;
 }
 
+/**
+ * GET /api/goals/:goalId/recurrences — every rule on one goal, paused ones included.
+ *
+ * A goal with no rules and a goal belonging to someone else both answer an empty list: row-level
+ * security makes those the same fact, and a 404 would say which ids exist.
+ */
+export interface RecurrencesResponse {
+  recurrences: Recurrence[];
+}
+
 /** Deleting a rule keeps the occurrences that already happened; `kept` counts them. */
 export interface DeleteRecurrenceResponse {
   id: string;

@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { areasPayload, calendarPayload, goalsPayload, jsonResponse } from '../test/fixtures';
-import { fetchAreas, fetchCalendar, fetchGoals } from './api';
+import { fetchAreas, fetchCalendar, fetchGoals, fetchRecurrences } from './api';
 
 function respondWith(body: unknown, status = 200) {
   return vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(body, status));
@@ -188,6 +188,50 @@ describe('fetchAreas', () => {
   it('rejects an area without its colour or sort order', async () => {
     const body = { areas: [{ id: 'a', slug: 'health', name: 'Health', icon: null }] };
     const result = await fetchAreas({ fetchImpl: respondWith(body) });
+
+    expect(result).toEqual({ kind: 'failed', reason: 'malformed', status: 200 });
+  });
+});
+
+describe('fetchRecurrences', () => {
+  const rule = {
+    id: 'r1',
+    goalId: 'g1',
+    freq: 'weekly',
+    interval: 1,
+    byWeekday: [2, 4],
+    startDate: '2026-09-01',
+    untilDate: null,
+    startTime: '19:00:00',
+    endTime: '20:00:00',
+    timeZone: 'Europe/Madrid',
+    generatedThrough: '2026-12-01',
+    isActive: true,
+    createdAt: '2026-09-01T10:00:00.000Z',
+    updatedAt: '2026-09-01T10:00:00.000Z',
+  };
+
+  it("returns a goal's rules", async () => {
+    const fetchImpl = respondWith({ recurrences: [rule] });
+    const result = await fetchRecurrences('g1', { fetchImpl });
+
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.data.recurrences).toHaveLength(1);
+    expect(result.data.recurrences[0]?.byWeekday).toEqual([2, 4]);
+    expect(fetchImpl.mock.calls[0]?.[0]).toContain('/api/goals/g1/recurrences');
+  });
+
+  it('reads an empty list as an answer, not a failure', async () => {
+    // A goal with no rules and someone else's goal answer the same way, on purpose.
+    const result = await fetchRecurrences('g1', { fetchImpl: respondWith({ recurrences: [] }) });
+
+    expect(result).toEqual({ kind: 'ok', data: { recurrences: [] } });
+  });
+
+  it('rejects a rule missing its schedule', async () => {
+    const body = { recurrences: [{ id: 'r1', goalId: 'g1', freq: 'weekly' }] };
+    const result = await fetchRecurrences('g1', { fetchImpl: respondWith(body) });
 
     expect(result).toEqual({ kind: 'failed', reason: 'malformed', status: 200 });
   });
