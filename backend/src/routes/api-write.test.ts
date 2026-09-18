@@ -373,6 +373,13 @@ const TEMPLATE_ROWS = [
   },
 ];
 
+/** public.users, as the profile update selects it back. */
+const PROFILE_ROW = {
+  display_name: 'Me',
+  time_zone: 'America/New_York',
+  week_starts_on: 7,
+};
+
 /** The body of a valid habit goal, used wherever the test is about something else. */
 const NEW_HABIT = {
   title: 'Move your body',
@@ -401,6 +408,7 @@ beforeEach(() => {
   queries.length = 0;
   rpcCalls.length = 0;
   respond = (query) => {
+    if (query.table === 'users') return rows([PROFILE_ROW]);
     if (query.table === 'goal_dashboard') return rows([HABIT_TILE_ROW]);
     if (query.table === 'life_areas') return rows(LIFE_AREA_ROWS);
     if (query.table === 'goal_templates') return rows(TEMPLATE_ROWS);
@@ -466,6 +474,7 @@ const WRITES = [
     { freq: 'daily', startDate: '2026-09-21' },
   ],
   ['delete a rule', 'delete', `/api/goals/${GOAL_ID}/recurrences/${RULE_ID}`, undefined],
+  ['set the profile', 'patch', '/api/session', { timeZone: 'America/New_York' }],
 ] as const;
 
 // --- Identity: every write is a session's write, charged to the write quota ---------------------
@@ -1299,5 +1308,127 @@ describe('GET /api/goals', () => {
     expect(res.status).toBe(400);
     expect(bodyOf(res).field).toBe('status');
     expect(createClientMock).not.toHaveBeenCalled();
+  });
+});
+
+// --- The session profile -------------------------------------------------------------------------
+
+describe('the session profile', () => {
+  function getSession(): request.Test {
+    return request(createApp()).get('/api/session').set('Authorization', `Bearer ${ACCESS_TOKEN}`);
+  }
+
+  it('answers GET from the session alone, with no second round trip', async () => {
+    const res = await getSession();
+
+    expect(res.status).toBe(200);
+    expect(res.body).toEqual({
+      session: {
+        timeZone: 'UTC',
+        weekStartsOn: 1,
+        isAnonymous: true,
+        expiresAt: '2026-12-17T06:00:00.000Z',
+      },
+    });
+    // begin_request resolved it; nothing else was asked.
+    expect(rpcCalls).toHaveLength(1);
+    expect(rpcCalls[0]?.args).toEqual({ p_kind: 'read' });
+    expect(queries).toHaveLength(0);
+  });
+
+  it('carries no account id, in either direction', async () => {
+    const res = await getSession();
+
+    expectNoSecrets(res.text);
+    expect(res.text).not.toContain('userId');
+  });
+
+  it('sets the zone and the week start, and reads back what was stored', async () => {
+    const res = await send('patch', '/api/session').send({
+      timeZone: 'America/New_York',
+      weekStartsOn: 7,
+    });
+
+    expect(res.status).toBe(200);
+    const update = queries.find((query) => query.verb === 'update');
+    expect(update?.table).toBe('users');
+    expect(update?.payload).toEqual({ time_zone: 'America/New_York', week_starts_on: 7 });
+    expect(res.body).toEqual({
+      session: {
+        // From the row the database returned, not from the request.
+        timeZone: 'America/New_York',
+        weekStartsOn: 7,
+        isAnonymous: true,
+        expiresAt: '2026-12-17T06:00:00.000Z',
+      },
+    });
+  });
+
+  it('names one row, and that id comes from the verified token', async () => {
+    await send('patch', '/api/session').send({ timeZone: 'America/New_York' });
+
+    const update = queries.find((query) => query.verb === 'update');
+    expect(update?.ops).toEqual([`eq:id=${SESSION_USER_ID}`]);
+  });
+
+  it('will not carry anything the column grant forbids, whatever the body says', async () => {
+    await send('patch', '/api/session').send({
+      timeZone: 'America/New_York',
+      isAnonymous: false,
+      is_anonymous: false,
+      lastSeenAt: '2099-01-01T00:00:00Z',
+      last_seen_at: '2099-01-01T00:00:00Z',
+      authUserId: OTHER_USER_ID,
+      auth_user_id: OTHER_USER_ID,
+      id: OTHER_USER_ID,
+      user_id: OTHER_USER_ID,
+      displayName: 'someone else',
+    });
+
+    const update = queries.find((query) => query.verb === 'update');
+    expect(update?.payload).toEqual({ time_zone: 'America/New_York' });
+    expect(JSON.stringify(update?.payload)).not.toContain(OTHER_USER_ID);
+    expect(JSON.stringify(update?.payload)).not.toContain('2099');
+    // And the row it names is still the caller's own.
+    expect(update?.ops).toEqual([`eq:id=${SESSION_USER_ID}`]);
+  });
+
+  it("renders the database's own time-zone check as a 400 naming the field", async () => {
+    respond = () => fails('22023', 'invalid IANA time zone: Mars/Olympus_Mons');
+
+    const res = await send('patch', '/api/session').send({ timeZone: 'Europe/Madrid' });
+
+    expect(res.status).toBe(400);
+    expect(res.body).toEqual({
+      error: 'invalid_request',
+      field: 'timeZone',
+      message: 'timeZone must be an IANA time zone name, e.g. Europe/Madrid.',
+    });
+    // The upstream message ends in the value the caller sent; it is logged, never returned.
+    expect(res.text).not.toContain('Mars/Olympus_Mons');
+    expect(res.text).not.toContain('22023');
+  });
+
+  it.each([
+    ['a zone that is not a name', { timeZone: 'not a zone!' }, 'timeZone'],
+    ['a zone that is not a string', { timeZone: 7 }, 'timeZone'],
+    ['a week start of 0', { weekStartsOn: 0 }, 'weekStartsOn'],
+    ['a week start of 8', { weekStartsOn: 8 }, 'weekStartsOn'],
+    ['a fractional week start', { weekStartsOn: 1.5 }, 'weekStartsOn'],
+  ])('refuses %s before spending a round trip', async (_case, body, field) => {
+    const res = await send('patch', '/api/session').send(body);
+
+    expect(res.status).toBe(400);
+    expect(bodyOf(res).field).toBe(field);
+    expect(createClientMock).not.toHaveBeenCalled();
+    expect(queries).toHaveLength(0);
+  });
+
+  it('refuses a request that changes nothing', async () => {
+    const res = await send('patch', '/api/session').send({ isAnonymous: false });
+
+    expect(res.status).toBe(400);
+    expect(bodyOf(res).message).toBe('Send timeZone, weekStartsOn, or both.');
+    expect(queries).toHaveLength(0);
   });
 });

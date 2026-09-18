@@ -58,6 +58,25 @@ const CONFLICT_TOKENS: Record<string, ConflictReason> = {
   wrong_goal_kind: 'wrong_goal_kind',
 };
 
+/**
+ * The one message this module matches on rather than a code, and the reason it does.
+ *
+ * Time zones cannot be validated by a CHECK — a name lookup in pg_timezone_names is STABLE, not
+ * IMMUTABLE — so public.validate_time_zone() (20260916090000) is a trigger that raises
+ * `invalid IANA time zone: <name>` with errcode 22023. That is the ONLY list of zone names that
+ * matters, because it is the one PostgreSQL will actually accept, and shipping a second copy in
+ * TypeScript would drift with every tzdata release.
+ *
+ * So the check stays in the database and its refusal is translated here: the prefix is a fixed
+ * string from a function in this repository (not caller data, not an upstream product's wording),
+ * and the response names the field without echoing the message — which ends in the value the
+ * caller sent.
+ *
+ * Both routes that accept a zone spell the field `timeZone`, on the session and on a recurrence,
+ * so one mapping serves both.
+ */
+const INVALID_TIME_ZONE_PREFIX = 'invalid IANA time zone';
+
 /** A write the caller could fix. Carries the exact status and body the route will send. */
 export class WriteRejectedError extends Error {
   readonly status: number;
@@ -127,6 +146,18 @@ export function classifyWriteError(error: unknown): WriteRejectedError | undefin
     if (conflict !== undefined) {
       return new WriteRejectedError(409, { error: 'conflict', reason: conflict }, { cause: error });
     }
+  }
+
+  if (code === '22023' && message?.startsWith(INVALID_TIME_ZONE_PREFIX) === true) {
+    return new WriteRejectedError(
+      400,
+      {
+        error: 'invalid_request',
+        field: 'timeZone',
+        message: 'timeZone must be an IANA time zone name, e.g. Europe/Madrid.',
+      },
+      { cause: error },
+    );
   }
 
   switch (code) {

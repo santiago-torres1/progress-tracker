@@ -289,6 +289,35 @@ export function parseUpdateMeasurement(raw: unknown): UnknownRecord {
 }
 
 /**
+ * PATCH /api/session, as columns.
+ *
+ * Only the three the column-level grant allows, and only the two the UI has a use for. Anything
+ * else in the body is ignored rather than rejected — a client sending `isAnonymous` is not
+ * attacking anything it could reach, and the grant would refuse the column even if this function
+ * passed it through.
+ *
+ * `timeZone` is checked for SHAPE here and for existence in the database, where the only
+ * authoritative list lives (pg_timezone_names, via the users_validate_time_zone trigger). A name
+ * it rejects comes back as a 400 naming this field — see lib/write.ts.
+ */
+export function parseUpdateSession(raw: unknown): UnknownRecord {
+  const body = asBody(raw);
+  const columns: UnknownRecord = {};
+
+  const zone = readOptional(body, 'timeZone', timeZone);
+  if (zone !== undefined) columns.time_zone = zone;
+
+  // ISO day numbering: 1 = Monday ... 7 = Sunday, the same numbers goals' habit periods use.
+  const weekStartsOn = readOptional(body, 'weekStartsOn', integer(1, 7));
+  if (weekStartsOn !== undefined) columns.week_starts_on = weekStartsOn;
+
+  if (Object.keys(columns).length === 0) {
+    throw new InvalidRequestError('Send timeZone, weekStartsOn, or both.');
+  }
+  return columns;
+}
+
+/**
  * A repeat rule, for create and for replace.
  *
  * The two shape rules the schema enforces are checked here so they come back naming the field:

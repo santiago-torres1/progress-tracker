@@ -364,6 +364,20 @@ export interface UpdateMeasurementRequest {
 }
 
 /**
+ * PATCH /api/session — the caller's own preferences.
+ *
+ * Both optional, at least one required. There is no field here that names an account: the profile
+ * being changed is the one the token resolves to, and `isAnonymous`, `expiresAt` and the account's
+ * id are not writable by anyone (a column-level grant, not a rule in a route).
+ */
+export interface UpdateSessionRequest {
+  /** IANA name, e.g. `America/New_York`. Validated against the database's own list. */
+  timeZone?: string;
+  /** ISO day the week starts on, 1 = Monday ... 7 = Sunday. */
+  weekStartsOn?: number;
+}
+
+/**
  * A repeat rule, as sent. Rules are replaced whole rather than patched: the editor holds the
  * entire rule anyway, and "does an absent `untilDate` mean unchanged or cleared?" has two
  * plausible answers, which is one too many.
@@ -421,6 +435,29 @@ export interface Recurrence {
   updatedAt: string;
 }
 
+/**
+ * Who the caller is to this app.
+ *
+ * `timeZone` is load-bearing rather than cosmetic: it decides which day "complete today" records,
+ * and where a habit's week or month begins and ends. `weekStartsOn` decides the same for a weekly
+ * habit's period. Both are read back from GET /api/session on a cold start, so the UI never has to
+ * assume a zone or hardcode Monday.
+ *
+ * There is deliberately no account id: every route is scoped by the token, so the client has no
+ * use for one and no response carries one.
+ */
+export interface SessionProfile {
+  timeZone: string;
+  weekStartsOn: number;
+  /** True while this is a throwaway anonymous account that has not been converted. */
+  isAnonymous: boolean;
+  /**
+   * When an unused anonymous account is deleted — 90 days after its last visit, sliding. Null once
+   * the account is permanent, because then there is no such date and showing one would be a lie.
+   */
+  expiresAt: string | null;
+}
+
 /** What a rule change did to the timeline. Completed and hand-edited occurrences are never in it. */
 export interface OccurrenceChange {
   /** Future planned occurrences dropped because the rule changed. */
@@ -449,6 +486,11 @@ export interface CalendarResponse {
 
 export interface AreasResponse {
   areas: LifeArea[];
+}
+
+/** GET and PATCH /api/session both answer with the profile as it now stands. */
+export interface SessionResponse {
+  session: SessionProfile;
 }
 
 /**

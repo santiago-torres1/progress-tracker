@@ -1061,6 +1061,9 @@ describe('the shape of the API', () => {
     ['delete', '/api/goal-templates'],
     // The goals collection takes POST, but a PUT over the whole board is not a thing.
     ['put', '/api/goals'],
+    // The session takes GET and PATCH: it is one row that already exists and is never removed.
+    ['post', '/api/session'],
+    ['delete', '/api/session'],
   ] as const)('has no %s handler on %s', async (method, path) => {
     const res = await request(createApp())
       [method](path)

@@ -166,6 +166,24 @@ request. Missing or invalid token → 401 with a short reason code; over quota �
 - `GET /api/calendar?from=&to=` → entries in an inclusive date range (max 366 days), each with an
   explicit `timing: 'timed' | 'untimed'` discriminant, plus enough of its goal to render.
 - `GET /api/areas` → the six life areas.
+- `GET`/`PATCH /api/session` → the caller's profile: `timeZone`, `weekStartsOn`, `isAnonymous`,
+  `expiresAt`. The client should send the browser's zone on first run — **nothing sets it
+  automatically, and a visitor left on UTC completes things on the wrong day.** No account id is
+  ever returned by any route; the token is the identity.
+- `GET /api/goal-templates` → the catalogue (`docs/goal-catalogue.md` is its source of truth),
+  grouped by area, plus a `custom` block. There is no `template_id` on a goal and no foreign key
+  either way: a template seeds a form and is then forgotten, so editing one later cannot reach a
+  goal someone already created, and "a custom goal" is the only write path rather than a special
+  case.
+- Writes: `POST`/`PATCH`/`DELETE /api/goals`, `PATCH /api/goals/layout` (batched reorder and
+  resize — one request, all-or-nothing), `POST`/`DELETE /api/goals/:id/completions` (complete and
+  undo), `POST`/`PATCH`/`DELETE /api/goals/:id/measurements`, and
+  `POST`/`PUT`/`DELETE /api/goals/:id/recurrences`.
+- Every mutating response returns the **recomputed goal**, so a tile refills from the response
+  without refetching. `404` on an undo or delete means "already gone" — treat it as success. `409`
+  carries `limit`, and its copy must stay encouraging: a cap is not a failure.
+- Completing is idempotent per (goal, day); measurements upsert per (goal, day); undo restores the
+  exact prior state, including returning a skipped day to skipped.
 
 Shapes live in `backend/src/types/api.ts` and are the contract the frontend imports. Successful
 responses carry `Cache-Control: public, max-age=60`; errors carry `no-store`. `backend/src/types/database.ts`

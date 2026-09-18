@@ -583,6 +583,21 @@ so a visitor cannot set `is_anonymous = false` to opt out of expiry, cannot rewr
 to stay alive forever, and cannot touch `auth_user_id`. `last_seen_at` is written only by
 `begin_request`; `is_anonymous` only by the `auth.users` triggers.
 
+Those three columns are what `PATCH /api/session` writes, and the grant — not the route — is what
+makes that safe. _Verified:_ as an authenticated session, `set is_anonymous = false`,
+`set last_seen_at = now() + 10 years`, `set auth_user_id = <the other session>` and `set id =
+gen_random_uuid()` are each refused with `42501 permission denied for table users`, while
+`time_zone` and `week_starts_on` go through. An UPDATE with **no** `where` clause at all is also
+safe for a different reason: `users_update_self` confines it to one row, and it reported
+`APPLIED (1 row)` while the other session's profile was untouched.
+
+**`time_zone` is not a preference, it is the definition of "today".** `public.current_today()`,
+every habit period boundary and the progress view all read it, so a profile left on the default
+`'UTC'` means somebody in `America/New_York` tapping a tile at 8pm records it against tomorrow.
+_Verified end to end_ at 23:57 New York time: the same tap landed on `2026-09-18` with the profile
+on UTC and on `2026-09-17` after `PATCH /api/session {"timeZone":"America/New_York"}`, and the
+habit week moved from Mon–Sun to Sun–Sat with `weekStartsOn: 7`.
+
 _Verified on a real PostgreSQL 17_, with the Supabase roles and `auth.uid()` stubbed and all
 migrations plus `seed.sql` applied. Two anonymous accounts, A and B. A creates a goal, a
 recurrence, a calendar entry and a check-in through RLS; B then sees `0` goals, `0` entries, `0`
@@ -884,8 +899,10 @@ and pass `Database` to `createClient<Database>()` in `backend/src/lib/supabase.t
 - **Converting an anonymous account to a permanent one from the UI.** The database side is done
   (`on_auth_user_updated` flips `is_anonymous` and the account stops expiring); the sign-up flow
   that triggers it is a later release.
-- **Telling a visitor their data expires.** `begin_request` already returns `expires_at`; nothing
-  in the UI shows it.
+- **Telling a visitor their data expires.** `GET /api/session` now returns `expiresAt` (it costs
+  no extra round trip — `begin_request` already resolves it); nothing in the UI shows it yet.
+- **A display name.** The column-level grant allows `display_name`, and nothing exposes it: there
+  is no screen with a name on it, and an unused writable field is a field to get wrong.
 - **An IP-keyed rate limit.** See [Rate limiting](#rate-limiting) for why it is not in the
   database, and what covers it instead.
 - **Sub-goals / milestones / dependencies**, tags, attachments, and shared goals.

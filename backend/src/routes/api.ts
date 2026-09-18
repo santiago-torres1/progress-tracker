@@ -5,6 +5,7 @@ import { createCalendarRouter } from './calendar.js';
 import { createGoalTemplatesRouter } from './goal-templates.js';
 import { createGoalsRouter } from './goals.js';
 import type { SessionOptions } from './read-support.js';
+import { createSessionRouter } from './session.js';
 
 export type ApiRouterOptions = SessionOptions;
 
@@ -35,6 +36,9 @@ export function createApiRouter(options: ApiRouterOptions = {}): Router {
   // Reference data, like /areas: the catalogue a new goal can start from. Nothing that writes a
   // goal ever mentions it — see routes/goal-templates.ts.
   router.use('/goal-templates', createGoalTemplatesRouter(options));
+  // The caller's own preferences. It decides what "today" means for every route above it, which
+  // is why it is part of the product API rather than a setting hidden in the client.
+  router.use('/session', createSessionRouter(options));
 
   return router;
 }
