@@ -153,7 +153,11 @@ in dev, so the browser sees a single origin locally and no CORS is involved.
 - `GET /health/db` → reports whether Supabase env vars are present and a trivial probe
   succeeds. Never echoes secrets or raw upstream error messages.
 
-**Product API (read-only in `0.1.1-alpha` — there are no write routes, by design):**
+**Product API.** Every `/api` route requires `Authorization: Bearer <supabase access token>`
+from the caller's anonymous session, responds `private, no-store` + `Vary: Authorization`, and is
+served by a per-request client so RLS applies as that user — the service-role key never serves a
+request. Missing or invalid token → 401 with a short reason code; over quota → 429 with
+`Retry-After`. `/health*` stays anonymous.
 
 - `GET /api/goals` → the dashboard: one entry per active goal, a union discriminated on `kind`
   with a `habit` / `measured` / `scheduled` block. Carries `size`, the area and its colour, and
@@ -168,11 +172,7 @@ responses carry `Cache-Control: public, max-age=60`; errors carry `no-store`. `b
 is hand-written and must be replaced by `supabase gen types typescript` once the project is linked.
 
 **Backend env vars** (see `backend/.env.example`): `PORT`, `SUPABASE_URL`,
-`SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GIT_SHA`, `DEFAULT_USER_ID`.
-
-`DEFAULT_USER_ID` identifies the single login-less user and **defaults to the constant documented
-in `supabase/README.md`** — so it must NOT become a GitHub secret and `deploy.yml`'s environment
-map needs no change for it (that map is replaced wholesale on every deploy).
+`SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `GIT_SHA`.
 
 **Frontend build-time env vars:** `VITE_API_BASE_URL` (empty locally → same-origin via
 proxy; in deploys, the Lambda Function URL discovered at runtime), `VITE_COMMIT_SHA`.
