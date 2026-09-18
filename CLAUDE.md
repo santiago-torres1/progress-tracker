@@ -14,10 +14,14 @@ Single-user for now; may go public later.
 deploys automatically to a real URL, and the deploy fails unless the live `/health` reports the
 pushed commit.
 
-**Current milestone: `0.1.1-alpha` — the goals dashboard as a read-only live demo.** The app
-renders real Supabase rows and **writes nothing**: no login, no create flow, example data only
-(`supabase/seed.sql` is therefore the product's content, not a fixture). Writing and Supabase Auth
-are `0.1.2-alpha`.
+**`0.1.1-alpha` — the read-only Meadow dashboard — is done, live and tagged.**
+
+**Current milestone: `0.2.0-alpha` — the first version people can actually use.** Visitors get an
+**anonymous account** (Supabase anonymous sign-in: no sign-in screen, a real `auth.users` row and
+token), create their own goals, complete them, and log measurements. The seeded demo data stops
+being the product — a new visitor sees an empty board. A session whose owner has not returned for
+**90 days** is deleted, freeing its rows. Converting an anonymous account into a real one
+(email/OAuth) keeps every row and is a later release.
 
 **Product rules that the code must not quietly break:**
 
@@ -33,6 +37,26 @@ are `0.1.2-alpha`.
 - Goal kinds are `scheduled` (sessions), `measured` (a value toward a target) and `habit`
   (repetition in a period); progress for all three is computed by `goal_dashboard`, never in
   TypeScript.
+
+## Security posture — an open API with no login
+
+`0.2.0-alpha` accepts writes from anyone with the URL, and every request costs money. These are
+requirements, not suggestions; a change that weakens one needs the human's agreement.
+
+- **Row-level security does the isolating, not our code.** Requests carry the caller's Supabase
+  access token and the backend acts _as that user_, so a bug in a route handler cannot leak
+  another session's goals. The service-role key is only for maintenance jobs (e.g. expiry
+  cleanup), never for serving a request.
+- **Limits live in the database**, where a forgotten check in a route cannot bypass them: a cap on
+  goals per user, on entries per goal, and on the length of every free-text field.
+- **Rate limiting** on writes, keyed by session and by IP, plus Supabase's own anonymous sign-in
+  rate limit so one machine cannot mint thousands of accounts.
+- **Cost ceilings are part of security**: Lambda reserved concurrency and an AWS Budgets alert
+  bound the blast radius of abuse. Unbounded spend is the real vulnerability here.
+- **Never echo upstream errors, tokens or IDs** in a response body. Short reason codes only.
+- Request bodies are size-limited and every field is validated at the boundary; no `as` casts on
+  anything that arrived over the wire.
+- Deleting a session's data must actually delete it (cascade), not just hide it.
 
 ## Fixed stack — do not deviate without asking the human
 
