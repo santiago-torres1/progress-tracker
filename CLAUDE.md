@@ -206,6 +206,16 @@ proxy; in deploys, the Lambda Function URL discovered at runtime), `VITE_COMMIT_
 restricted to the CloudFront origin. Express does **not** add CORS middleware — doing both
 produces duplicate headers.
 
+Its `allow_methods` and `allow_headers` must cover **every method and header
+`frontend/src/lib/api.ts` sends** — today `GET`/`POST`/`PUT`/`PATCH`/`DELETE`, and
+`authorization` + `content-type`. This is the one piece of config whose failure is invisible to
+`/health`: an `authorization` header is not CORS-safelisted, so the browser preflights every `/api`
+request and refuses to send any the config does not cover, while `/health` — which sends no such
+header — keeps answering `200`. `0.2.0-alpha` shipped this way and the live site could not make a
+single call while every check was green. Adding a method or header to the client means widening
+the `cors` block **and running `terraform apply`**; merging is not what makes it true, and
+`deploy.yml` now refuses to publish a frontend the deployed config cannot support.
+
 ## Deploy contract (what `deploy.yml` does → what the IAM role must allow)
 
 On push to `main`, after the reusable CI workflow passes:
@@ -216,7 +226,10 @@ On push to `main`, after the reusable CI workflow passes:
    (`--provenance=false` matters: Lambda rejects OCI image indexes with attestations.)
 3. `aws lambda update-function-code --image-uri …:<sha>` → `aws lambda wait function-updated`.
 4. `aws lambda update-function-configuration` to set `SUPABASE_*` from GitHub secrets → wait.
-5. `aws lambda get-function-url-config` → smoke-test `GET /health`, assert `commit == <sha>`.
+5. `aws lambda get-function-url-config` → smoke-test `GET /health`, assert `commit == <sha>`;
+   then assert the returned `Cors` covers every method and header the client sends, and send a
+   real `OPTIONS` preflight to confirm the URL itself agrees. Both run **before** the frontend job,
+   so a Function URL that cannot serve the app stops the deploy instead of shipping a broken site.
 6. Build frontend with `VITE_API_BASE_URL=<function url>`, `VITE_COMMIT_SHA`, and
    `VITE_SUPABASE_URL` / `VITE_SUPABASE_ANON_KEY` (from the existing `SUPABASE_*` secrets — the
    anon key is public by design; `SUPABASE_SERVICE_ROLE_KEY` must never enter a frontend build); `aws s3 sync` to `S3_FRONTEND_BUCKET`
@@ -246,6 +259,10 @@ Constraints that break deploys if ignored (learned while writing `infra/main`):
 - `update-function-configuration --environment` replaces the whole map: always send all
   `SUPABASE_*` together, and never set `GIT_SHA` there (it's baked into the image).
 - Terraform's `aws_lambda_function` ignores `image_uri` and `environment` — CI owns both.
+- **Terraform is never applied by CI.** `ci.yml` runs `fmt` and `validate` with `-backend=false`:
+  no state, no credentials, no plan. Every change under `infra/` reaches AWS only because a human
+  ran `terraform apply`, so an `infra/` change that the app depends on must be applied _before_
+  the pull request needing it merges — otherwise the deploy is the thing that finds out.
 - `infra/main` needs AWS provider `~> 6.28` (auto-creates both public Function URL permissions).
 - Adding an AWS call to `deploy.yml` means adding its IAM action to `infra/main/github_oidc.tf`
   and to the list above, in the same PR.

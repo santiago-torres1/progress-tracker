@@ -197,6 +197,65 @@ jobs:
             echo "::warning title=Supabase check not ok::GET /health/db status=${db_status} reason=${db_reason}. The deploy continues."
           fi
 
+          # --- CORS ---------------------------------------------------------------------------
+          #
+          # Everything above can pass on a deployment where the app cannot make a single call.
+          # GET /health sends no Authorization header, so the browser never preflights it; every
+          # /api request does send one, so the browser preflights all of them and refuses to send
+          # anything the Function URL's CORS config does not cover. 0.2.0-alpha shipped with
+          # `allow_methods = ["GET"]` and `allow_headers = ["content-type"]` and reached production
+          # green: /health answered, the status panel read "Pass", and the board could not load.
+          #
+          # So this is checked here, in the backend job, before the frontend that depends on it is
+          # uploaded. It uses the same `get-function-url-config` call already made above, so it
+          # needs no IAM action the role does not have.
+          cors="$(aws lambda get-function-url-config \
+            --function-name "${LAMBDA_FUNCTION_NAME}" --query Cors --output json)"
+
+          # Kept in step with frontend/src/lib/api.ts: the methods it calls and the headers it
+          # sets. `accept` is CORS-safelisted and needs no entry.
+          missing="$(jq -r '
+            def allowed(xs): [xs[]? | ascii_downcase];
+            def missing_from(xs; needed):
+              if (allowed(xs) | index("*")) then [] else needed - allowed(xs) end;
+            (missing_from(.AllowMethods; ["get", "post", "put", "patch", "delete"])
+              | map("method " + ascii_upcase))
+            + (missing_from(.AllowHeaders; ["authorization", "content-type"])
+              | map("header " + .))
+            | join(", ")
+          ' <<< "${cors}")"
+          if [[ -n "${missing}" ]]; then
+            echo "::error title=Function URL CORS is too narrow::The browser will refuse every /api request, while GET /health keeps passing. Missing: ${missing}. Widen the cors block in infra/main/lambda.tf AND run terraform apply -- terraform does not run in CI, so merging the change is not enough."
+            exit 1
+          fi
+
+          # The config says it allows this; ask the URL itself, the way a browser does. Preflights
+          # are answered by the Function URL, not by the function, so this runs no code.
+          origin="$(jq -r '.AllowOrigins[0] // empty' <<< "${cors}")"
+          if [[ -z "${origin}" || "${origin}" == "*" ]]; then origin="https://cors-probe.invalid"; fi
+
+          preflight_headers="$(mktemp)"
+          preflight_status="$(curl --silent --show-error --max-time 10 \
+            --request OPTIONS "${function_url}/api/goals" \
+            --header "Origin: ${origin}" \
+            --header 'Access-Control-Request-Method: POST' \
+            --header 'Access-Control-Request-Headers: authorization,content-type' \
+            --dump-header "${preflight_headers}" --output /dev/null \
+            --write-out '%{http_code}' || echo 000)"
+          allowed_methods="$(grep --ignore-case '^access-control-allow-methods:' "${preflight_headers}" \
+            | cut -d: -f2- | tr -d ' \r' | tr '[:upper:]' '[:lower:]' || true)"
+          allowed_headers="$(grep --ignore-case '^access-control-allow-headers:' "${preflight_headers}" \
+            | cut -d: -f2- | tr -d ' \r' | tr '[:upper:]' '[:lower:]' || true)"
+          rm -f "${preflight_headers}"
+
+          if [[ "${preflight_status}" != 2?? ]] \
+            || [[ "${allowed_methods}" != *post* && "${allowed_methods}" != *'*'* ]] \
+            || [[ "${allowed_headers}" != *authorization* && "${allowed_headers}" != *'*'* ]]; then
+            echo "::error title=CORS preflight refused::OPTIONS /api/goals from ${origin} answered ${preflight_status}, allow-methods '${allowed_methods:-none}', allow-headers '${allowed_headers:-none}'. A browser would refuse every /api request."
+            exit 1
+          fi
+          echo "CORS preflight passed: methods '${allowed_methods}', headers '${allowed_headers}'"
+
           {
             echo "### Backend"
             echo
@@ -204,6 +263,7 @@ jobs:
             echo "| --- | --- |"
             echo "| \`GET /health\` | ok, commit \`${GITHUB_SHA:0:7}\` |"
             echo "| \`GET /health/db\` | ${db_status} (reason: ${db_reason}) |"
+            echo "| CORS preflight | \`authorization\` + \`POST\` allowed |"
             echo
           } >> "${GITHUB_STEP_SUMMARY}"
 
