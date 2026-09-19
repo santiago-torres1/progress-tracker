@@ -119,11 +119,21 @@ resource "aws_lambda_function" "backend" {
 
 # --- Function URL ---------------------------------------------------------------
 
-# !!! ALPHA ONLY: this URL is PUBLIC and UNAUTHENTICATED !!!
+# !!! ALPHA ONLY: this URL is PUBLIC and UNAUTHENTICATED at the AWS level !!!
 # Anyone on the internet who has the URL can invoke the function, and CORS
-# doesn't stop non-browser clients. That's acceptable while the API serves only
-# /health and no user data. Before real user data exists, put it behind auth:
-# e.g. authorization_type = "AWS_IAM" fronted by CloudFront with an Origin
+# doesn't stop non-browser clients. The line that used to sit here -- "that's
+# acceptable while the API serves only /health and no user data" -- stopped
+# being true in 0.2.0-alpha, so: there IS user data behind this URL now.
+#
+# What protects that data is the layer above, not this one. Every /api route
+# requires the caller's own Supabase token and is served as that user, so
+# row-level security decides what any request can reach; an unauthenticated
+# caller gets a 401 and nothing else. What that does NOT protect is spend --
+# an unauthenticated invoke still runs the function. The account's concurrency
+# cap of 10 and the $5 budget alarm are what bound that today.
+#
+# Putting the URL itself behind auth is still the right move before this is
+# public: authorization_type = "AWS_IAM" fronted by CloudFront with an Origin
 # Access Control for Lambda URLs, or API Gateway / a custom domain with an
 # authorizer.
 #
@@ -149,12 +159,28 @@ resource "aws_lambda_function_url" "backend" {
 
   # CORS is configured ONLY here. Express adds no CORS middleware; doing both
   # would send duplicate headers. Only the CloudFront origin is allowed. Local
-  # dev needs no entry because Vite proxies /health, so the browser sees a
+  # dev needs no entry because Vite proxies the API, so the browser sees a
   # single origin.
+  #
+  # These two lists are load-bearing, and they fail in a way that hides itself.
+  # Every /api request carries `authorization: Bearer <token>`, which is not a
+  # CORS-safelisted header, so the browser preflights every one of them --
+  # including the GETs. If `authorization` is not allowed here, the browser
+  # refuses the request before it is ever sent, and the app cannot make a
+  # single call. Meanwhile GET /health, which sends no such header and needs no
+  # preflight, keeps answering perfectly: every smoke test passes and the
+  # status panel reads "Pass" on a site where nothing works. That is precisely
+  # how 0.2.0-alpha reached production.
+  #
+  # So: every method frontend/src/lib/api.ts uses, and every header it sets.
+  # Adding either there means adding it here in the same change -- and note
+  # that `terraform apply` is run by hand, so merging that change is not what
+  # makes it true. deploy.yml re-reads this config and refuses to publish a
+  # frontend it cannot support.
   cors {
     allow_origins = ["https://${aws_cloudfront_distribution.frontend.domain_name}"]
-    allow_methods = ["GET"]
-    allow_headers = ["content-type"]
+    allow_methods = ["GET", "POST", "PUT", "PATCH", "DELETE"]
+    allow_headers = ["authorization", "content-type"]
     max_age       = 300
   }
 }
