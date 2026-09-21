@@ -35,7 +35,7 @@ export function App({ authStore, browserTimeZone }: AppProps = {}) {
     <div className="app">
       <header className="app__header">
         <h1 className="app__title">Progress Tracker</h1>
-        <p className="app__tagline">Alpha · your goals, as glasses that fill</p>
+        <p className="app__tagline">Alpha v0.2.1 · your goals, as glasses that fill</p>
       </header>
 
       <main className="app__main">
