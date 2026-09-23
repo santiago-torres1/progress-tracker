@@ -247,9 +247,17 @@ button.goal-tile:active,
 /* --- the habit minimum ---------------------------------------------------- */
 
 /* etched on the glass, not drawn in the water: the minimum that keeps a habit alive */
+/*
+ * It starts part-way across rather than at the left wall, and that is the whole fix: the title and
+ * the value line are left-aligned, so a rule spanning the full width drew itself straight through
+ * "1 of 3 this week · minimum is 1" at exactly the levels a habit spends most of its time at.
+ * Half a rule says the same thing — this is the height the water stays above — and says it in the
+ * part of the glass where nothing is written.
+ */
 .goal-tile__min {
   position: absolute;
-  left: 0;
+  left: auto;
+  width: min(7rem, 45%);
   right: 0;
   bottom: calc(var(--min) * 1%);
   display: flex;
@@ -334,47 +342,47 @@ button.goal-tile:active,
   outline-offset: -3px;
 }
 
-.goal-tile__actions {
-  position: absolute;
-  top: var(--sp-3);
-  right: var(--sp-3);
+/*
+ * The top row: what the goal is, and what you can do to it, side by side.
+ *
+ * This used to be an absolutely positioned cluster in the corner, with the head reserving space for
+ * it through four hard-coded `padding-right` values — 7rem, 4rem, 10.5rem, 7rem — one for each
+ * combination of controls that might turn up. It did not survive contact with its own content.
+ * Absolute positioning made the cluster's width a shrink-to-fit puzzle, the tick settled at its
+ * min-width, the label inside collapsed, and "Done" hung out of both ends of a 28px circle with the
+ * check mark stranded outside the pill.
+ *
+ * In the flow there is no puzzle: the head takes the space that is left, the controls take the
+ * space they need, and no number here has to be kept in step with a button that might appear.
+ *
+ * Clicks: the whole glass is a target (`.goal-tile__open`, laid over the copy), so the row lets
+ * them through and only the controls take their own — otherwise the head would swallow every tap
+ * that landed on the area name.
+ */
+.goal-tile__topbar {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  width: 100%;
+  margin-bottom: auto;
+  min-width: 0;
+  pointer-events: none;
 }
 
-.goal-tile--sm > .goal-tile__actions {
+.goal-tile__actions {
+  position: relative;
+  /* Above `.goal-tile__open`, which is positioned and comes later in the document. */
+  z-index: 1;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-left: auto;
+  pointer-events: auto;
+}
+
+.goal-tile--sm .goal-tile__actions {
   gap: var(--sp-1);
-}
-
-/*
- * The head runs under the controls, so it gives them room rather than eliding into them. How much
- * room depends on what is up there: a tick and a grip are two round-ish things, and an undo — which
- * is only ever there for a moment after a tap — is a word as well. The area name ellipses into
- * whatever is left, which is the right thing to lose: it is the quietest line on the tile and its
- * colour is still on the dot beside it.
- */
-.goal-tile:has(> .goal-tile__actions) .goal-tile__head {
-  padding-right: 7rem;
-}
-
-.goal-tile--sm:has(> .goal-tile__actions) .goal-tile__head {
-  padding-right: 4rem;
-}
-
-.goal-tile:has(.goal-tile__undo) .goal-tile__head {
-  padding-right: 10.5rem;
-}
-
-.goal-tile--sm:has(.goal-tile__undo) .goal-tile__head {
-  padding-right: 7rem;
-}
-
-@media (min-width: 40rem) {
-  .goal-tile:not(.goal-tile--sm) > .goal-tile__actions {
-    top: var(--sp-4);
-    right: var(--sp-4);
-  }
 }
 
 /*
@@ -572,9 +580,10 @@ button.goal-tile:active,
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  margin-bottom: auto;
+  /* Yields to the controls beside it; the area name is what ellipses, and its colour is still on
+     the dot, so the meaning survives the truncation. */
+  flex: 1 1 auto;
   min-width: 0;
-  max-width: 100%;
   font-size: var(--fs-xs);
   color: var(--muted);
 }
@@ -655,9 +664,18 @@ button.goal-tile:active,
   color: var(--muted);
 }
 
-/* the tick turns up the moment the minimum is met, so it arrives with the etch rather than
-   before it */
-.goal-tile__tick {
+/*
+ * The mark beside "Kept alive this week". It turns up the moment the minimum is met, so it arrives
+ * with the etch rather than before it.
+ *
+ * It answered to `goal-tile__tick` until now — the same class as the control in the top corner —
+ * and because this rule sits further down the file it won. So the BUTTON was handed `width:
+ * 0.8125rem`, clamped back up to its own `min-width`, and rendered as a 28px circle with the check
+ * stranded outside it and "Done" hanging out of both ends. One class, two elements, and the one
+ * that looked broken was not the one being styled.
+ */
+.goal-tile__kept-mark {
+  flex: none;
   width: 0.8125rem;
   height: 0.8125rem;
   color: var(--goal);

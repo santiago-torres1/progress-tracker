@@ -73,6 +73,20 @@ samp {
 img,
 svg {
   display: block;
+}
+
+/*
+ * Raster art arrives at whatever size it was saved at and must not overflow its column, so it is
+ * clamped. An icon must NOT be: it is sized in CSS, and `max-width: 100%` resolves that percentage
+ * against a box whose own width is being derived from the icon — a cycle, which Chrome settles by
+ * treating the icon as contributing nothing.
+ *
+ * That is not theoretical. `svg` was in this rule, and every control that pairs an icon with a
+ * word collapsed to its `min-width`: the tick on a goal tile rendered as a 28px circle with the
+ * check mark stranded outside it and "Done" hanging out of both ends. It looked like a bug in the
+ * tile, and it lived here.
+ */
+img {
   max-width: 100%;
 }
 
