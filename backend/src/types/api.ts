@@ -436,6 +436,43 @@ export interface Recurrence {
 }
 
 /**
+ * Plain facts about the account, for the profile page.
+ *
+ * NOT ACHIEVEMENTS. There is no trophy, badge, streak, score, best-ever or personal record here,
+ * and none may be added: "adding trophies or whatever just gamifies it, which is not the point."
+ * Every number below is something the person could count on their own screen, stated once so they
+ * do not have to. None of them can go down in a way the app would call a failure — and nothing
+ * here is ever compared with anyone else, or with this account's own past.
+ *
+ * All of them are computed by public.session_overview, in the caller's own time zone where a day
+ * is involved. The backend does no arithmetic behind that view.
+ */
+export interface SessionStats {
+  /**
+   * Goals on the board right now — the `active` ones, which is exactly what GET /api/goals returns
+   * by default. A paused goal is in neither this nor `glassesFilled`: it is not on the board, and
+   * it is not finished.
+   */
+  goalsOnBoard: number;
+  /**
+   * Goals that have filled up: status `completed` or `archived`. Archiving is how a finished goal
+   * is filed away rather than a different outcome, so the two are one number.
+   */
+  glassesFilled: number;
+  /** Occurrences ticked off, across every goal and every plain calendar item, ever. */
+  completionsRecorded: number;
+  /** Numeric check-ins logged, across every measured goal, ever. */
+  measurementsRecorded: number;
+  /**
+   * Whole days from the day this account appeared to its today, both in `timeZone`. `0` on the
+   * first day — it counts days that have passed, not days "achieved". It is derivable from
+   * `createdAt`, and is sent anyway because subtracting two instants in the browser lands on the
+   * wrong side of midnight for anyone whose zone is not the one the account keeps its days in.
+   */
+  daysSinceStart: number;
+}
+
+/**
  * Who the caller is to this app.
  *
  * `timeZone` is load-bearing rather than cosmetic: it decides which day "complete today" records,
@@ -456,6 +493,12 @@ export interface SessionProfile {
    * the account is permanent, because then there is no such date and showing one would be a lie.
    */
   expiresAt: string | null;
+  /**
+   * When this account first appeared. For an anonymous visitor that is the moment they first
+   * loaded the page — there is no sign-up, so this is the only "here since" that exists.
+   */
+  createdAt: string;
+  stats: SessionStats;
 }
 
 /**

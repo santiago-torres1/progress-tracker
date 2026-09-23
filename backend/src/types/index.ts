@@ -15,4 +15,9 @@ export {
   HABIT_PERIODS,
   PROGRESS_BASES,
 } from './database.js';
-export type { CalendarEntryRow, GoalDashboardRow, LifeAreaRow } from './database.js';
+export type {
+  CalendarEntryRow,
+  GoalDashboardRow,
+  LifeAreaRow,
+  SessionOverviewRow,
+} from './database.js';

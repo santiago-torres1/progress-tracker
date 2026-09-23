@@ -380,6 +380,44 @@ const PROFILE_ROW = {
   week_starts_on: 7,
 };
 
+/**
+ * One row of public.session_overview: an account three weeks in, with a board.
+ *
+ * Every number here is the view's, which is the point of the fixture — the route adds none of its
+ * own, so a count that appears in a response and not in this row would mean arithmetic had crept
+ * back into TypeScript.
+ */
+const OVERVIEW_ROW = {
+  created_at: '2026-08-30T09:12:44.512345+00:00',
+  days_since_start: 19,
+  goals_on_board: 3,
+  glasses_filled: 2,
+  completions_recorded: 47,
+  measurements_recorded: 12,
+};
+
+/** The same view, for a visitor who arrived a minute ago and has made nothing yet. */
+const EMPTY_OVERVIEW_ROW = {
+  created_at: '2026-09-18T05:59:00+00:00',
+  days_since_start: 0,
+  goals_on_board: 0,
+  glasses_filled: 0,
+  completions_recorded: 0,
+  measurements_recorded: 0,
+};
+
+/** The profile block those two rows produce, as the client sees it. */
+const OVERVIEW_PROFILE = {
+  createdAt: '2026-08-30T09:12:44.512Z',
+  stats: {
+    goalsOnBoard: 3,
+    glassesFilled: 2,
+    completionsRecorded: 47,
+    measurementsRecorded: 12,
+    daysSinceStart: 19,
+  },
+};
+
 /** The body of a valid habit goal, used wherever the test is about something else. */
 const NEW_HABIT = {
   title: 'Move your body',
@@ -409,6 +447,7 @@ beforeEach(() => {
   rpcCalls.length = 0;
   respond = (query) => {
     if (query.table === 'users') return rows([PROFILE_ROW]);
+    if (query.table === 'session_overview') return rows([OVERVIEW_ROW]);
     if (query.table === 'goal_dashboard') return rows([HABIT_TILE_ROW]);
     if (query.table === 'life_areas') return rows(LIFE_AREA_ROWS);
     if (query.table === 'goal_templates') return rows(TEMPLATE_ROWS);
@@ -1318,22 +1357,51 @@ describe('the session profile', () => {
     return request(createApp()).get('/api/session').set('Authorization', `Bearer ${ACCESS_TOKEN}`);
   }
 
-  it('answers GET from the session alone, with no second round trip', async () => {
+  it('answers GET with the preferences from the session and the facts from the view', async () => {
     const res = await getSession();
 
     expect(res.status).toBe(200);
     expect(res.body).toEqual({
       session: {
+        // begin_request's, resolved to charge the request.
         timeZone: 'UTC',
         weekStartsOn: 1,
         isAnonymous: true,
         expiresAt: '2026-12-17T06:00:00.000Z',
+        // public.session_overview's, verbatim.
+        ...OVERVIEW_PROFILE,
       },
     });
-    // begin_request resolved it; nothing else was asked.
     expect(rpcCalls).toHaveLength(1);
     expect(rpcCalls[0]?.args).toEqual({ p_kind: 'read' });
-    expect(queries).toHaveLength(0);
+    // It depends on the caller's token, so nothing in between may reuse it.
+    expect(res.headers['cache-control']).toBe('private, no-store');
+    expect(res.headers.vary).toContain('Authorization');
+  });
+
+  it('gets its numbers from one query to the view, and counts nothing itself', async () => {
+    await getSession();
+
+    // Exactly one query, and it is the view: no page of goals, entries or check-ins was ever
+    // fetched to be counted in TypeScript.
+    expect(queries).toHaveLength(1);
+    expect(queries[0]?.table).toBe('session_overview');
+    expect(queries[0]?.verb).toBe('select');
+    expect(queries.map((query) => query.table)).not.toContain('goals');
+    expect(queries.map((query) => query.table)).not.toContain('calendar_entries');
+    expect(queries.map((query) => query.table)).not.toContain('progress_entries');
+    // Under the read deadline, like every other query this API runs.
+    expect(queries[0]?.signal).toBeInstanceOf(AbortSignal);
+  });
+
+  it('names no account in the query and selects no id: RLS is what scopes it', async () => {
+    await getSession();
+
+    expect(queries[0]?.ops).toEqual([]);
+    expect(queries[0]?.columns).toBe(
+      'created_at,days_since_start,goals_on_board,glasses_filled,completions_recorded,measurements_recorded',
+    );
+    expect(queries[0]?.columns).not.toContain('user_id');
   });
 
   it('carries no account id, in either direction', async () => {
@@ -1341,6 +1409,103 @@ describe('the session profile', () => {
 
     expectNoSecrets(res.text);
     expect(res.text).not.toContain('userId');
+  });
+
+  it('answers a brand-new account with zeros rather than with nothing', async () => {
+    respond = () => rows([EMPTY_OVERVIEW_ROW]);
+
+    const res = await getSession();
+
+    expect(res.status).toBe(200);
+    expect(bodyOf(res)).toEqual({
+      session: {
+        timeZone: 'UTC',
+        weekStartsOn: 1,
+        isAnonymous: true,
+        expiresAt: '2026-12-17T06:00:00.000Z',
+        createdAt: '2026-09-18T05:59:00.000Z',
+        stats: {
+          goalsOnBoard: 0,
+          glassesFilled: 0,
+          completionsRecorded: 0,
+          measurementsRecorded: 0,
+          daysSinceStart: 0,
+        },
+      },
+    });
+  });
+
+  it('says an anonymous account expires, and a permanent one does not', async () => {
+    const anonymous = await getSession();
+
+    expect(bodyOf(anonymous)).toEqual({
+      session: {
+        timeZone: 'UTC',
+        weekStartsOn: 1,
+        isAnonymous: true,
+        // A throwaway account, and the date it goes away on.
+        expiresAt: '2026-12-17T06:00:00.000Z',
+        ...OVERVIEW_PROFILE,
+      },
+    });
+
+    // The same account, converted: GoTrue flips auth.users.is_anonymous, the trigger follows, and
+    // begin_request stops returning an expiry because there no longer is one.
+    respondRpc = (call) =>
+      call.fn === 'begin_request'
+        ? rows([{ ...SESSION_ROW, is_anonymous: false, expires_at: null }])
+        : rows([]);
+
+    const permanent = await getSession();
+
+    expect(bodyOf(permanent)).toEqual({
+      session: {
+        timeZone: 'UTC',
+        weekStartsOn: 1,
+        isAnonymous: false,
+        // Null, not a date: a permanent account has no expiry, and showing one would be a lie.
+        expiresAt: null,
+        // Conversion keeps every row, so the facts are untouched by it.
+        ...OVERVIEW_PROFILE,
+      },
+    });
+  });
+
+  it('reports 503 with no upstream detail when the account is gone mid-request', async () => {
+    respond = () => rows([]);
+
+    const res = await getSession();
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'unavailable', reason: 'upstream_error' });
+    expect(res.headers['cache-control']).toBe('no-store');
+    expectNoSecrets(res.text);
+  });
+
+  it('reports 503, not a guess, when the view has drifted from the contract', async () => {
+    // A column the view no longer has. Serving `undefined` — or a 0 nobody counted — would be a
+    // number on a profile page that is not a fact.
+    const withoutGlasses = Object.fromEntries(
+      Object.entries(OVERVIEW_ROW).filter(([column]) => column !== 'glasses_filled'),
+    );
+    respond = () => rows([withoutGlasses]);
+
+    const res = await getSession();
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'unavailable', reason: 'upstream_error' });
+    expect(res.text).not.toContain('glasses_filled');
+  });
+
+  it('reports 503, not a half-filled profile, when the view itself fails', async () => {
+    respond = () => fails('42P01', 'relation "public.session_overview" does not exist', null, 404);
+
+    const res = await getSession();
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'unavailable', reason: 'upstream_error' });
+    expect(res.text).not.toContain('session_overview');
+    expect(res.text).not.toContain('42P01');
   });
 
   it('sets the zone and the week start, and reads back what was stored', async () => {
@@ -1360,8 +1525,32 @@ describe('the session profile', () => {
         weekStartsOn: 7,
         isAnonymous: true,
         expiresAt: '2026-12-17T06:00:00.000Z',
+        // The whole profile comes back, like every other write in this API: the client replaces
+        // what it holds from the response instead of refetching.
+        ...OVERVIEW_PROFILE,
       },
     });
+  });
+
+  it('reads the facts AFTER the update, so the day count is in the zone just set', async () => {
+    await send('patch', '/api/session').send({ timeZone: 'America/New_York' });
+
+    // daysSinceStart is counted in public.users.time_zone; reading the view first would count it
+    // in the zone the caller was leaving.
+    expect(queries.map((query) => `${query.verb}:${query.table}`)).toEqual([
+      'update:users',
+      'select:session_overview',
+    ]);
+  });
+
+  it('answers 503 when the update lands but the facts cannot be read', async () => {
+    respond = (query) => (query.table === 'users' ? rows([PROFILE_ROW]) : rows([]));
+
+    const res = await send('patch', '/api/session').send({ timeZone: 'America/New_York' });
+
+    expect(res.status).toBe(503);
+    expect(res.body).toEqual({ error: 'unavailable', reason: 'upstream_error' });
+    expectNoSecrets(res.text);
   });
 
   it('names one row, and that id comes from the verified token', async () => {

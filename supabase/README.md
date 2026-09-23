@@ -2,11 +2,11 @@
 
 Design notes for the `progress-tracker` data layer.
 
-**The `20260916*` migrations are applied to the hosted Supabase project. They are immutable —
-never edit one in place again.** The `20260917*` files are `0.2.0-alpha` Phase 1 (anonymous
-accounts, real RLS, expiry, limits) and the `20260918*` files are Phase 2 (the goal catalogue and
-the writes). Neither set has been applied; applying them is a human decision (see
-[Applying](#applying-the-migrations)).
+**The `20260916*` through `20260918*` migrations are applied to the hosted Supabase project —
+`0.1.1-alpha`'s schema, then `0.2.0-alpha` Phase 1 (anonymous accounts, real RLS, expiry, limits)
+and Phase 2 (the goal catalogue and the writes). They are immutable: never edit one in place
+again.** The `20260923*` file is `0.3.0-alpha` and has **not** been applied; applying it is a
+human decision (see [Applying](#applying-the-migrations)).
 
 | Path                                                   | What it is                                                           |
 | ------------------------------------------------------ | -------------------------------------------------------------------- |
@@ -22,6 +22,10 @@ the writes). Neither set has been applied; applying them is a human decision (se
 | `migrations/20260917100300_rate_limits.sql`            | the shared request counter                                           |
 | `migrations/20260917100400_session_expiry.sql`         | `delete_expired_anonymous_users()`                                   |
 | `migrations/20260917100500_session_rpc.sql`            | `begin_request()` — identity + quota + touch                         |
+| `migrations/20260918100000_goal_templates.sql`         | the goal catalogue, six per life area                                |
+| `migrations/20260918100100_write_state.sql`            | the two columns that make undo exact, one-per-day uniqueness          |
+| `migrations/20260918100200_write_rpcs.sql`             | the write functions behind completions, measurements and rules        |
+| `migrations/20260923100000_session_overview.sql`       | `session_overview` — the profile page's facts                        |
 | `seed.sql`                                             | eight demo goals, local development only                             |
 
 ## ERD
@@ -397,6 +401,35 @@ in step and no way for them to disagree.
 
 If these views ever get slow, the fix is a materialised view refreshed on write — not a
 denormalised column.
+
+### The profile's facts are counted in SQL too (`session_overview`)
+
+`GET /api/session` answers with the caller's preferences _and_ a few plain facts about the
+account: when it appeared, how many days ago that was, how many goals are on the board, how many
+glasses have filled, and how many completions and check-ins have been recorded.
+`public.session_overview` is where all of those are counted, for the same reason
+`public.goal_progress` exists — the alternative is fetching tens of thousands of rows to call
+`.length` on them in TypeScript.
+
+It is driven by `public.users` with one lateral per table, so **a brand-new account gets a row of
+zeros rather than no row**: "nothing here yet" is a real answer, and the absence of a row would
+mean something else entirely (the profile is gone, which the API renders as a 503).
+
+Two product rules are written into it and should stay there:
+
+- **`goals_on_board` is `status = 'active'` — exactly what `GET /api/goals` returns by default**,
+  so the number always matches the tiles the person can count on their own screen. `'completed'`
+  and `'archived'` are one number, `glasses_filled`, because archiving is how a finished goal is
+  filed away rather than a different outcome. A paused goal is in neither.
+- **These are facts, not achievements.** No streak, no score, no best-ever, nothing that can be
+  behind. The owner's words: _"adding trophies or whatever just gamifies it, which is not the
+  point."_ A column here that ranked or compared would be the easiest possible way to give this
+  product the failure state it does not have.
+
+`days_since_start` is `today − created_at`, both resolved in `public.users.time_zone` — the same
+clock "complete today" already uses. It is deliberately not left to the browser: for an account
+created at 09:00 UTC, subtracting instants says 0 days while the person's own calendar (UTC+14)
+already says 1.
 
 ### The dashboard query
 
@@ -871,7 +904,11 @@ in the repo schedules it today.
 
 ## Applying the migrations
 
-The `20260916*` files are already applied to the hosted project. The `20260917*` files are not.
+The `20260916*` through `20260918*` files are already applied to the hosted project. The
+`20260923*` file is not, and `GET /api/session` returns a 503 until it is: the route reads
+`public.session_overview`, and **that read is invisible to `/health`** — the deploy will go green
+against a database that cannot serve the profile. Apply it before the pull request that needs it
+merges, the same rule `infra/` changes follow.
 
 ```bash
 # Local (needs Docker + the Supabase CLI; supabase/config.toml is not committed yet,
