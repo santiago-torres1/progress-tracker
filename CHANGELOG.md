@@ -9,6 +9,63 @@ Release sections are generated from Conventional Commit messages by `npm run rel
 (git-cliff, configured in `cliff.toml`) and may be edited by hand before the release pull request
 is merged. See the [Release Process](README.md#release-process) section of the README.
 
+## [0.3.0-alpha] - 2026-09-24
+
+The app stops being one page, the glasses stop being rectangles with a coloured bottom, and three
+things that had been quietly wrong on screen are put right.
+
+### Added
+
+- **Somewhere to go.** Four pages instead of one — your board, the calendar, My full glasses and a
+  profile — behind a frame that stays put: a top bar, and a column beside it you can collapse. On a
+  phone that column is a drawer behind the menu button, and it behaves: it holds the keyboard
+  inside it, closes on Escape, and puts you back where you were.
+- **A profile page.** When you started, how many glasses you have filled, how many goals are on the
+  board, and how much you have ticked off. Nothing here is a trophy, a streak or a score, and
+  nothing is ranked. Your **time zone and week start are editable for the first time** — until now
+  nothing in the app showed them, and a browser left on UTC quietly rolls the day over at the wrong
+  moment.
+- **The water behaves like water.** The surface carries waves that travel and bounce off the walls,
+  ticking a goal pours into it, undoing drains it back, and dragging a tile makes the liquid pile
+  up against the wall it is moving towards and keep going after the tile stops. It settles, because
+  this is a calm app.
+- **The glasses became glass.** Thickness at the rim, light down the near wall, depth in the water,
+  and a pool of the goal's own colour on the floor that fades as the glass empties.
+
+### Fixed
+
+- **The "Today" pill sat on top of the calendar entry beside it**, and today's row was seven pixels
+  out of line with the other six. Every row now reserves the same box, and the week defines its
+  columns once rather than seven times.
+- **"Done" hung out of both ends of its own button**, with the tick stranded outside. One class
+  named two different elements, and the rule for the smaller one was handing the button a 13px
+  width.
+- **The panels you open from a goal ignored its colour.** Editing a Learning & Skills goal was
+  highlighted in green like everything else; 26 places across the detail panel, the forms and the
+  repeat-rule editor now follow the area. The focus ring stays the one colour, because focus has to
+  look the same everywhere.
+- **The etched habit minimum was drawn through the goal's own title.** It is now two marks on the
+  glass walls, where no text can reach at any level.
+- Every icon in the app was being clamped by a rule meant for photographs, which made any control
+  pairing an icon with a word collapse.
+- **The API had been unreachable from the browser since `0.2.0-alpha` shipped** — the Function URL
+  allowed one method and no `Authorization` header, so the browser refused every request before
+  sending it, while `/health` stayed green throughout (#8).
+
+### Changed
+
+- Pixi drives the liquid where a GPU context is going spare and canvas 2D draws the same picture
+  everywhere else, and it is fetched only when a tile asks for it rather than before the page can
+  paint.
+
+### Notes
+
+- **Still no sign-in, and still no export.** Your goals live in this browser for 90 days from your
+  last visit. The profile page now tells you the date.
+- There is still no way for this app to tell you that you are behind, in any field, on any screen.
+
+[0.3.0-alpha]: https://github.com/santiago-torres1/progress-tracker/compare/v0.2.0-alpha...v0.3.0-alpha
+
 ## [0.2.0-alpha] - 2026-09-18
 
 The first version you can actually use. The demo data is gone: you get your own board, and what is
