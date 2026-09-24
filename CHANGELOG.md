@@ -9,6 +9,43 @@ Release sections are generated from Conventional Commit messages by `npm run rel
 (git-cliff, configured in `cliff.toml`) and may be edited by hand before the release pull request
 is merged. See the [Release Process](README.md#release-process) section of the README.
 
+## [0.3.1-alpha] - 2026-09-24
+
+Four things reported from the live app, and the first two turned out to be one.
+
+### Fixed
+
+- **Saving target days made a new rule every time.** The screen never refreshed what it knew about
+  a goal's rules after writing one, so it still believed there were none — and a second press
+  created a second rule rather than replacing the first. Since the interface could only ever
+  address one rule per goal, the extras and every calendar day they generated were unreachable
+  forever. Saving now closes the panel, which is the confirmation that was missing, and reopening
+  offers to **replace** the rule rather than set it again.
+- **A day can come off the calendar.** "I am not running this Thursday" had no way to be said:
+  a whole repeat rule could be removed and a completion undone, but a single day could not. Each
+  day in a goal's list now offers to remove it. A day you have already ticked is kept — take the
+  tick back first, and the app says so rather than refusing.
+- **An entry on the calendar now leads somewhere.** The calendar was entirely read-only; clicking
+  an entry opens the goal that put it there.
+- **The water only moved for a few seconds after a tap.** Movement is noticed by measuring, and
+  measuring only happens while the animation is running — which stops itself over still water. It
+  had switched off its only sense, so dragging a tile could never wake it. It now runs for as long
+  as you are touching the screen.
+- **The water moved like jelly, and now moves like water.** Each column of it was bobbing on its
+  own spring, in phase with its neighbours, so the surface rose and fell as one rigid sheet. Water
+  is carried sideways instead: a disturbance now travels across the glass, comes off the far wall
+  and meets itself on the way back. Dragging a tile pushes the water at the wall, which is the only
+  place a moving glass touches it.
+
+### Maintenance
+
+- A script that finds and merges the duplicate repeat rules the bug above left behind. It reports
+  before it changes anything, keeps the most recently updated of each identical group, and never
+  deletes or restatuses a day you completed. Rules that differ in any way that changes which days
+  they produce are two real plans and are left alone.
+
+[0.3.1-alpha]: https://github.com/santiago-torres1/progress-tracker/compare/v0.3.0-alpha...v0.3.1-alpha
+
 ## [0.3.0-alpha] - 2026-09-24
 
 The app stops being one page, the glasses stop being rectangles with a coloured bottom, and three
