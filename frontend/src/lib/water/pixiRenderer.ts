@@ -17,7 +17,6 @@
  * one a given glass got is not something a reader can see.
  */
 
-import { Application, Graphics } from 'pixi.js';
 import type { WaterPaint, WaterRenderer } from './renderer';
 
 const SURFACE_POINTS = 48;
@@ -51,6 +50,24 @@ function toHex(color: string): number {
  * an error: the caller falls back to canvas 2D.
  */
 export async function createPixiRenderer(canvas: HTMLCanvasElement): Promise<WaterRenderer | null> {
+  /*
+   * Loaded here, not at the top of the file.
+   *
+   * Pixi is the largest thing in this application by a wide margin, and it decorates: a board is
+   * completely usable with the liquid drawn in canvas 2D, and a reader who asked for less motion
+   * never draws it at all. A static import puts all of it in the entry chunk, where it blocks the
+   * first paint of a page that has not yet decided whether it wants a GPU. This way it is fetched
+   * once, in parallel, by whichever tile asks first — and never at all by the people who do not.
+   */
+  let Application: typeof import('pixi.js').Application;
+  let Graphics: typeof import('pixi.js').Graphics;
+  try {
+    ({ Application, Graphics } = await import('pixi.js'));
+  } catch (error) {
+    lastFailure = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
+    return null;
+  }
+
   const app = new Application();
 
   try {

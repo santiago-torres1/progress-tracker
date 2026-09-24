@@ -1,4 +1,5 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { StrictMode } from 'react';
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { AppShell, type ShellSession } from './AppShell';
@@ -146,6 +147,25 @@ describe('AppShell', () => {
       if (scrim !== null) fireEvent.click(scrim);
 
       expect(drawer()).toBeNull();
+    });
+
+    /*
+     * Arriving is not a navigation. The distinction is worth a test because the obvious way to
+     * write it — a boolean that says "I have run before" — is true on its second invocation, and
+     * StrictMode invokes every effect twice on mount.
+     */
+    it('leaves focus alone on arrival, twice-invoked effects included', () => {
+      render(
+        <StrictMode>
+          <MemoryRouter initialEntries={['/calendar']}>
+            <AppShell session={SESSION}>
+              <p>page</p>
+            </AppShell>
+          </MemoryRouter>
+        </StrictMode>,
+      );
+
+      expect(document.activeElement).toBe(document.body);
     });
 
     it('closes on a navigation, and puts focus on the page arrived at — not back on the menu', () => {

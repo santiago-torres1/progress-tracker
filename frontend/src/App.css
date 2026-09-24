@@ -1,99 +1,30 @@
 /*
- * Page shell.
+ * What is left of the old page shell: the foot of every page.
  *
- * The product is the page now, so the column is the mockup's 68rem shell rather than the single
- * panel's 34rem, and it starts at the top of the viewport instead of floating in the middle of
- * it: the goal canvas and the month grid both need the width, and neither should move when a
- * read arrives.
+ * The masthead that used to live here — `.app`, `.app__header`, `.app__title`, `.app__tagline`,
+ * `.app__main` — is gone, because the shell's top bar is the app's name now and `AppShell.css` owns
+ * the column, the page and the air around it. All that reaches this file is the footer `App.tsx`
+ * hands the shell as a slot, so this is a footer sheet that happens to still be called App.css.
  *
- * Above the content is the app's name — chrome, and sized like chrome, so the dashboard's
- * headline is the largest type on the page. Below it is the deploy proof, kept because this
- * milestone is about the plumbing, demoted because it is no longer the point.
+ * `margin-top: auto` is what puts the footer at the bottom of a window a short page cannot fill.
+ * It only works because `.content__inner` is a flex column — see the note on it in `AppShell.css`;
+ * in a grid that margin resolves inside the footer's own row and the line floats halfway up the
+ * screen instead.
  */
-
-.app {
-  --mark-size: 1.125rem;
-
-  display: flex;
-  flex-direction: column;
-  min-height: 100vh;
-  min-height: 100dvh;
-  padding: var(--sp-5) var(--sp-4) var(--sp-7);
-}
-
-@media (min-width: 48rem) {
-  .app {
-    padding: var(--sp-6) var(--sp-6) var(--sp-7);
-  }
-}
-
-.app__header,
-.app__main,
-.app__footer {
-  width: 100%;
-  min-width: 0;
-  max-width: var(--shell-width);
-  margin-inline: auto;
-}
-
-/* --- masthead ------------------------------------------------------------- */
-
-.app__header {
-  margin-bottom: var(--sp-6);
-}
-
-.app__title {
-  display: flex;
-  align-items: center;
-  gap: var(--sp-2);
-  font-size: var(--fs-lg);
-  letter-spacing: -0.015em;
-}
-
-/* Small progress-ring mark echoing the favicon. Decorative, no text content. */
-.app__title::before {
-  content: '';
-  flex: none;
-  width: var(--mark-size);
-  height: var(--mark-size);
-  border: 0.1875rem solid var(--accent-soft);
-  border-top-color: var(--accent);
-  border-right-color: var(--accent);
-  border-bottom-color: var(--accent);
-  border-radius: 50%;
-  transform: rotate(45deg);
-}
-
-.app__tagline {
-  margin-top: var(--sp-1);
-  padding-inline-start: calc(var(--mark-size) + var(--sp-2));
-  font-size: var(--fs-sm);
-  color: var(--muted);
-}
-
-/* --- the two screens ------------------------------------------------------ */
-
-.app__main {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-7);
-}
 
 /* --- foot: the deploy proof, and what is deployed ------------------------- */
 
 .app__footer {
   display: grid;
   gap: var(--sp-4);
+  /* Takes whatever height the page above it did not use, so a short page still has a floor. */
   margin-top: auto;
+  /* With the page column's --sp-5 gap, this is --sp-7 of air above the rule — the same distance the
+     footer kept from the content before the shell existed. */
   padding-top: var(--sp-5);
   font-size: var(--fs-xs);
   color: var(--muted);
   border-top: 1px solid var(--border);
-}
-
-/* The main content and the footer are never closer than this, however short the page is. */
-.app__main + .app__footer {
-  margin-block-start: var(--sp-7);
 }
 
 .app__build {

@@ -196,6 +196,16 @@
   --sh-glass-hi:
     0 1px 2px rgba(20, 38, 30, 0.07), 0 3px 8px -2px rgba(20, 38, 30, 0.07),
     0 18px 30px -16px rgba(20, 38, 30, 0.26), 0 34px 56px -30px rgba(20, 38, 30, 0.32);
+  /* A glass SET DOWN: the first two layers of --sh-glass and none of the lift. "My full glasses" is
+     a shelf, and a glass standing on a shelf casts contact rather than height. It is a token rather
+     than two layers written into ArchiveScreen.css because it is the one place in the app where a
+     vessel is at rest, and the next place will want the same two numbers. */
+  --sh-set: 0 1px 2px rgba(20, 38, 30, 0.07), 0 2px 6px -2px rgba(20, 38, 30, 0.06);
+
+  /* The drawer's veil. Not themed towards the room: a scrim is a shadow cast over the page, so it
+     is the same near-black in both themes and only its strength changes — a dark room needs a
+     little more of it before the page behind reads as "not this". */
+  --scrim: rgba(8, 17, 13, 0.46);
 
   /* The area colour in scope. Overridden by [data-area] below; this is the fallback for
      anything that has no area at all. */
@@ -273,6 +283,9 @@
     --sh-glass-hi:
       0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 10px -2px rgba(0, 0, 0, 0.45),
       0 22px 34px -16px rgba(0, 0, 0, 0.66), 0 40px 62px -32px rgba(0, 0, 0, 0.74);
+    --sh-set: 0 1px 2px rgba(0, 0, 0, 0.45), 0 3px 8px -2px rgba(0, 0, 0, 0.4);
+
+    --scrim: rgba(4, 9, 7, 0.62);
   }
 }
 

@@ -182,17 +182,23 @@ export function AppShell({ session, children, footer }: AppShellProps) {
   /*
    * A navigation: shut the drawer and put focus on the new page's heading.
    *
-   * Skipped on the first render — arriving at a page and having it grab focus is the behaviour of
-   * something that wants your attention, and this app does not. The drawer's own links close it
-   * in the click handler as well, so by the time this runs it is already shut and the heading is
-   * no longer behind an `inert` wrapper.
+   * Nothing happens on arrival — a page that grabs focus the moment you reach it is behaving like
+   * something that wants your attention, and this app does not. The drawer's own links close it in
+   * the click handler as well, so by the time this runs it is already shut and the heading is no
+   * longer behind an `inert` wrapper.
+   *
+   * The condition is "the path is different from the one I last saw", not "this is not the first
+   * time I have run". A boolean latch says yes on its second invocation, and React's StrictMode
+   * invokes every effect twice on mount in development — so the latch version drew a focus ring
+   * around the heading on every page load, but only in development, which is the only place anyone
+   * would have seen it.
    */
-  const settled = useRef(false);
+  const lastPath = useRef<string | null>(null);
   useEffect(() => {
-    if (!settled.current) {
-      settled.current = true;
-      return;
-    }
+    const arrived = lastPath.current;
+    lastPath.current = location.pathname;
+    if (arrived === null || arrived === location.pathname) return;
+
     setDrawerOpen(false);
     headingRef.current?.focus();
   }, [location.pathname]);

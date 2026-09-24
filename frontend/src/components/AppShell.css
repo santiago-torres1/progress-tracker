@@ -1,19 +1,26 @@
 /*
- * AppShell — STRUCTURE ONLY. The visual pass belongs to design-agent.
+ * The frame, in the material everything else is made of.
  *
- * What is here: the two grids (top bar over body, column beside page), the flow inside the
- * navigation rows, the collapsed rail, the drawer's position, and the one breakpoint at which the
- * column becomes that drawer. Every length is an existing token or a plain geometric size.
+ * The top bar is a ledge of lit glass — translucent surface, a blur behind it, a rim along its top
+ * lip and a hairline along its bottom — and it is STICKY, which a static mockup never had to decide.
+ * Once the bar stays, the column has to stay with it: `.side__foot` is pushed to the bottom of the
+ * column by an auto margin, so on a board of forty tiles the Collapse control would otherwise sit
+ * two thousand pixels below the fold. So the column is sticky too, exactly one bar down from the
+ * top, one viewport tall, and scrolls inside itself if a short window cannot hold four sections.
+ * `--topbar-h` is the single number both of those hang off.
  *
- * What is deliberately NOT here: colour, type scale, borders, shadows, gradients, backdrop
- * filters, hover and current-page treatment, the drawer's entrance. The approved mockup has all of
- * it for `.topbar`, `.side`, `.nav__item[aria-current='page']`, `.who`, `.bead`, `.iconbtn`,
- * `.drawer` and `.scrim`, and bringing it across is design-agent's work. Two exceptions, both
- * plain tokens, because without them the drawer is unreadable rather than merely unstyled:
- * `.drawer`'s surface colour, and the fact that the scrim covers the page at all.
+ * COLOUR IN THE FRAME IS CHROME. Greys carry all of it, and --accent marks the current section and
+ * nothing else. No life area appears anywhere in here: the frame is not about any one goal, and a
+ * hue in it would be the one place in the app where colour did not mean an area.
+ *
+ * Nothing in the frame moves on arrival. The bar, the column and the page are simply there on the
+ * first paint; the only animation is the drawer, which is a thing a person just asked for.
  */
 
 .shell {
+  /* The bar's height, in one place: the sticky column hangs off it, and so does the drawer. */
+  --topbar-h: 3.5rem;
+
   display: grid;
   grid-template-rows: auto 1fr;
   min-height: 100vh;
@@ -22,24 +29,52 @@
 
 /* --- top bar -------------------------------------------------------------- */
 
+/*
+ * 72% of the surface rather than the mockup's 62%: the mockup's bar had nothing travelling under it.
+ * This one does, and at 62% a tile passing behind it reads as a smear on any browser that declines
+ * the blur. At 72% the bar is frosted where the blur lands and simply pale where it does not.
+ */
 .topbar {
+  position: sticky;
+  top: 0;
+  z-index: 10;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
-  min-height: 3.5rem;
+  min-height: var(--topbar-h);
   padding-inline: var(--sp-4);
+  background-color: color-mix(in srgb, var(--surface) 72%, transparent);
+  backdrop-filter: blur(18px) saturate(1.4);
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 75%, transparent);
+  box-shadow: inset 0 1px 0 var(--glass-rim);
 }
 
 .brand {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  /* The mark is the one accent in the bar until a section is current; the words are ink. */
+  color: var(--accent);
+  text-decoration: none;
+  border-radius: var(--r-sm);
 }
 
 .brand__mark {
   flex: none;
   width: 1.25rem;
   height: 1.25rem;
+}
+
+.brand__name {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  letter-spacing: -0.02em;
+  color: var(--text);
+}
+
+.brand__tail {
+  font-weight: var(--fw-medium);
+  color: var(--muted);
 }
 
 /* Pushes everything after it to the trailing edge. */
@@ -54,6 +89,35 @@
   justify-content: center;
   width: 2.25rem;
   height: 2.25rem;
+  padding: 0;
+  color: var(--muted);
+  background: none;
+  /* Transparent rather than absent, so the hover edge does not move anything. */
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease);
+}
+
+@media (hover: hover) {
+  .iconbtn:hover {
+    color: var(--text);
+    background-color: color-mix(in srgb, var(--surface) 70%, transparent);
+    border-color: var(--border);
+  }
+}
+
+/* The hamburger and the drawer's close button are, in practice, the two controls in the app that
+   only ever meet a thumb. */
+@media (pointer: coarse) {
+  .iconbtn {
+    width: 2.5rem;
+    height: 2.5rem;
+  }
 }
 
 .iconbtn__glyph {
@@ -61,19 +125,72 @@
   height: 1.25rem;
 }
 
+/*
+ * The way to the profile: a bead of glass with a person in it, in a pill. It is quiet even when the
+ * profile IS the current page — the column already marks that with the accent, and a frame with two
+ * accents in it is a frame arguing with itself. Here "current" is firmer ink and a firmer edge.
+ *
+ * Its edge stays under 3:1 on purpose, which the board's quiet button does not get away with: this
+ * is a text link with an icon beside it, so the words and the bead are what identify it, where
+ * "My full glasses" is a button whose border is the only thing saying so. --field-border at 55%
+ * rather than --border-strong at 55% all the same, so the pill is a visible edge (1.8:1) and not a
+ * suggestion of one.
+ */
 .who {
   display: inline-flex;
   align-items: center;
   gap: var(--sp-2);
+  height: 2.25rem;
+  /* Symmetrical while the bead is on its own; the label's side opens up with the label. */
+  padding-inline: var(--sp-1);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--muted);
+  text-decoration: none;
+  background-color: color-mix(in srgb, var(--surface) 55%, transparent);
+  border: 1px solid color-mix(in srgb, var(--field-border) 55%, transparent);
+  border-radius: var(--r-full);
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease);
 }
 
-/* Shared by the top bar and the profile page; design-agent may move it to a common sheet. */
+@media (hover: hover) {
+  .who:hover {
+    color: var(--text);
+    background-color: color-mix(in srgb, var(--surface) 85%, transparent);
+    border-color: var(--field-border);
+  }
+}
+
+.who[aria-current='page'] {
+  color: var(--text);
+  background-color: color-mix(in srgb, var(--surface) 88%, transparent);
+  border-color: var(--field-border);
+}
+
+/*
+ * Shared by the top bar and the profile page: a small dome of glass. Every value in it is a light
+ * value, so the bead cannot state anything — it is a place for a person icon to sit, not a status.
+ * The ring is what gives it its edge; there is no drop shadow, because a bead in a bar is set into
+ * the bar rather than floating over it.
+ */
 .bead {
   flex: none;
   display: grid;
   place-items: center;
   width: 1.75rem;
   height: 1.75rem;
+  color: var(--muted);
+  border-radius: 50%;
+  background-image:
+    radial-gradient(120% 110% at 30% 18%, var(--glass-hi), transparent 58%),
+    linear-gradient(to bottom, var(--surface-2), var(--surface-3));
+  box-shadow:
+    inset 0 0 0 1px var(--glass-edge),
+    0 1px 2px var(--glass-under);
 }
 
 .bead--lg {
@@ -99,10 +216,19 @@
 }
 
 .side {
+  position: sticky;
+  top: var(--topbar-h);
+  align-self: start;
   flex-direction: column;
   gap: var(--sp-1);
   width: 14.5rem;
+  height: calc(100vh - var(--topbar-h));
+  height: calc(100dvh - var(--topbar-h));
   padding: var(--sp-4) var(--sp-3);
+  overflow-y: auto;
+  /* A rule, not a wall: 60% of a hairline, so the column and the page are one room. */
+  border-right: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  transition: width var(--mo-slow) var(--ease);
 }
 
 .nav {
@@ -111,12 +237,58 @@
 }
 
 .nav__item {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--sp-3);
   min-height: 2.375rem;
   padding-inline: var(--sp-3);
+  font-size: var(--fs-sm);
+  font-weight: var(--fw-medium);
+  color: var(--muted);
+  text-decoration: none;
   white-space: nowrap;
+  border: 1px solid transparent;
+  border-radius: var(--r-md);
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease);
+}
+
+@media (hover: hover) {
+  .nav__item:hover {
+    color: var(--text);
+    background-color: color-mix(in srgb, var(--surface) 55%, transparent);
+  }
+}
+
+/*
+ * The current section: a lit pill, and a short column of liquid standing at its leading edge. The
+ * accent is chrome here and the pill says the same thing three more ways — full-strength ink, a
+ * surface, an edge — so the mark is never the only carrier, and `aria-current` says it in the
+ * accessibility tree regardless.
+ */
+.nav__item[aria-current='page'] {
+  color: var(--text);
+  background-color: color-mix(in srgb, var(--surface) 88%, transparent);
+  border-color: color-mix(in srgb, var(--border) 80%, transparent);
+  box-shadow:
+    var(--sh-rim),
+    0 1px 2px var(--glass-under);
+}
+
+.nav__item[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  width: 3px;
+  height: 1.125rem;
+  translate: -1px -50%;
+  border-radius: var(--r-full);
+  background-color: var(--accent);
 }
 
 .nav__icon {
@@ -125,34 +297,61 @@
   height: 1.0625rem;
 }
 
+.nav__item[aria-current='page'] .nav__icon {
+  color: var(--accent);
+}
+
 .nav__label {
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+/* How many goals are on the board, how many glasses are full. A count, never a score — so it is
+   the smallest type in the column and the quietest ink in it. */
 .nav__n {
   margin-left: auto;
+  font-size: var(--fs-xs);
   font-variant-numeric: tabular-nums;
+  color: var(--muted);
 }
 
 .side__foot {
   margin-top: auto;
   padding-top: var(--sp-3);
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
 }
 
 .side__collapse {
   display: flex;
   align-items: center;
   gap: var(--sp-3);
+  width: 100%;
   min-height: 2.125rem;
   padding-inline: var(--sp-3);
+  font-size: var(--fs-xs);
+  color: var(--muted);
   white-space: nowrap;
+  background: none;
+  border: 0;
+  border-radius: var(--r-md);
+  cursor: pointer;
+  transition:
+    color var(--mo) var(--ease),
+    background-color var(--mo) var(--ease);
+}
+
+@media (hover: hover) {
+  .side__collapse:hover {
+    color: var(--text);
+    background-color: color-mix(in srgb, var(--surface) 55%, transparent);
+  }
 }
 
 .side__collapse-glyph {
   flex: none;
   width: 1rem;
   height: 1rem;
+  transition: rotate var(--mo-slow) var(--ease);
 }
 
 /* Collapsed to a rail: the labels leave the layout, the icons centre, the chevron turns around.
@@ -180,18 +379,68 @@
 
 /* --- the page ------------------------------------------------------------- */
 
+/*
+ * Flex rather than grid, for one reason: an auto margin absorbs free space in a flex column, so
+ * `.app__footer`'s `margin-top: auto` still puts the deploy line at the bottom of the window on a
+ * page too short to fill it. In a grid, that margin resolves inside the footer's own row and the
+ * footer floats halfway up an empty screen instead.
+ */
 .content {
+  display: flex;
+  flex-direction: column;
   min-width: 0;
   padding: var(--sp-5) var(--sp-4) var(--sp-7);
 }
 
 .content__inner {
-  display: grid;
+  display: flex;
+  /* Fill the page; never shrink below the board's own height. */
+  flex: 1 0 auto;
+  flex-direction: column;
   gap: var(--sp-5);
   width: 100%;
   min-width: 0;
   max-width: var(--shell-width);
   margin-inline: auto;
+}
+
+/*
+ * THE PAGE HEAD is two elements that are not siblings in one component: this heading, and whatever
+ * headline the screen below writes from its own data.
+ *
+ * The `<h1>` is the SECTION's name — "Your board", "Profile" — and the mockup draws exactly those
+ * words as an eyebrow above the page's real headline ("Your glass is half full."). So it is set as
+ * one: the landmark a screen reader arrives on after every navigation stays an `<h1>`, and the
+ * largest type on the page belongs to the sentence the page exists to say. The values are
+ * `.eyebrow`'s from index.css, written out rather than borrowed, because this element is the
+ * shell's rather than a class the markup opted into.
+ *
+ * `width: max-content` keeps the focus ring around the words instead of drawing it across 68rem of
+ * empty column. This is the element focus lands on after every navigation, so its ring is seen more
+ * often than any other in the app.
+ */
+.content__heading {
+  width: max-content;
+  max-width: 100%;
+  font-size: var(--fs-xs);
+  font-weight: var(--fw-semibold);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+/*
+ * An eyebrow sits --sp-2 above the line it introduces, and the column's gap is --sp-5 — so when
+ * there is a line to introduce, the difference comes off this element's own box.
+ *
+ * "When there is a line" is asked structurally rather than by naming the four screens: does the page
+ * below open with a head of its own? A page that opens with a status note instead — every screen
+ * while a read is in flight, the composer, the not-found page — keeps the column's ordinary air,
+ * because there the heading is the only heading and tightening it onto a card would read as a label
+ * stuck to the top of it.
+ */
+.content__heading:has(+ * > header:first-child) {
+  margin-bottom: calc(var(--sp-2) - var(--sp-5));
 }
 
 /* --- drawer --------------------------------------------------------------- */
@@ -206,6 +455,9 @@
 .scrim {
   position: absolute;
   inset: 0;
+  background-color: var(--scrim);
+  backdrop-filter: blur(3px);
+  animation: scrim-in var(--mo) var(--ease);
 }
 
 .drawer {
@@ -218,7 +470,15 @@
   max-width: 85vw;
   padding: var(--sp-4) var(--sp-3);
   overflow-y: auto;
-  background-color: var(--surface);
+  /* A panel of the same glass as the bar, thick enough to read against a board. */
+  background-color: color-mix(in srgb, var(--surface) 94%, transparent);
+  backdrop-filter: blur(20px) saturate(1.3);
+  box-shadow:
+    inset -1px 0 0 var(--glass-edge),
+    24px 0 48px -24px rgba(0, 0, 0, 0.45);
+  /* Reaching the end of the drawer must not start scrolling the board behind it. */
+  overscroll-behavior: contain;
+  animation: drawer-in var(--mo-slow) var(--ease-out);
 }
 
 .drawer__head {
@@ -234,10 +494,47 @@
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  color: var(--accent);
 }
 
 .drawer__close {
   margin-left: auto;
+}
+
+/* In the drawer the foot carries the session's lifetime instead of the collapse control: no rule
+   above it, and indented to the same line as the section names. */
+.drawer .side__foot {
+  padding-top: var(--sp-4);
+  border-top: 0;
+}
+
+.drawer .side__foot .footnote {
+  padding-inline: var(--sp-3);
+}
+
+/* The drawer arrives from its own edge, and the page behind it dims. Neither travels far: this is a
+   menu opening, not a transition between places. `prefers-reduced-motion` collapses both to a hair
+   (index.css), which leaves the drawer simply present — which is the news. */
+@keyframes drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(-12px);
+  }
+
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes scrim-in {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
 }
 
 /* --- where the column is, and where it is a drawer ------------------------ */
@@ -258,6 +555,10 @@
 @media (min-width: 30rem) {
   .who__label {
     display: inline;
+  }
+
+  .who {
+    padding-inline: var(--sp-1) var(--sp-3);
   }
 }
 
