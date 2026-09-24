@@ -1,0 +1,98 @@
+/*
+ * ProfileScreen — STRUCTURE ONLY. The visual pass belongs to design-agent.
+ *
+ * Flow and geometry: how the identity block, the counts and the settings rows sit, and how a row
+ * reflows when its picker is open. No colour, no type scale, no borders, no shadows — the approved
+ * mockup's `.card`, `.count`, `.rows__row` and `.rows__edit` rules are design-agent's to bring
+ * across, including `.card` itself, which this page is the first to ask for.
+ *
+ * `.bead` / `.bead--lg` are shared with the shell and live in `AppShell.css`.
+ */
+
+.profile {
+  display: grid;
+  gap: var(--sp-5);
+}
+
+.profile__detail {
+  max-width: 48ch;
+  margin-top: var(--sp-2);
+}
+
+/* --- who this is ---------------------------------------------------------- */
+
+.profile__id {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-4);
+}
+
+/* --- the counts ----------------------------------------------------------- */
+
+.profile__counts {
+  display: grid;
+  gap: var(--sp-3);
+  margin-top: var(--sp-5);
+}
+
+@media (min-width: 34rem) {
+  .profile__counts {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--sp-4);
+  }
+}
+
+.count {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-3);
+  padding: var(--sp-4);
+}
+
+.count__n {
+  font-variant-numeric: tabular-nums;
+}
+
+/* --- the facts, and the two that can be changed --------------------------- */
+
+.profile__rows {
+  margin-top: var(--sp-5);
+}
+
+/*
+ * Name, value, control — wrapping in that order on a narrow screen. The control is pushed to the
+ * trailing edge only while there is room for it on the same line.
+ */
+.rows__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--sp-2) var(--sp-4);
+  padding: var(--sp-3) 0;
+}
+
+.rows__row dt {
+  min-width: 10rem;
+}
+
+.rows__control {
+  display: flex;
+  margin-left: auto;
+}
+
+.rows__form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* A zone list is long: it must not stretch the row, and must stay usable on a phone. */
+.rows__select {
+  max-width: 100%;
+  min-width: 0;
+}
+
+.profile__notice {
+  margin-top: var(--sp-4);
+}

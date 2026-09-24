@@ -10,10 +10,13 @@
  * inputs, so none of this reaches a visitor.
  */
 
+import { MemoryRouter } from 'react-router-dom';
+import { AppShell } from '../components/AppShell';
 import { CalendarWeek } from '../components/CalendarWeek';
 import { GoalAction } from '../components/GoalAction';
 import { GoalCanvas } from '../components/GoalCanvas';
-import { GOALS, WEEK } from './fixtures';
+import { ProfileView } from '../screens/ProfileScreen';
+import { GALLERY_NOW, GOALS, PROFILE, WEEK } from './fixtures';
 import type { Arrange, ArrangeHandleProps } from '../lib/useArrange';
 import type { GoalSummary } from '../types/api';
 import './gallery.css';
@@ -39,13 +42,41 @@ function stillArrange(heldId: string | null): Arrange {
   };
 }
 
+/** As much of the session as the frame reads. */
+const SHELL_SESSION = {
+  goalsOnBoard: PROFILE.stats.goalsOnBoard,
+  glassesFilled: PROFILE.stats.glassesFilled,
+  isAnonymous: PROFILE.isAnonymous,
+};
+
+/**
+ * The shell needs a router for its links and its `useLocation`; `MemoryRouter` gives it one without
+ * touching the gallery's own URL, and `initialEntries` is how a case picks the page it is showing.
+ */
+function atPath(path: string, children: React.ReactNode) {
+  return <MemoryRouter initialEntries={[path]}>{children}</MemoryRouter>;
+}
+
 interface CaseProps {
   title: string;
   note?: string;
   children: React.ReactNode;
 }
 
+/**
+ * `?only=shell` renders just the cases whose title contains "shell".
+ *
+ * Not a convenience: a headless screenshot captures a window, and a window tall enough to hold
+ * the whole gallery comes back blank. Narrowing the page is how a section gets looked at.
+ */
+function wanted(title: string): boolean {
+  const only = new URLSearchParams(window.location.search).get('only');
+  return only === null || title.toLowerCase().includes(only.toLowerCase());
+}
+
 function Case({ title, note, children }: CaseProps) {
+  if (!wanted(title)) return null;
+
   return (
     <section className="gal__case">
       <h2 className="gal__h">{title}</h2>
@@ -92,6 +123,57 @@ export function Gallery() {
         note="The state the screenshots caught: Done + Undo + grip all on one tile."
       >
         {board('g-read', new Set(['g-move']))}
+      </Case>
+
+      <Case
+        title="Shell · the board inside the frame"
+        note="Top bar, the column of sections with its counts, and the page. Collapse is at the foot of the column; the hamburger and the drawer only appear under 48rem, so narrow the window to see them."
+      >
+        {atPath('/', <AppShell session={SHELL_SESSION}>{board(null, new Set())}</AppShell>)}
+      </Case>
+
+      <Case
+        title="Shell · a page with nothing on it"
+        note="The frame on /calendar, so the heading, the current-section mark and the empty content column can be looked at on their own."
+      >
+        {atPath(
+          '/calendar',
+          <AppShell session={SHELL_SESSION}>
+            <p className="footnote">The page renders here.</p>
+          </AppShell>,
+        )}
+      </Case>
+
+      <Case
+        title="Profile · an anonymous account"
+        note="Two settings that can be changed — press Change on either; the picker is live and saving is a no-op — four plain counts, and the 90-day line. No trophies, by instruction."
+      >
+        <ProfileView
+          profile={PROFILE}
+          busy={false}
+          notice={null}
+          now={GALLERY_NOW}
+          browserTimeZone="Europe/Madrid"
+          onSave={() => Promise.resolve(true)}
+        />
+      </Case>
+
+      <Case
+        title="Profile · a save that did not go through"
+        note="The failure line a write gets. It never says the reader did anything wrong, and the row it came from stays open."
+      >
+        <ProfileView
+          profile={PROFILE}
+          busy={false}
+          notice={{
+            kind: 'failed',
+            title: 'Cannot reach the server from here.',
+            body: 'That is usually the connection rather than anything you did.',
+          }}
+          now={GALLERY_NOW}
+          browserTimeZone="Europe/Madrid"
+          onSave={() => Promise.resolve(false)}
+        />
       </Case>
 
       <Case title="Calendar · week" note="Wednesday is today, and it has one entry on it.">

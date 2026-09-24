@@ -1,0 +1,280 @@
+/*
+ * AppShell — STRUCTURE ONLY. The visual pass belongs to design-agent.
+ *
+ * What is here: the two grids (top bar over body, column beside page), the flow inside the
+ * navigation rows, the collapsed rail, the drawer's position, and the one breakpoint at which the
+ * column becomes that drawer. Every length is an existing token or a plain geometric size.
+ *
+ * What is deliberately NOT here: colour, type scale, borders, shadows, gradients, backdrop
+ * filters, hover and current-page treatment, the drawer's entrance. The approved mockup has all of
+ * it for `.topbar`, `.side`, `.nav__item[aria-current='page']`, `.who`, `.bead`, `.iconbtn`,
+ * `.drawer` and `.scrim`, and bringing it across is design-agent's work. Two exceptions, both
+ * plain tokens, because without them the drawer is unreadable rather than merely unstyled:
+ * `.drawer`'s surface colour, and the fact that the scrim covers the page at all.
+ */
+
+.shell {
+  display: grid;
+  grid-template-rows: auto 1fr;
+  min-height: 100vh;
+  min-height: 100dvh;
+}
+
+/* --- top bar -------------------------------------------------------------- */
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 3.5rem;
+  padding-inline: var(--sp-4);
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.brand__mark {
+  flex: none;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+/* Pushes everything after it to the trailing edge. */
+.topbar__grow {
+  margin-left: auto;
+}
+
+.iconbtn {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+}
+
+.iconbtn__glyph {
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.who {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+/* Shared by the top bar and the profile page; design-agent may move it to a common sheet. */
+.bead {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 1.75rem;
+  height: 1.75rem;
+}
+
+.bead--lg {
+  width: 3rem;
+  height: 3rem;
+}
+
+.bead__glyph {
+  width: 0.875rem;
+  height: 0.875rem;
+}
+
+.bead--lg .bead__glyph {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+/* --- body: the column beside the page ------------------------------------- */
+
+.shell__body {
+  display: grid;
+  min-width: 0;
+}
+
+.side {
+  flex-direction: column;
+  gap: var(--sp-1);
+  width: 14.5rem;
+  padding: var(--sp-4) var(--sp-3);
+}
+
+.nav {
+  display: grid;
+  gap: 2px;
+}
+
+.nav__item {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 2.375rem;
+  padding-inline: var(--sp-3);
+  white-space: nowrap;
+}
+
+.nav__icon {
+  flex: none;
+  width: 1.0625rem;
+  height: 1.0625rem;
+}
+
+.nav__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.nav__n {
+  margin-left: auto;
+  font-variant-numeric: tabular-nums;
+}
+
+.side__foot {
+  margin-top: auto;
+  padding-top: var(--sp-3);
+}
+
+.side__collapse {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 2.125rem;
+  padding-inline: var(--sp-3);
+  white-space: nowrap;
+}
+
+.side__collapse-glyph {
+  flex: none;
+  width: 1rem;
+  height: 1rem;
+}
+
+/* Collapsed to a rail: the labels leave the layout, the icons centre, the chevron turns around.
+   The links keep their names — `AppShell` gives each one an `aria-label` while this is on. */
+.side[data-collapsed='true'] {
+  width: 3.75rem;
+  padding-inline: var(--sp-2);
+}
+
+.side[data-collapsed='true'] .nav__label,
+.side[data-collapsed='true'] .nav__n,
+.side[data-collapsed='true'] .side__collapse-label {
+  display: none;
+}
+
+.side[data-collapsed='true'] .nav__item,
+.side[data-collapsed='true'] .side__collapse {
+  justify-content: center;
+  padding-inline: 0;
+}
+
+.side[data-collapsed='true'] .side__collapse-glyph {
+  rotate: 180deg;
+}
+
+/* --- the page ------------------------------------------------------------- */
+
+.content {
+  min-width: 0;
+  padding: var(--sp-5) var(--sp-4) var(--sp-7);
+}
+
+.content__inner {
+  display: grid;
+  gap: var(--sp-5);
+  width: 100%;
+  min-width: 0;
+  max-width: var(--shell-width);
+  margin-inline: auto;
+}
+
+/* --- drawer --------------------------------------------------------------- */
+
+.drawer-wrap {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+}
+
+/* Covers the page so a pointer lands here rather than on a control behind it. */
+.scrim {
+  position: absolute;
+  inset: 0;
+}
+
+.drawer {
+  position: absolute;
+  inset: 0 auto 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  width: 17rem;
+  max-width: 85vw;
+  padding: var(--sp-4) var(--sp-3);
+  overflow-y: auto;
+  background-color: var(--surface);
+}
+
+.drawer__head {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 2.5rem;
+  padding-inline: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.drawer__brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+}
+
+.drawer__close {
+  margin-left: auto;
+}
+
+/* --- where the column is, and where it is a drawer ------------------------ */
+
+/*
+ * Narrow first: there is one column of page, the hamburger is the way to the sections, and the
+ * profile link in the top bar is the bead on its own. The drawer markup only exists while it is
+ * open, so nothing is hidden here — the trigger simply appears.
+ */
+.side {
+  display: none;
+}
+
+.who__label {
+  display: none;
+}
+
+@media (min-width: 30rem) {
+  .who__label {
+    display: inline;
+  }
+}
+
+@media (min-width: 48rem) {
+  .topbar__menu {
+    display: none;
+  }
+
+  .side {
+    display: flex;
+  }
+
+  .shell__body {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  .content {
+    padding: var(--sp-6) var(--sp-6) var(--sp-7);
+  }
+}

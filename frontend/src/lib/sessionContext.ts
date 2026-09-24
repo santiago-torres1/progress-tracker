@@ -22,8 +22,17 @@ export interface AppSession {
   call: AuthorizedCall;
   /** The profile as the server holds it: the zone days are measured in, and where a week starts. */
   profile: SessionProfile;
-  /** Re-reads the profile, for a screen that has just changed part of it. */
+  /** Re-reads the profile. The way back from a failed read, not the way to apply a change. */
   reloadProfile: () => void;
+  /**
+   * Replaces the held profile with one a write just answered with.
+   *
+   * `PATCH /api/session` returns the recomputed profile, so a screen that changed the time zone
+   * already has the truth in its hand: handing it over is both cheaper and more correct than asking
+   * again, and it is the same principle as a tile refilling from its own write's response. It must
+   * be a profile the server returned — never one assembled in the browser from a form.
+   */
+  applyProfile: (profile: SessionProfile) => void;
 }
 
 const SessionContext = createContext<AppSession | null>(null);

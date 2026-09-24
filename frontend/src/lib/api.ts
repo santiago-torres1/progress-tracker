@@ -62,6 +62,7 @@ import type {
   ScheduledState,
   SessionProfile,
   SessionResponse,
+  SessionStats,
   UnavailableReason,
   UndoCompletionResponse,
   UpdateGoalRequest,
@@ -445,14 +446,43 @@ function parseGoalResponse(body: unknown): GoalResponse | null {
   return goal === null ? null : { goal };
 }
 
+/**
+ * The profile page's counts.
+ *
+ * All five are required. A missing one is a contract mismatch, not "assume zero": zero is a real
+ * answer here — a visitor who has made nothing yet gets a row of them — so coercing an absent
+ * field into one would render a brand-new-looking account to somebody with a full board.
+ */
+function parseSessionStats(value: unknown): SessionStats | null {
+  if (!isRecord(value)) return null;
+
+  const { goalsOnBoard, glassesFilled, daysSinceStart } = value;
+  const { completionsRecorded, measurementsRecorded } = value;
+  if (!isFiniteNumber(goalsOnBoard) || !isFiniteNumber(glassesFilled)) return null;
+  if (!isFiniteNumber(completionsRecorded) || !isFiniteNumber(measurementsRecorded)) return null;
+  if (!isFiniteNumber(daysSinceStart)) return null;
+
+  return {
+    goalsOnBoard,
+    glassesFilled,
+    completionsRecorded,
+    measurementsRecorded,
+    daysSinceStart,
+  };
+}
+
 function parseSessionProfile(value: unknown): SessionProfile | null {
   if (!isRecord(value)) return null;
 
-  const { timeZone, weekStartsOn, isAnonymous, expiresAt } = value;
+  const { timeZone, weekStartsOn, isAnonymous, expiresAt, createdAt } = value;
   if (typeof timeZone !== 'string' || !isFiniteNumber(weekStartsOn)) return null;
   if (typeof isAnonymous !== 'boolean' || !isNullableString(expiresAt)) return null;
+  if (typeof createdAt !== 'string') return null;
 
-  return { timeZone, weekStartsOn, isAnonymous, expiresAt };
+  const stats = parseSessionStats(value.stats);
+  if (stats === null) return null;
+
+  return { timeZone, weekStartsOn, isAnonymous, expiresAt, createdAt, stats };
 }
 
 function parseSessionResponse(body: unknown): SessionResponse | null {

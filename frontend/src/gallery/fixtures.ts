@@ -6,7 +6,7 @@
  * an ordinary page with no test framework behind it.
  */
 
-import type { CalendarEntry, GoalArea, GoalSummary } from '../types/api';
+import type { CalendarEntry, GoalArea, GoalSummary, SessionProfile } from '../types/api';
 
 const AREAS: Record<string, GoalArea> = {
   health: { id: 'a-health', slug: 'health', name: 'Health & Wellbeing', icon: null },
@@ -190,3 +190,27 @@ export const WEEK = [
   { date: '2026-09-26', entries: [] },
   { date: '2026-09-27', entries: [] },
 ];
+
+/**
+ * One anonymous session, for the frame's counts and the profile page.
+ *
+ * The numbers are plain counts, exactly as `GET /api/session` reports them — there is nothing to
+ * win on that page and nothing here pretends otherwise.
+ */
+export const PROFILE: SessionProfile = {
+  timeZone: 'Europe/Madrid',
+  weekStartsOn: 1,
+  isAnonymous: true,
+  expiresAt: '2026-12-22T09:30:00.000Z',
+  createdAt: '2026-08-14T08:12:00.000Z',
+  stats: {
+    goalsOnBoard: 6,
+    glassesFilled: 7,
+    completionsRecorded: 128,
+    measurementsRecorded: 19,
+    daysSinceStart: 40,
+  },
+};
+
+/** The clock the gallery renders against, so a screenshot is the same picture every day. */
+export const GALLERY_NOW = new Date('2026-09-23T09:30:00.000Z');
