@@ -848,6 +848,19 @@ button.goal-tile:active,
   font-variant-numeric: tabular-nums;
 }
 
+/*
+ * The smallest tile is deliberately one row tall, and `.goal-tile` hides its overflow — so a value
+ * line long enough to wrap did not wrap, it was cut off mid-word on a second line nobody could see
+ * ("1 of 1 this week · full this"). One line, and an ellipsis where it runs out, which at least
+ * says that it ran out. The whole line is still in the goal's own detail panel.
+ */
+.goal-tile--sm .goal-tile__val,
+.goal-tile--sm .goal-tile__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .goal-tile--sm .goal-tile__val {
   font-size: var(--fs-xs);
 }
