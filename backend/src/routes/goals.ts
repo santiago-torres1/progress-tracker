@@ -2,6 +2,7 @@ import { Router } from 'express';
 
 import { createCompletionsRouter } from './completions.js';
 import { createMeasurementsRouter } from './measurements.js';
+import { createOccurrencesRouter } from './occurrences.js';
 import {
   READ_CACHE_CONTROL,
   requireSession,
@@ -196,6 +197,7 @@ export function createGoalsRouter(options: GoalsRouterOptions = {}): Router {
   // handler, instead of a cast on something that arrived over the wire.
   router.use(createCompletionsRouter(options));
   router.use(createMeasurementsRouter(options));
+  router.use(createOccurrencesRouter(options));
   router.use(createRecurrencesRouter(options));
 
   return router;

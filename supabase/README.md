@@ -2,11 +2,11 @@
 
 Design notes for the `progress-tracker` data layer.
 
-**The `20260916*` through `20260918*` migrations are applied to the hosted Supabase project —
+**The `20260916*` through `20260923*` migrations are applied to the hosted Supabase project —
 `0.1.1-alpha`'s schema, then `0.2.0-alpha` Phase 1 (anonymous accounts, real RLS, expiry, limits)
-and Phase 2 (the goal catalogue and the writes). They are immutable: never edit one in place
-again.** The `20260923*` file is `0.3.0-alpha` and has **not** been applied; applying it is a
-human decision (see [Applying](#applying-the-migrations)).
+and Phase 2 (the goal catalogue and the writes), then `0.3.0-alpha`'s profile facts. They are
+immutable: never edit one in place again.** The `20260924*` file is `0.3.1-alpha` and has **not**
+been applied; applying it is a human decision (see [Applying](#applying-the-migrations)).
 
 | Path                                                   | What it is                                                           |
 | ------------------------------------------------------ | -------------------------------------------------------------------- |
@@ -26,6 +26,9 @@ human decision (see [Applying](#applying-the-migrations)).
 | `migrations/20260918100100_write_state.sql`            | the two columns that make undo exact, one-per-day uniqueness          |
 | `migrations/20260918100200_write_rpcs.sql`             | the write functions behind completions, measurements and rules        |
 | `migrations/20260923100000_session_overview.sql`       | `session_overview` — the profile page's facts                        |
+| `migrations/20260924100000_delete_occurrence.sql`      | `delete_occurrence()` — removing one day, and keeping it removed      |
+| `maintenance/`                                         | one-off cleanup scripts a human runs; never migrations               |
+| `tests/delete_occurrence.sql`                          | runnable assertions that a deleted day stays deleted                 |
 | `seed.sql`                                             | eight demo goals, local development only                             |
 
 ## ERD
@@ -822,6 +825,83 @@ already happened survives, detached: the composite FK is `ON DELETE SET NULL (re
 a completed session becomes an ordinary entry. The progress it records is a fact, and removing the
 plan it came from does not unmake it.
 
+### Deleting one occurrence, and why the row survives it
+
+**"I am not running this Thursday."** Until `0.3.1-alpha` this could not be said at all: a rule
+could be replaced or deleted whole and a completion could be taken back, but a single day could
+not be removed from either the goal or the calendar. Once a rule had materialised a day, that day
+was there forever.
+
+`public.delete_occurrence(goal, entry)` is the route's one call, and the interesting thing about it
+is that it does not delete the row.
+
+**Because the generator would put it back.** `expand_recurrence()` resumes at
+`generated_through + 1`, so a plain `DELETE` of a future day survives only until the rule is next
+edited: `update_recurrence()` calls `resync_recurrence()`, which winds `generated_through` back to
+the caller's today and re-expands the whole horizon — and a day whose row is gone has nothing to
+conflict with, so it comes straight back. A deletion the next edit undoes is worse than no feature
+at all. So the row stays, as a tombstone:
+
+- `status = 'cancelled'` — which `20260916090000` already defines as "should never have existed;
+  ignored by every progress figure", and which `goal_progress` has excluded from `planned_count`
+  and `due_count` since `0.1.1`;
+- `is_exception = true` — which `20260916090100` already defines as "edited away from its rule, so
+  regenerating the series must not overwrite or delete it".
+
+Three mechanisms then keep the day deleted, and **not one of them is new**:
+
+1. `resync_recurrence()` deletes only `status = 'planned'` rows → not this one;
+2. ...and only `not is_exception` rows → not this one;
+3. `expand_recurrence()` inserts `ON CONFLICT (recurrence_id, entry_date) DO NOTHING`, and the
+   tombstone still occupies that pair → the insert that would recreate the day finds it and does
+   nothing.
+
+Neither function had to change. The tombstone is invisible — no progress figure counts it,
+`GET /api/calendar` filters it out (`backend/src/lib/calendar-entries.ts`), and it is the row the
+occurrence already had, so it costs nothing against `calendar_entries_per_goal`. An occurrence
+with no rule behind it (`recurrence_id IS NULL`) is deleted outright instead: nothing can
+regenerate it, and a tombstone for it would be litter.
+
+**Freezing the past does not apply here, and that is a decision.** Editing a rule is frozen at
+today because re-expanding _adds_ days to the past: `due_count` grows for days already lived and
+adherence falls for doing nothing. Deleting one occurrence can only ever _remove_ a day from that
+denominator, so:
+
+> deleting an occurrence can never lower any goal's `progress_fraction`.
+
+A habit counts completions, so a cancelled row changes nothing; a measured goal never looked at
+the calendar; a finite scheduled goal counts completions; an open-ended one loses one from
+`due_count` and none from `completed_due_count`, which can only raise the fraction. There is
+nothing for a freeze to protect, and a person removing last Thursday is correcting a plan rather
+than rewriting history — so no date is refused.
+
+**A completed occurrence is refused**, with the token `entry_completed` (409). That row is the
+record of something somebody did and must not vanish through a route called "delete". Undo already
+exists, is exact, and restores the status the day held before — including returning a skipped day
+to skipped — so the way to remove a completed day is complete → undo → delete, each step visible.
+A **skipped** day _is_ deletable: skipping is a statement about the plan, not an achievement.
+
+Everything else is the usual answer: another session's occurrence, an id that never existed, and
+one that is already cancelled all raise `entry_not_found`, because RLS makes the first invisible
+to the `SELECT` and the API does not claim to tell the three apart. The client reads the 404 as
+"already gone".
+
+Deleting the rule now sweeps its tombstones as well as its future plan: a tombstone exists only to
+shadow one rule's occurrence, so once the rule is gone it records nothing, and
+`ON DELETE SET NULL` would otherwise strand it forever as an invisible row against the account's
+cap. Only `cancelled` rows are swept — a completed, skipped or hand-edited occurrence is never in
+that statement's scope.
+
+_Verified on PostgreSQL 17_, and the assertions are committed rather than described:
+`supabase/tests/delete_occurrence.sql` builds a daily rule a fortnight old, deletes a day seven
+days out, then runs a full `update_recurrence` over it — 89 future planned rows dropped, 89
+re-materialised, the cancelled day neither swept nor regenerated — then a bare
+`expand_recurrence()` across the same horizon, then checks that `due_count` falls and
+`progress_fraction` does not when a past day is deleted, that a completed day is refused and
+survives the attempt, that undo-then-delete works, that a second delete says `entry_not_found`,
+that deleting the rule sweeps the tombstones while the completed session survives, and that a
+second account sees none of it and is told nothing.
+
 ### One check-in per goal per day
 
 `progress_entries_goal_day_uidx` is new, and it is what makes logging a measurement idempotent.
@@ -904,11 +984,14 @@ in the repo schedules it today.
 
 ## Applying the migrations
 
-The `20260916*` through `20260918*` files are already applied to the hosted project. The
-`20260923*` file is not, and `GET /api/session` returns a 503 until it is: the route reads
-`public.session_overview`, and **that read is invisible to `/health`** — the deploy will go green
-against a database that cannot serve the profile. Apply it before the pull request that needs it
-merges, the same rule `infra/` changes follow.
+The `20260916*` through `20260923*` files are already applied to the hosted project. The
+`20260924*` file is not, and `DELETE /api/goals/:goalId/occurrences/:entryId` returns a 503 until
+it is: the route calls `public.delete_occurrence()`, and **that call is invisible to `/health`** —
+the deploy will go green against a database where nobody can remove a day. Apply it before the
+pull request that needs it merges, the same rule `infra/` changes follow.
+
+Nothing in `maintenance/` is ever applied this way. Those are one-off scripts a human runs against
+one project on purpose; see `maintenance/README.md`.
 
 ```bash
 # Local (needs Docker + the Supabase CLI; supabase/config.toml is not committed yet,
@@ -970,9 +1053,13 @@ and pass `Database` to `createClient<Database>()` in `backend/src/lib/supabase.t
   only real as far as it has been expanded (90 days). Nothing yet extends that horizon on a
   schedule or lazily when the calendar is read past `generated_through` — the same `pg_cron`
   recommendation as the expiry sweep applies.
-- **Editing a single occurrence** (move a session, skip a day, write a note on one). The schema
-  has carried `is_exception` and the statuses for it since `0.1.1`, and the write routes leave
-  both alone; the endpoints are a later release.
+- **Editing a single occurrence** (move a session to another time, skip a day, write a note on
+  one). Removing one is done — `DELETE /api/goals/:goalId/occurrences/:entryId`, above — and it is
+  what finally put `is_exception` and `entry_status` to work. Changing one rather than removing it
+  is a later release.
+- **Deleting a calendar item that belongs to no goal** (the dentist appointment the seed makes).
+  `delete_occurrence()` takes a goal id as half its key, so the route cannot name one. Nothing
+  writes a goal-less entry through the API either, so the two gaps close together.
 - **Plain calendar items** (a dentist appointment) through the API. The seed makes them and the
   calendar renders them; nothing writes one yet.
 - **Converting an anonymous account to a permanent one from the UI.** The database side is done

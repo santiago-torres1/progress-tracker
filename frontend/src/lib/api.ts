@@ -27,6 +27,7 @@ import type {
   CompleteOccurrenceRequest,
   CompletionResponse,
   ConflictReason,
+  DeleteOccurrenceResponse,
   CreateGoalRequest,
   DeleteMeasurementResponse,
   DeleteRecurrenceResponse,
@@ -193,6 +194,7 @@ const NOT_FOUND_REASONS: Readonly<Record<NotFoundReason, true>> = {
 };
 
 const CONFLICT_REASONS: Readonly<Record<ConflictReason, true>> = {
+  entry_completed: true,
   wrong_goal_kind: true,
   duplicate: true,
 };
@@ -597,6 +599,19 @@ function parseUndoResponse(body: unknown): UndoCompletionResponse | null {
   return entry === null || goal === null ? null : { action: body.action, entry, goal };
 }
 
+const OCCURRENCE_ACTIONS: Readonly<Record<DeleteOccurrenceResponse['action'], true>> = {
+  cancelled: true,
+  deleted: true,
+};
+
+function parseDeleteOccurrenceResponse(body: unknown): DeleteOccurrenceResponse | null {
+  if (!isRecord(body) || typeof body.id !== 'string') return null;
+  if (!isMember(OCCURRENCE_ACTIONS, body.action)) return null;
+
+  const goal = parseGoal(body.goal);
+  return goal === null ? null : { id: body.id, action: body.action, goal };
+}
+
 function parseMeasurement(value: unknown): Measurement | null {
   if (!isRecord(value)) return null;
 
@@ -955,6 +970,22 @@ export function undoCompletion(
   const goal = encodeURIComponent(goalId);
   const path = `/api/goals/${goal}/completions/${encodeURIComponent(entryId)}`;
   return request({ path, method: 'DELETE', parse: parseUndoResponse }, options);
+}
+
+/**
+ * DELETE /api/goals/:goalId/occurrences/:entryId — "I am not doing this on Thursday".
+ *
+ * A 404 means the day is already gone, which is the outcome asked for; the caller treats it as
+ * success, exactly as it does for undo. A completed day answers 409 instead and is left alone.
+ */
+export function deleteOccurrence(
+  goalId: string,
+  entryId: string,
+  options: ApiRequestOptions = {},
+): Promise<ApiResult<DeleteOccurrenceResponse>> {
+  const goal = encodeURIComponent(goalId);
+  const path = `/api/goals/${goal}/occurrences/${encodeURIComponent(entryId)}`;
+  return request({ path, method: 'DELETE', parse: parseDeleteOccurrenceResponse }, options);
 }
 
 /** POST /api/goals/:goalId/measurements — a weight cannot be ticked, so it is logged. */

@@ -115,6 +115,64 @@ describe('WaterField', () => {
     expect(field.heightAt(0.5)).toBeLessThan(0.3);
   });
 
+  /*
+   * The test that says "water" rather than "jelly".
+   *
+   * The first version of this tipped the whole surface as one rigid sheet and sprang it back, and
+   * the owner's description of the result was exact: gelatin, bouncy. A tilting plank has a
+   * STRAIGHT surface — every point on it sits on the line joining its two ends. Water does not:
+   * the far wall is still where it was while the near one has already risen, so the surface bends.
+   *
+   * So the measurement is deviation from that line, as a fraction of the lean itself. It is zero
+   * for anything rigid however violently it rocks, and cannot be satisfied by simply making the
+   * motion bigger.
+   */
+  it('bends across the glass instead of tilting like a plank', () => {
+    const field = new WaterField();
+    field.setLevel(0.5, false);
+
+    // A drag: several frames of movement in the same direction, as the driver reports it.
+    for (let i = 0; i < 5; i += 1) {
+      field.tilt(14);
+      field.advance(1000 / 60);
+    }
+
+    const readings = Array.from({ length: 21 }, (_, i) => field.heightAt(i / 20));
+    const first = readings[0] ?? 0;
+    const last = readings[20] ?? 0;
+    const lean = Math.abs(first - last);
+    expect(lean).toBeGreaterThan(0.01);
+
+    let bend = 0;
+    for (let i = 0; i <= 20; i += 1) {
+      const straight = first + ((last - first) * i) / 20;
+      bend = Math.max(bend, Math.abs((readings[i] ?? 0) - straight));
+    }
+
+    expect(bend / lean).toBeGreaterThan(0.15);
+  });
+
+  it('piles against the wall it is dragged away from, then comes back', () => {
+    const field = new WaterField();
+    field.setLevel(0.5, false);
+
+    // Moving right: the glass sets off and the water does not, so it heaps on the left.
+    for (let i = 0; i < 5; i += 1) {
+      field.tilt(14);
+      field.advance(1000 / 60);
+    }
+    const lean = field.heightAt(0) - field.heightAt(1);
+    expect(lean).toBeGreaterThan(0);
+
+    // Let go. It should cross over — the slosh coming back the other way, not just sagging flat.
+    let crossed = false;
+    for (let i = 0; i < 180 && !crossed; i += 1) {
+      field.advance(1000 / 60);
+      if (field.heightAt(0) - field.heightAt(1) < -lean * 0.2) crossed = true;
+    }
+    expect(crossed).toBe(true);
+  });
+
   it('stays bounded and finite when shoved absurdly hard', () => {
     const field = new WaterField();
     field.setLevel(0.5, false);

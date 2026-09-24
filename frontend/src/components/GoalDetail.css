@@ -404,3 +404,38 @@
     min-height: 2.75rem;
   }
 }
+
+/*
+ * Taking one day off the calendar.
+ *
+ * Quiet on purpose — it sits beside every planned day in the list, and a row of loud buttons would
+ * make a plan look like a list of things to get rid of. It takes the goal's own colour on hover,
+ * like everything else in this panel, and never red: removing a day you are not going to do is an
+ * ordinary correction, not a destructive act the app should flinch at.
+ */
+.goal-detail__drop {
+  flex: none;
+  padding: 0 var(--sp-2);
+  font: inherit;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+  background: none;
+  border: 1px solid transparent;
+  border-radius: var(--r-full);
+  cursor: pointer;
+  transition:
+    color var(--mo) var(--ease),
+    border-color var(--mo) var(--ease);
+}
+
+@media (hover: hover) {
+  .goal-detail__drop:hover:not(:disabled) {
+    color: var(--goal);
+    border-color: color-mix(in srgb, var(--goal) 55%, transparent);
+  }
+}
+
+.goal-detail__drop:disabled {
+  cursor: default;
+  opacity: 0.55;
+}

@@ -29,15 +29,32 @@ export interface WaterOptions {
   spread?: number;
 }
 
+/*
+ * THE RATIO OF `spread` TO `tension` IS WHAT MAKES THIS LOOK LIKE A LIQUID.
+ *
+ * `tension` is a spring pulling each column back to the rest level on its own; `spread` is how
+ * much of its difference a column hands to its neighbours. When tension leads, every column bobs
+ * on its own spring at its own frequency and the surface rises and falls as one sheet — which is
+ * the motion of a drumskin, or of jelly, and is precisely what the first version of this looked
+ * like. Water is the other way round: a disturbance is carried SIDEWAYS, crosses the glass, comes
+ * off the far wall and interferes with itself on the way back.
+ *
+ * So tension is now a quarter of what it was and spread nearly double, and the surface behaves
+ * accordingly. Damping came down with them, because a wave that dies before it reaches the far
+ * wall never gets to do the one thing that reads as water.
+ */
 const DEFAULTS = {
   // Sixty-four columns across a tile that is at most ~500px wide: about one column per 8px, which
-  // is finer than the eye resolves on a wave this gentle.
+  // is finer than the eye resolves at these amplitudes.
   columns: 64,
-  // Tuned by eye against the mockup. Together these give a wave that crosses a tile in roughly a
-  // third of a second and is visually still after two — slower than a splash, faster than syrup.
-  tension: 0.025,
-  damping: 0.022,
-  spread: 0.18,
+  tension: 0.02,
+  damping: 0.012,
+  // Two propagation passes run per step, and the scheme is only stable while their combined
+  // transfer stays under a half — so this is as much sideways movement as the algorithm has to
+  // give, and the ratio is bought by dropping tension rather than by pushing this past 0.25.
+  // At 0.3 the surface does not make waves, it detonates: energy climbed four orders of magnitude
+  // in three hundred frames.
+  spread: 0.2,
 } as const;
 
 /** A fixed step, so the simulation does not change character with the frame rate. */
@@ -59,14 +76,23 @@ const MAX_CATCH_UP_STEPS = 6;
 const MAX_DISPLACEMENT = 0.09;
 
 /**
- * The tallest wave the app ever asks for, in glass units: about 3% of the vessel.
+ * The tallest wave the app ever asks for, in glass units.
  *
- * Deliberately small. The brief for this product is calm, and water that slaps around inside a
- * goal tile is the opposite of that — the motion is meant to say "this is a liquid", not "look at
- * me". Divided by the six-times factor above to get the impulse that produces it.
+ * Still small — the brief for this product is calm — but no longer so small that it reads as a
+ * surface that merely twitched. At 3% nobody could tell what the motion was meant to be.
+ *
+ * The impulse that produces it is scaled by the undamped amplitude relation for these constants:
+ * a velocity impulse `v` settles at roughly `v / sqrt(tension)`, which is about thirteen times the
+ * impulse at the tension above.
  */
-const PEAK_WAVE = 0.03;
-const IMPULSE = PEAK_WAVE * 0.16;
+const PEAK_WAVE = 0.055;
+const IMPULSE = PEAK_WAVE * Math.sqrt(DEFAULTS.tension);
+
+/** How much of a drag's speed reaches the water, per pixel moved in one frame. */
+const DRAG_IMPULSE = 0.0016;
+
+/** The most one frame of dragging may inject, so a flick cannot empty the glass up a wall. */
+const MAX_DRAG = 0.02;
 
 export class WaterField {
   readonly columns: number;
@@ -163,20 +189,28 @@ export class WaterField {
   }
 
   /**
-   * Sideways acceleration — the tile is being dragged.
+   * The tile is being dragged sideways.
    *
-   * Water in a glass that is accelerating right piles up on the LEFT, because the glass moves and
-   * the water has not been told yet. So the tilt is opposite in sign to the acceleration, and it
-   * is applied as velocity rather than as a fixed slope: what makes a drag read as liquid is that
-   * the surface keeps moving after the glass has stopped.
+   * The water is pushed AT THE WALLS, which is the only place a moving glass touches it. The wall
+   * the glass is moving towards advances into the water and heaps it up; the wall it is moving
+   * away from leaves water behind. What happens next is the ordinary physics below: the heap runs
+   * across the glass, comes off the far wall and meets itself returning.
+   *
+   * Two earlier versions did not do this and both read as something other than liquid. A velocity
+   * gradient across the whole surface tips it as one rigid sheet and springs it back — the owner
+   * called it gelatin, which was exactly right. A tilted equilibrium is better physics but far too
+   * slow: the water needs most of a second to notice a new equilibrium, and a drag is over in a
+   * few frames, so it barely leaned at all. Driving at the walls is both prompt and rich, because
+   * a disturbance that starts narrow contains every wavelength the glass can hold, and it is those
+   * higher modes — not the amplitude — that make a surface read as water.
    */
-  tilt(acceleration: number): void {
-    const half = (this.columns - 1) / 2;
-    // Antisymmetric about the middle, so a tilt rocks the surface without changing how much is in
-    // the glass — the same rule the shoves keep.
-    for (let i = 0; i < this.columns; i += 1) {
-      this.velocity[i] = (this.velocity[i] ?? 0) - acceleration * ((i - half) / half) * IMPULSE;
-    }
+  tilt(movement: number): void {
+    const power = Math.min(MAX_DRAG, Math.max(-MAX_DRAG, movement * DRAG_IMPULSE));
+    if (power === 0) return;
+
+    // Moving right heaps the water on the LEFT: the glass sets off and the water is left behind.
+    this.splash(0.06, power, 0.22);
+    this.splash(0.94, -power, 0.22);
   }
 
   /**
@@ -286,7 +320,16 @@ export class WaterField {
       for (let i = 0; i < columns; i += 1) {
         const d = delta[i] ?? 0;
         velocity[i] = (velocity[i] ?? 0) + d;
-        height[i] = (height[i] ?? 0) + d;
+        // Clamped here as well as in the spring pass: propagation can carry a column past the
+        // limit that the spring pass had just brought it inside, and the whole safety net is worth
+        // nothing if the last write of the step goes round it.
+        const next = (height[i] ?? 0) + d;
+        height[i] =
+          next > MAX_DISPLACEMENT
+            ? MAX_DISPLACEMENT
+            : next < -MAX_DISPLACEMENT
+              ? -MAX_DISPLACEMENT
+              : next;
       }
     }
   }

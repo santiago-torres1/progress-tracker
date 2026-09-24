@@ -196,6 +196,15 @@ export function conflictCopy(
         title: 'There is already a note on that day.',
         body: 'Open the day and change the number that is there, rather than adding a second one.',
       };
+    /*
+     * Not a refusal — the app is holding on to something the person did. Undo is the way back and
+     * the copy says so, because a dead end here would read as the app deciding it knows better.
+     */
+    case 'entry_completed':
+      return {
+        title: 'That day is already done.',
+        body: 'Take the tick back first, and then the day can come off the calendar.',
+      };
     case null:
       return {
         title: 'That did not fit with what is already saved.',

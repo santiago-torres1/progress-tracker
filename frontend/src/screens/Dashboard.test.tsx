@@ -2,11 +2,13 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   NOW,
+  calendarPayload,
   completionEntry,
   goalById,
   goalsPayload,
   habitAfterTick,
   jsonResponse,
+  recurrencePayload,
   stubFetch,
   type SeenRequest,
 } from '../test/fixtures';
@@ -537,5 +539,123 @@ describe('Dashboard — rearranging by keyboard', () => {
       expect(screen.getByText('Put back where it was.')).toBeInTheDocument();
     });
     expect(layoutWrites(stub)).toHaveLength(0);
+  });
+});
+
+/*
+ * Saving target days, twice.
+ *
+ * This flow had no screen-level test, and that is exactly where it broke in 0.3.0-alpha: the API
+ * client was covered, the orchestration was not. Saving did not refresh what the screen knew about
+ * the goal's rules, so the screen still believed there were none — and the second save CREATED a
+ * second rule rather than replacing the first. The interface can only ever address one rule per
+ * goal, so every extra rule, and every calendar entry it generated, was permanent.
+ */
+describe('Dashboard — target days', () => {
+  beforeEach(() => {
+    forgetBrowserMemory();
+  });
+
+  async function openTargetDays(): Promise<void> {
+    fireEvent.click(await screen.findByRole('button', { name: 'Run three times a week' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Target days' }));
+    // A weekly rule needs a day, or the form answers with a question instead of saving.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Monday' }));
+  }
+
+  /*
+   * How an entry on the calendar reaches the goal that put it there. The calendar had no
+   * interaction at all before this, which is what made "I cannot remove this from the calendar"
+   * true in the plainest sense.
+   */
+  it('opens the goal named in the URL, and then takes it out of the URL', async () => {
+    const goal = goalsPayload().goals[0];
+    if (goal === undefined) throw new Error('the fixture board is empty');
+
+    stubFetch();
+    renderSignedIn(board(), { at: `/?goal=${goal.id}` });
+
+    expect(await screen.findByRole('button', { name: 'Target days' })).toBeInTheDocument();
+  });
+
+  it('takes one day off the calendar, and refills the tile from the answer', async () => {
+    const goal = goalsPayload().goals[0];
+    if (goal === undefined) throw new Error('the fixture board is empty');
+    const entry = calendarPayload('2026-09-14', '2026-09-20').entries.find(
+      (row) => row.goal?.id === goal.id && row.status === 'planned',
+    );
+    if (entry === undefined) throw new Error('the fixture fortnight has no planned day');
+
+    const stub = stubFetch({
+      write: (request) =>
+        request.method === 'DELETE' && request.path.includes('/occurrences/')
+          ? jsonResponse({ id: entry.id, action: 'cancelled', goal })
+          : undefined,
+    });
+
+    renderSignedIn(board());
+    fireEvent.click(await screen.findByRole('button', { name: 'Run three times a week' }));
+
+    const [remove] = await screen.findAllByRole('button', { name: /off the calendar$/ });
+    if (remove === undefined) throw new Error('no day offered a way off the calendar');
+    fireEvent.click(remove);
+
+    await waitFor(() => {
+      expect(
+        stub.seen.some(
+          (r) =>
+            r.method === 'DELETE' && r.path === `/api/goals/${goal.id}/occurrences/${entry.id}`,
+        ),
+      ).toBe(true);
+    });
+  });
+
+  it('replaces the rule on a second save instead of adding another', async () => {
+    const goal = goalsPayload().goals[0];
+    if (goal === undefined) throw new Error('the fixture board is empty');
+
+    const stub = stubFetch({
+      write: (request) =>
+        request.path === `/api/goals/${goal.id}/recurrences` && request.method === 'POST'
+          ? jsonResponse(recurrencePayload('r-1', goal.id))
+          : undefined,
+    });
+
+    renderSignedIn(board());
+    await openTargetDays();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set these days' }));
+
+    await waitFor(() => {
+      expect(
+        stub.seen.some(
+          (r) => r.method === 'POST' && r.path === `/api/goals/${goal.id}/recurrences`,
+        ),
+      ).toBe(true);
+    });
+
+    // Saving closes the panel — which is the confirmation, and the reason nobody presses twice.
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Set these days' })).not.toBeInTheDocument();
+    });
+
+    await openTargetDays();
+
+    // The screen now knows the rule exists, and says so on the button itself.
+    const again = await screen.findByRole('button', { name: 'Replace the rule' });
+    fireEvent.click(again);
+
+    await waitFor(() => {
+      expect(
+        stub.seen.some(
+          (r) => r.method === 'PUT' && r.path === `/api/goals/${goal.id}/recurrences/r-1`,
+        ),
+      ).toBe(true);
+    });
+
+    const creates = stub.seen.filter(
+      (r) => r.method === 'POST' && r.path === `/api/goals/${goal.id}/recurrences`,
+    );
+    expect(creates).toHaveLength(1);
   });
 });

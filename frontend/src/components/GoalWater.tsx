@@ -27,9 +27,6 @@ export interface GoalWaterProps {
   level: number;
 }
 
-/** Sideways movement turned into slosh. Tuned so a brisk drag tilts the surface, not a flick. */
-const DRAG_TO_TILT = 0.02;
-
 /**
  * Has the reader asked for less motion?
  *
@@ -132,7 +129,8 @@ export function GoalWater({ level }: GoalWaterProps) {
       const leave = join({
         element: tile,
         moved(dx) {
-          field.tilt(dx * DRAG_TO_TILT);
+          // Raw pixels: how much of that reaches the water is the field's business, not ours.
+          field.tilt(dx);
         },
         render(elapsed) {
           const moving = field.advance(elapsed);

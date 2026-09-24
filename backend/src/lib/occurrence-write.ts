@@ -1,5 +1,5 @@
 import { toCalendarEntry } from './calendar-entries.js';
-import { readBoolean, readEnum, type UnknownRow } from './row.js';
+import { readBoolean, readEnum, readString, type UnknownRow } from './row.js';
 import type { SupabaseUserClient } from './supabase.js';
 import { requireRow, runWrite } from './write.js';
 import type { CalendarEntry, CalendarEntryGoal, GoalSummary } from '../types/api.js';
@@ -19,10 +19,18 @@ import type { CalendarEntry, CalendarEntryGoal, GoalSummary } from '../types/api
 
 const CONTEXT = '[api/goals/completions]';
 
+/** Context for the one call in this file that is not about completing. */
+const DELETE_CONTEXT = '[api/goals/occurrences]';
+
 /** `restored` puts a status back, `deleted` removes a row the completion created, `noop` is a retry. */
 export type UndoAction = 'restored' | 'deleted' | 'noop';
 
 const UNDO_ACTIONS = ['restored', 'deleted', 'noop'] as const;
+
+/** `cancelled` tombstones an occurrence of a rule; `deleted` removes one that had no rule. */
+export type DeleteOccurrenceAction = 'cancelled' | 'deleted';
+
+const DELETE_ACTIONS = ['cancelled', 'deleted'] as const;
 
 export interface CompletionResult {
   /** True when the day held no occurrence and one was created to record this. */
@@ -35,6 +43,12 @@ export interface UndoResult {
   action: UndoAction;
   /** On `deleted`, the row as it was — enough for a client to remove it from a calendar. */
   row: UnknownRow;
+}
+
+export interface DeleteOccurrenceResult {
+  action: DeleteOccurrenceAction;
+  /** The occurrence that is now gone. The client removes this id from the calendar it holds. */
+  id: string;
 }
 
 /**
@@ -120,4 +134,40 @@ export async function undoOccurrence(
  */
 export function toEntryGoal(goal: GoalSummary): CalendarEntryGoal {
   return { id: goal.id, title: goal.title, kind: goal.kind, color: goal.color, area: goal.area };
+}
+
+/**
+ * Removes one occurrence: "I am not running this Thursday."
+ *
+ * An RPC, not a DELETE through PostgREST, for the reason every other RPC here exists: it is a
+ * decision and then a write, and the decision is the whole feature. A plain DELETE would take the
+ * row out and the rule would put it straight back the next time it was edited — re-expansion
+ * resumes from a boundary, and a day with no row has nothing to conflict with. So SQL cancels the
+ * occurrence in place instead, which is simultaneously the record of the deletion and the thing
+ * that occupies (recurrence_id, entry_date) so the generator's ON CONFLICT DO NOTHING finds it.
+ * See supabase/migrations/20260924100000_delete_occurrence.sql; none of that reasoning is
+ * repeated in TypeScript, and none of it can be got wrong here.
+ *
+ * Two refusals come back from it, both already in lib/write.ts's vocabulary: a 404 for an id that
+ * is not there, is not the caller's, or has already been cancelled — one answer for all three,
+ * which the client reads as "already gone" — and a 409 `entry_completed` for a day that is
+ * completed, which has to be taken back through the completions route first.
+ */
+export async function deleteOccurrence(
+  client: SupabaseUserClient,
+  goalId: string,
+  entryId: string,
+  timeoutMs?: number,
+): Promise<DeleteOccurrenceResult> {
+  const rows = await runWrite(
+    (signal) =>
+      client
+        .rpc('delete_occurrence', { p_goal_id: goalId, p_entry_id: entryId })
+        .abortSignal(signal),
+    DELETE_CONTEXT,
+    timeoutMs,
+  );
+
+  const row = requireRow(rows, 'entry');
+  return { action: readEnum(row, 'action', DELETE_ACTIONS), id: readString(row, 'id') };
 }

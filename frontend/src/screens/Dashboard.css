@@ -161,3 +161,15 @@
   margin-inline: auto;
   text-align: center;
 }
+
+/*
+ * What the last save did, on the board the person was sent back to.
+ *
+ * Deliberately the quietest thing on the screen: a confirmation that something worked should be
+ * findable and then forgettable, and this product has no vocabulary for congratulating anybody.
+ */
+.dashboard__said {
+  margin-bottom: var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}

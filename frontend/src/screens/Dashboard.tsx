@@ -23,6 +23,7 @@ import { TodayStrip } from '../components/TodayStrip';
 import {
   createGoal,
   createRecurrence,
+  deleteOccurrence,
   deleteRecurrence,
   fetchAreas,
   fetchCalendar,
@@ -42,6 +43,7 @@ import {
 } from '../lib/copy';
 import { addDays, isoDateIn, toIsoDate } from '../lib/dates';
 import { stillToCome } from '../lib/entries';
+import { useSearchParams } from 'react-router-dom';
 import { useAppSession } from '../lib/sessionContext';
 import { useApiResource } from '../lib/useApiResource';
 import { useArrange } from '../lib/useArrange';
@@ -76,7 +78,18 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
   const todayIso = isoDateIn(now, profile.timeZone);
 
   const board = useGoalBoard(call);
-  const [overlay, setOverlay] = useState<Overlay>({ kind: 'none' });
+  /*
+   * `/?goal=<id>` opens that goal, which is how an entry on the calendar gets you here.
+   *
+   * Read once, as this screen's opening state, rather than applied from an effect afterwards: an
+   * effect that sets state during mount is a second render nobody needed, and React says so.
+   * Arriving from the calendar mounts this screen fresh, so once is exactly right.
+   */
+  const [params, setParams] = useSearchParams();
+  const requested = params.get('goal');
+  const [overlay, setOverlay] = useState<Overlay>(() =>
+    requested === null ? { kind: 'none' } : { kind: 'detail', goalId: requested },
+  );
   const [composerNotice, setComposerNotice] = useState<StatusCopy | null>(null);
   const [recurrenceMessage, setRecurrenceMessage] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
@@ -146,14 +159,53 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
   );
   const recurrences = useApiResource(loadRecurrences);
 
+  /*
+   * The rule this editor has just written, straight from the response that wrote it.
+   *
+   * It outranks the read for one release-shaped reason: the read is not refetched the instant a
+   * write lands, so for a moment after saving, `recurrences` still says this goal has no rule —
+   * and a second save therefore CREATED a second rule instead of replacing the first. Do that
+   * twice and the goal has three rules generating three sets of calendar entries, of which the
+   * interface can only ever address one. The others are permanent.
+   *
+   * The write knows the id. Taking it from there is the same principle as a tile refilling from
+   * its own write's response rather than refetching the board.
+   */
+  const [savedRecurrence, setSavedRecurrence] = useState<{ goalId: string; id: string } | null>(
+    null,
+  );
+
   // While that read is in flight, the old scan is still the best guess available; once it lands it
   // is authoritative, including when it says there is no rule.
   const scannedRecurrenceId =
     goalEntries.find((entry) => entry.recurrenceId !== null)?.recurrenceId ?? null;
-  const existingRecurrenceId =
+  const readRecurrenceId =
     recurrences.state.kind === 'ok'
       ? (recurrences.state.data.recurrences[0]?.id ?? null)
       : scannedRecurrenceId;
+  // Scoped to the goal it was written for. An id remembered from the last goal, applied to the
+  // next one somebody opens, would send a PUT for one goal's rule from inside another's editor.
+  const existingRecurrenceId =
+    savedRecurrence !== null && savedRecurrence.goalId === openGoalId
+      ? savedRecurrence.id
+      : readRecurrenceId;
+
+  /*
+   * The parameter is now spent: it opened the panel at first render (see `overlay` above), and
+   * leaving it in the URL would reopen that panel on every reload, back button and shared link.
+   * Only the address bar is touched here — no React state — which is what an effect is for.
+   */
+  useEffect(() => {
+    if (requested === null) return;
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete('goal');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [requested, setParams]);
 
   // A plain function, not a memoized one: nothing depends on its identity, and wrapping it would
   // only be a promise about stability that the React Compiler would have to verify.
@@ -161,6 +213,7 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
     setOverlay({ kind: 'none' });
     setComposerNotice(null);
     setRecurrenceMessage(null);
+    setSavedRecurrence(null);
     board.dismissNotice();
   }
 
@@ -190,7 +243,40 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
       setRecurrenceMessage(failureCopy(result).title);
       return;
     }
+
+    /*
+     * Saved: say so, and get out of the way.
+     *
+     * The editor used to stay open with one line of text in it, which does not read as "that
+     * worked" — so people pressed the button again. Closing IS the confirmation; the summary of
+     * what changed follows the person back to the board rather than staying behind on a panel
+     * they have finished with.
+     */
+    setSavedRecurrence({ goalId: goal.id, id: result.data.recurrence.id });
+    recurrences.reload();
+    timeline.reload();
+    setOverlay({ kind: 'none' });
+    setComposerNotice(null);
+    board.dismissNotice();
     setRecurrenceMessage(occurrenceSummary(result.data.occurrences));
+  }
+
+  /**
+   * One day off the calendar.
+   *
+   * The response carries the recomputed goal, so the tile refills from it rather than refetching
+   * the board — a scheduled goal that loses a day it was due changes how full it is. A 404 means
+   * the day was already gone, which is the outcome asked for, so it is success.
+   */
+  async function handleRemoveEntry(goal: GoalSummary, entry: CalendarEntry): Promise<void> {
+    const result = await call((options) => deleteOccurrence(goal.id, entry.id, options));
+
+    if (result.kind === 'ok') {
+      board.replace(result.data.goal);
+    } else if (result.kind !== 'missing') {
+      setRecurrenceMessage(failureCopy(result).title);
+      return;
+    }
     timeline.reload();
   }
 
@@ -204,6 +290,8 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
       setRecurrenceMessage(failureCopy(result).title);
       return;
     }
+    setSavedRecurrence(null);
+    recurrences.reload();
     setRecurrenceMessage('These days will not repeat any more. Everything already done stays.');
     timeline.reload();
   }
@@ -290,6 +378,9 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
               if (done) close();
             });
           }}
+          onRemoveEntry={(entry) => {
+            void handleRemoveEntry(goal, entry);
+          }}
           onSaveRecurrence={(input) => {
             void handleRecurrence(goal, input);
           }}
@@ -369,6 +460,19 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
           body={board.notice.copy.body}
           onRetry={board.dismissNotice}
         />
+      )}
+
+      {/*
+        What the last save did, said on the board the person was returned to.
+
+        Not a `StatusNote`: that component knows "loading" and "failure", and this is neither —
+        borrowing the failure line for a confirmation would put the one piece of styling this
+        product does not have around a piece of good news.
+      */}
+      {overlay.kind === 'none' && recurrenceMessage !== null && (
+        <p className="dashboard__said" role="status">
+          {recurrenceMessage}
+        </p>
       )}
 
       <GoalCanvas

@@ -566,6 +566,19 @@ export interface UndoCompletionResponse {
   goal: GoalSummary;
 }
 
+/**
+ * DELETE /api/goals/:goalId/occurrences/:entryId — one day taken off the calendar.
+ *
+ * `cancelled` is a day that came from a repeat rule: the row stays, marked, because it is what
+ * stops the rule putting the day back the next time it is edited. `deleted` is a one-off day with
+ * no rule behind it, which nothing can regenerate. Either way it is gone from every view.
+ */
+export interface DeleteOccurrenceResponse {
+  id: string;
+  action: 'cancelled' | 'deleted';
+  goal: GoalSummary;
+}
+
 /** A check-in, with the tile it moved. */
 export interface MeasurementResponse {
   measurement: Measurement;
@@ -619,7 +632,7 @@ export type AuthReason = 'missing_token' | 'malformed_token' | 'invalid_token' |
 export type NotFoundReason = 'goal' | 'entry' | 'recurrence' | 'measurement';
 
 /** Why a write conflicted with the state it found. */
-export type ConflictReason = 'wrong_goal_kind' | 'duplicate';
+export type ConflictReason = 'wrong_goal_kind' | 'duplicate' | 'entry_completed';
 
 export interface ApiErrorResponse {
   error: string;

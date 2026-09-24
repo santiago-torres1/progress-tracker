@@ -36,7 +36,7 @@ function Glass({ name, color, level, drag, poured }: GlassProps) {
   useEffect(() => {
     const velocity = drag - lastDrag.current;
     lastDrag.current = drag;
-    if (velocity !== 0) field.tilt(velocity * 0.06);
+    if (velocity !== 0) field.tilt(velocity);
   }, [field, drag]);
 
   useEffect(() => {

@@ -8,6 +8,7 @@
  * What is faked is the identity provider, because a test should not talk to Supabase.
  */
 
+import { MemoryRouter } from 'react-router-dom';
 import { render, screen, type RenderResult } from '@testing-library/react';
 import { vi, type Mock } from 'vitest';
 import type { ReactNode } from 'react';
@@ -81,15 +82,21 @@ export interface HarnessOptions {
   transport?: AuthTransport;
   store?: SessionStore;
   timeZone?: string;
+  /** The URL to start at, for a screen that reads one. Defaults to the board. */
+  at?: string;
 }
 
 /** Renders `children` behind a working session gate, with the browser zone pinned. */
 export function renderSignedIn(children: ReactNode, options: HarnessOptions = {}): RenderResult {
   const authStore = testAuthStore(options.transport ?? workingTransport(), options.store);
   return render(
-    <SessionGate store={authStore} browserTimeZone={options.timeZone ?? TEST_ZONE}>
-      {children}
-    </SessionGate>,
+    // A router, because the screens are inside one in the app: the calendar navigates to a goal,
+    // and the board reads which goal it was asked for. A screen rendered without one throws.
+    <MemoryRouter initialEntries={[options.at ?? '/']}>
+      <SessionGate store={authStore} browserTimeZone={options.timeZone ?? TEST_ZONE}>
+        {children}
+      </SessionGate>
+    </MemoryRouter>,
   );
 }
 
