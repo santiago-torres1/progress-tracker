@@ -10,6 +10,7 @@ import type {
 } from '../types/api';
 import type { StyleWithVars } from '../types/style';
 import { formatCalendarDate, formatNumber, formatPercent, toLevel } from './format';
+import { GoalWater } from './GoalWater';
 import { CheckIcon } from './icons';
 import './GoalTile.css';
 
@@ -282,6 +283,7 @@ export function GoalTile({
         <span className="goal-tile__body" />
         {detail.previousLevel !== null && <span className="goal-tile__was" />}
         <span className="goal-tile__line" />
+        <GoalWater level={detail.level / 100} />
       </span>
 
       {detail.minimumLevel !== null && (
