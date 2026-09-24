@@ -10,6 +10,14 @@
  * The loop also stops. A glass that has gone still is not redrawn, and when every glass is still
  * the frame request is cancelled outright — a board nobody is touching costs nothing at all,
  * which is the difference between an idle laptop fan and a warm one.
+ *
+ * WHICH MAKES KNOWING WHEN SOMEBODY *IS* TOUCHING IT LOAD-BEARING. Movement is detected by
+ * measuring, and measuring only happens inside this loop, so a loop that has stopped can never
+ * notice a tile being dragged — it has switched off the only sense it has. In 0.3.0-alpha nothing
+ * woke it but a change of level, so the water sloshed for a second or two after a tap and then lay
+ * dead flat for the rest of the session however hard anything was dragged. The pointer listeners
+ * below are the fix: while a pointer is down the loop runs regardless of whether the water is
+ * already moving, because that is exactly when it is about to be.
  */
 
 export interface Glass {
@@ -31,6 +39,44 @@ const byGlass = new WeakMap<Glass, Entry>();
 
 let frame: number | null = null;
 let previous = 0;
+
+/**
+ * A pointer is down somewhere. While it is, the loop keeps running even over still water: the
+ * next frame is where the drag will show up, and a loop that stopped cannot see it arrive.
+ */
+let touching = false;
+let listening = false;
+
+function onPointerDown(): void {
+  touching = true;
+  wake();
+}
+
+function onPointerUp(): void {
+  touching = false;
+  // Not stopped here: whatever the drag started is still moving, and the loop winds itself down.
+}
+
+function listen(): void {
+  if (listening) return;
+  listening = true;
+  // Capture and passive: this only ever reads that something happened, and must not be prevented
+  // from hearing it by a handler further in that stops the event.
+  const options = { capture: true, passive: true } as const;
+  window.addEventListener('pointerdown', onPointerDown, options);
+  window.addEventListener('pointerup', onPointerUp, options);
+  window.addEventListener('pointercancel', onPointerUp, options);
+}
+
+function unlisten(): void {
+  if (!listening) return;
+  listening = false;
+  touching = false;
+  const options = { capture: true } as const;
+  window.removeEventListener('pointerdown', onPointerDown, options);
+  window.removeEventListener('pointerup', onPointerUp, options);
+  window.removeEventListener('pointercancel', onPointerUp, options);
+}
 
 function tick(now: number): void {
   const elapsed = previous === 0 ? 0 : now - previous;
@@ -63,7 +109,7 @@ function tick(now: number): void {
     if (moving) anyMoving = true;
   }
 
-  if (anyMoving && entries.size > 0) {
+  if ((anyMoving || touching) && entries.size > 0) {
     frame = requestAnimationFrame(tick);
   } else {
     frame = null;
@@ -82,20 +128,24 @@ export function join(glass: Glass): () => void {
   const entry: Entry = { glass, lastLeft: null };
   entries.add(entry);
   byGlass.set(glass, entry);
+  listen();
   wake();
 
   return () => {
     entries.delete(entry);
     byGlass.delete(glass);
-    if (entries.size === 0 && frame !== null) {
-      cancelAnimationFrame(frame);
-      frame = null;
-      previous = 0;
+    if (entries.size === 0) {
+      unlisten();
+      if (frame !== null) {
+        cancelAnimationFrame(frame);
+        frame = null;
+        previous = 0;
+      }
     }
   };
 }
 
 /** For the tests: how many glasses the loop is carrying, and whether it is running. */
-export function driverState(): { glasses: number; running: boolean } {
-  return { glasses: entries.size, running: frame !== null };
+export function driverState(): { glasses: number; running: boolean; touching: boolean } {
+  return { glasses: entries.size, running: frame !== null, touching };
 }

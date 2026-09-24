@@ -91,6 +91,56 @@ describe('the water driver', () => {
     await frames(1);
   });
 
+  /*
+   * The bug this exists to prevent, reported from the live app: "the water only works when logging
+   * a value, and only for 30 seconds or so".
+   *
+   * Movement is detected by measuring, and measuring only happens inside this loop — so once the
+   * loop stops over still water it has switched off the only sense it has, and no amount of
+   * dragging will ever wake it. Everything else about the feature worked; it was simply asleep.
+   */
+  it('wakes when a pointer goes down, so a drag on still water is seen', async () => {
+    const node = element(0);
+    const moved = vi.fn();
+    const leave = join({ element: node, moved, render: () => false });
+
+    await frames(3);
+    expect(driverState().running).toBe(false);
+
+    window.dispatchEvent(new Event('pointerdown'));
+    expect(driverState().running).toBe(true);
+
+    /*
+     * The pause is the whole test. A finger goes down and rests for a moment before it moves, and
+     * over still water those frames give the loop every reason to stop. Waking on `pointerdown`
+     * alone is not enough — it has to KEEP running for as long as the pointer is down, because the
+     * movement it exists to notice has not happened yet.
+     */
+    await frames(4);
+    expect(driverState().running).toBe(true);
+
+    node.getBoundingClientRect = () =>
+      ({
+        left: 18,
+        top: 0,
+        right: 118,
+        bottom: 100,
+        width: 100,
+        height: 100,
+        x: 18,
+        y: 0,
+      }) as DOMRect;
+    await frames(2);
+
+    expect(moved).toHaveBeenCalledWith(18);
+
+    window.dispatchEvent(new Event('pointerup'));
+    await frames(3);
+    expect(driverState().running).toBe(false);
+
+    leave();
+  });
+
   it('can be woken again after everything went quiet', async () => {
     let moving = false;
     const leave = join({ element: element(), moved: () => undefined, render: () => moving });

@@ -507,6 +507,29 @@ export function completionEntry(goalId: string, date = TODAY_ISO): CalendarEntry
   };
 }
 
+/** One repeat rule, as a write answers with it. */
+export function recurrencePayload(id: string, goalId: string, created = 12) {
+  return {
+    recurrence: {
+      id,
+      goalId,
+      freq: 'weekly' as const,
+      interval: 1,
+      byWeekday: [1, 3],
+      startDate: TODAY_ISO,
+      untilDate: null,
+      startTime: null,
+      endTime: null,
+      timeZone: LOCAL_ZONE,
+      generatedThrough: TODAY_ISO,
+      isActive: true,
+      createdAt: `${TODAY_ISO}T09:00:00.000Z`,
+      updatedAt: `${TODAY_ISO}T09:00:00.000Z`,
+    },
+    occurrences: { removed: 0, created },
+  };
+}
+
 export function jsonResponse(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -530,6 +553,8 @@ export interface FetchRoutes {
   health?: () => Response;
   session?: (method: string, body: unknown) => Response;
   templates?: () => Response;
+  /** A goal's repeat rules. Defaults to none, which is what most fixtures want. */
+  recurrences?: (goalId: string) => Response;
   /** Anything that writes. Return undefined to fall through to a generic 200. */
   write?: (request: SeenRequest) => Response | undefined;
 }
@@ -615,6 +640,11 @@ export function stubFetch(routes: FetchRoutes = {}): ApiStub {
       return Promise.resolve(
         routes.calendar?.(from, to) ?? jsonResponse(calendarPayload(from, to)),
       );
+    }
+    const rules = /^\/api\/goals\/([^/]+)\/recurrences$/.exec(url.pathname);
+    if (rules !== null && method === 'GET') {
+      const goalId = rules[1] ?? '';
+      return Promise.resolve(routes.recurrences?.(goalId) ?? jsonResponse({ recurrences: [] }));
     }
     if (url.pathname === '/health') {
       return Promise.resolve(routes.health?.() ?? jsonResponse(HEALTH_PAYLOAD));

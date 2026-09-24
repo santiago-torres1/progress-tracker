@@ -7,6 +7,7 @@ import {
   goalsPayload,
   habitAfterTick,
   jsonResponse,
+  recurrencePayload,
   stubFetch,
   type SeenRequest,
 } from '../test/fixtures';
@@ -537,5 +538,76 @@ describe('Dashboard — rearranging by keyboard', () => {
       expect(screen.getByText('Put back where it was.')).toBeInTheDocument();
     });
     expect(layoutWrites(stub)).toHaveLength(0);
+  });
+});
+
+/*
+ * Saving target days, twice.
+ *
+ * This flow had no screen-level test, and that is exactly where it broke in 0.3.0-alpha: the API
+ * client was covered, the orchestration was not. Saving did not refresh what the screen knew about
+ * the goal's rules, so the screen still believed there were none — and the second save CREATED a
+ * second rule rather than replacing the first. The interface can only ever address one rule per
+ * goal, so every extra rule, and every calendar entry it generated, was permanent.
+ */
+describe('Dashboard — target days', () => {
+  beforeEach(() => {
+    forgetBrowserMemory();
+  });
+
+  async function openTargetDays(): Promise<void> {
+    fireEvent.click(await screen.findByRole('button', { name: 'Run three times a week' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Target days' }));
+    // A weekly rule needs a day, or the form answers with a question instead of saving.
+    fireEvent.click(screen.getByRole('checkbox', { name: 'Monday' }));
+  }
+
+  it('replaces the rule on a second save instead of adding another', async () => {
+    const goal = goalsPayload().goals[0];
+    if (goal === undefined) throw new Error('the fixture board is empty');
+
+    const stub = stubFetch({
+      write: (request) =>
+        request.path === `/api/goals/${goal.id}/recurrences` && request.method === 'POST'
+          ? jsonResponse(recurrencePayload('r-1', goal.id))
+          : undefined,
+    });
+
+    renderSignedIn(board());
+    await openTargetDays();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Set these days' }));
+
+    await waitFor(() => {
+      expect(
+        stub.seen.some(
+          (r) => r.method === 'POST' && r.path === `/api/goals/${goal.id}/recurrences`,
+        ),
+      ).toBe(true);
+    });
+
+    // Saving closes the panel — which is the confirmation, and the reason nobody presses twice.
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: 'Set these days' })).not.toBeInTheDocument();
+    });
+
+    await openTargetDays();
+
+    // The screen now knows the rule exists, and says so on the button itself.
+    const again = await screen.findByRole('button', { name: 'Replace the rule' });
+    fireEvent.click(again);
+
+    await waitFor(() => {
+      expect(
+        stub.seen.some(
+          (r) => r.method === 'PUT' && r.path === `/api/goals/${goal.id}/recurrences/r-1`,
+        ),
+      ).toBe(true);
+    });
+
+    const creates = stub.seen.filter(
+      (r) => r.method === 'POST' && r.path === `/api/goals/${goal.id}/recurrences`,
+    );
+    expect(creates).toHaveLength(1);
   });
 });

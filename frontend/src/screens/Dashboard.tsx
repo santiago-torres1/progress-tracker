@@ -146,14 +146,36 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
   );
   const recurrences = useApiResource(loadRecurrences);
 
+  /*
+   * The rule this editor has just written, straight from the response that wrote it.
+   *
+   * It outranks the read for one release-shaped reason: the read is not refetched the instant a
+   * write lands, so for a moment after saving, `recurrences` still says this goal has no rule —
+   * and a second save therefore CREATED a second rule instead of replacing the first. Do that
+   * twice and the goal has three rules generating three sets of calendar entries, of which the
+   * interface can only ever address one. The others are permanent.
+   *
+   * The write knows the id. Taking it from there is the same principle as a tile refilling from
+   * its own write's response rather than refetching the board.
+   */
+  const [savedRecurrence, setSavedRecurrence] = useState<{ goalId: string; id: string } | null>(
+    null,
+  );
+
   // While that read is in flight, the old scan is still the best guess available; once it lands it
   // is authoritative, including when it says there is no rule.
   const scannedRecurrenceId =
     goalEntries.find((entry) => entry.recurrenceId !== null)?.recurrenceId ?? null;
-  const existingRecurrenceId =
+  const readRecurrenceId =
     recurrences.state.kind === 'ok'
       ? (recurrences.state.data.recurrences[0]?.id ?? null)
       : scannedRecurrenceId;
+  // Scoped to the goal it was written for. An id remembered from the last goal, applied to the
+  // next one somebody opens, would send a PUT for one goal's rule from inside another's editor.
+  const existingRecurrenceId =
+    savedRecurrence !== null && savedRecurrence.goalId === openGoalId
+      ? savedRecurrence.id
+      : readRecurrenceId;
 
   // A plain function, not a memoized one: nothing depends on its identity, and wrapping it would
   // only be a promise about stability that the React Compiler would have to verify.
@@ -161,6 +183,7 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
     setOverlay({ kind: 'none' });
     setComposerNotice(null);
     setRecurrenceMessage(null);
+    setSavedRecurrence(null);
     board.dismissNotice();
   }
 
@@ -190,8 +213,22 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
       setRecurrenceMessage(failureCopy(result).title);
       return;
     }
-    setRecurrenceMessage(occurrenceSummary(result.data.occurrences));
+
+    /*
+     * Saved: say so, and get out of the way.
+     *
+     * The editor used to stay open with one line of text in it, which does not read as "that
+     * worked" — so people pressed the button again. Closing IS the confirmation; the summary of
+     * what changed follows the person back to the board rather than staying behind on a panel
+     * they have finished with.
+     */
+    setSavedRecurrence({ goalId: goal.id, id: result.data.recurrence.id });
+    recurrences.reload();
     timeline.reload();
+    setOverlay({ kind: 'none' });
+    setComposerNotice(null);
+    board.dismissNotice();
+    setRecurrenceMessage(occurrenceSummary(result.data.occurrences));
   }
 
   async function handleRemoveRecurrence(goal: GoalSummary): Promise<void> {
@@ -204,6 +241,8 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
       setRecurrenceMessage(failureCopy(result).title);
       return;
     }
+    setSavedRecurrence(null);
+    recurrences.reload();
     setRecurrenceMessage('These days will not repeat any more. Everything already done stays.');
     timeline.reload();
   }
@@ -369,6 +408,19 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
           body={board.notice.copy.body}
           onRetry={board.dismissNotice}
         />
+      )}
+
+      {/*
+        What the last save did, said on the board the person was returned to.
+
+        Not a `StatusNote`: that component knows "loading" and "failure", and this is neither —
+        borrowing the failure line for a confirmation would put the one piece of styling this
+        product does not have around a piece of good news.
+      */}
+      {overlay.kind === 'none' && recurrenceMessage !== null && (
+        <p className="dashboard__said" role="status">
+          {recurrenceMessage}
+        </p>
       )}
 
       <GoalCanvas
