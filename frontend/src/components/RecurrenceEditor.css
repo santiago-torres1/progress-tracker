@@ -12,6 +12,11 @@
  *
  * Nothing in here is ever styled as a warning. Changing a rule only ever moves days that have not
  * happened yet; the sentence that says so appears above this form, and it is the calm one.
+ *
+ * And nothing in here is the app's accent either. A chosen day, a chosen frequency and the button
+ * that saves are all var(--goal) — the colour of the goal whose days these are, inherited from
+ * data-area on the detail panel that holds this form. The focus ring stays --accent, because focus
+ * is chrome and has to look the same in every panel.
  */
 
 .recurrence {
@@ -64,7 +69,7 @@
   width: 1rem;
   height: 1rem;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--goal);
   cursor: pointer;
 }
 
@@ -76,12 +81,12 @@
 }
 
 .recurrence__choice:has(input:checked) {
-  background-color: var(--accent-soft);
-  border-color: var(--accent);
+  background-color: color-mix(in srgb, var(--goal) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--goal) 70%, var(--border-strong));
 }
 
 .recurrence__choice:has(input:focus-visible) {
-  border-color: var(--accent);
+  border-color: var(--goal);
 }
 
 /* --- which days ----------------------------------------------------------- */
@@ -130,13 +135,20 @@
   }
 }
 
+/*
+ * A chosen day. The label goes to full reading strength rather than to the hue: on a 12% wash of
+ * its own colour the raw hue is 4.40:1 for the darkest area, and a day of the week is a word people
+ * have to read at a glance. The hue carries the state through the wash, the edge and the checkbox
+ * inside — and the checkbox is the thing a screen reader announces, so colour is never alone here.
+ */
 .recurrence__day:has(input:checked) {
-  color: var(--accent);
-  background-color: var(--accent-soft);
-  border-color: var(--accent);
+  color: var(--text);
+  background-color: color-mix(in srgb, var(--goal) 12%, var(--surface));
+  border-color: color-mix(in srgb, var(--goal) 70%, var(--border-strong));
 }
 
-/* The chip wears the ring, because the control that earned it is one clipped pixel wide. */
+/* The chip wears the ring, because the control that earned it is one clipped pixel wide. Accent,
+   like every other focus ring in the app — this is the one thing in here that is not the goal's. */
 .recurrence__day:has(input:focus-visible) {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -188,7 +200,7 @@
 
 .recurrence__input:focus-visible {
   background-color: var(--surface);
-  border-color: var(--accent);
+  border-color: var(--goal);
 }
 
 @media (pointer: coarse) {
@@ -229,11 +241,13 @@
   font: inherit;
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
-  color: var(--accent-contrast);
-  background-color: var(--accent);
+  color: var(--goal-contrast);
+  background-color: var(--goal);
   border: 1px solid transparent;
   border-radius: var(--r-full);
-  box-shadow: var(--sh-1);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--glass-rim) 26%, transparent),
+    var(--sh-1);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition:
@@ -247,13 +261,17 @@
 @media (hover: hover) {
   .recurrence__submit:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: var(--sh-2);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--glass-rim) 26%, transparent),
+      var(--sh-2);
   }
 }
 
 .recurrence__submit:active:not(:disabled) {
   transform: translateY(0) scale(0.97);
-  box-shadow: var(--sh-1);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--glass-rim) 26%, transparent),
+    var(--sh-1);
   transition-duration: var(--mo-fast);
 }
 

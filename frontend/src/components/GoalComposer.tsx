@@ -125,7 +125,11 @@ export function GoalComposer({ catalogue, busy, notice, onCreate, onCancel }: Go
   if (step.name === 'template') {
     const { group } = step;
     return (
-      <div className="composer" aria-label={`Starting points in ${group.area.name}`}>
+      <div
+        className="composer"
+        data-area={group.area.slug}
+        aria-label={`Starting points in ${group.area.name}`}
+      >
         <h2 className="composer__title">{group.area.name}</h2>
         <p className="composer__body">
           Pick something near what you have in mind. Every part of it stays yours to change.
@@ -177,7 +181,7 @@ export function GoalComposer({ catalogue, busy, notice, onCreate, onCancel }: Go
 
   const { draft, group } = step;
   return (
-    <div className="composer" aria-label="Your new goal">
+    <div className="composer" data-area={group?.area.slug} aria-label="Your new goal">
       <h2 className="composer__title">Make it yours</h2>
       <p className="composer__body">
         Everything here is a suggestion. Change any of it — nothing is fixed because of where it

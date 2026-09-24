@@ -11,15 +11,20 @@
  * on a 400px phone is a modal covering the number you were trying to check.
  */
 
+/* The card, and the goal's colour in scope for everything inside it: the field's focused edge and
+   the button that saves are this goal's hue, not the app's accent. It needs data-area="<slug>" on
+   the form element for --goal to mean anything. */
 .log-value {
   width: 100%;
   max-width: 28rem;
   margin-inline: auto;
   padding: var(--sp-5);
   background-color: var(--surface);
-  border: 1px solid var(--border);
   border-radius: var(--r-2xl);
-  box-shadow: var(--sh-1), var(--sh-rim);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px var(--glass-edge),
+    var(--sh-1);
   animation: pt-settle var(--mo-slow) var(--ease-out) backwards;
 }
 
@@ -71,7 +76,7 @@
 
 .log-value__input:focus-visible {
   background-color: var(--surface);
-  border-color: var(--accent);
+  border-color: var(--goal);
 }
 
 @media (pointer: coarse) {
@@ -107,11 +112,13 @@
   font: inherit;
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
-  color: var(--accent-contrast);
-  background-color: var(--accent);
+  color: var(--goal-contrast);
+  background-color: var(--goal);
   border: 1px solid transparent;
   border-radius: var(--r-full);
-  box-shadow: var(--sh-1);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--glass-rim) 26%, transparent),
+    var(--sh-1);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition:
@@ -125,13 +132,17 @@
 @media (hover: hover) {
   .log-value__submit:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: var(--sh-2);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--glass-rim) 26%, transparent),
+      var(--sh-2);
   }
 }
 
 .log-value__submit:active:not(:disabled) {
   transform: translateY(0) scale(0.97);
-  box-shadow: var(--sh-1);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--glass-rim) 26%, transparent),
+    var(--sh-1);
   transition-duration: var(--mo-fast);
 }
 

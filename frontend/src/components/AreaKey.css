@@ -14,10 +14,14 @@
   gap: var(--sp-2);
 }
 
+/* a bead of the area's own liquid — the same object the tiles, the bars and the spine use, so six
+   dots in a row read as six glasses rather than as six swatches */
 .area-key__dot {
   flex: none;
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
   background-color: var(--goal);
+  background-image: radial-gradient(100% 100% at 32% 24%, var(--glass-hi), transparent 62%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--goal) 22%, transparent);
 }

@@ -25,6 +25,19 @@ html {
   text-size-adjust: 100%;
 }
 
+/*
+ * The room.
+ *
+ * The background is no longer a flat panel with a gradient on it: it is a lit room for the glasses
+ * to stand in. A window top-left, a weaker bounce top-right, and a horizon where the wall meets the
+ * floor (--bg to --bg-2 to --bg-3). Everything is `fixed`, so the room does not travel with the
+ * scroll — a room that slid past would be a texture, not a place.
+ *
+ * All of it lives on `body` deliberately. With no background on `html`, the body's background is
+ * propagated to the canvas and painted beneath every element in the document, including the
+ * negative-z grain layer below. That is what lets one pseudo-element cover the whole viewport
+ * without any component needing to know it is there.
+ */
 body {
   min-height: 100vh;
   font-family: var(--font-sans);
@@ -32,10 +45,35 @@ body {
   line-height: var(--lh-body);
   color: var(--text);
   background-color: var(--bg);
-  background-image: linear-gradient(172deg, var(--bg) 0%, var(--bg-2) 100%);
+  background-image:
+    radial-gradient(110% 70% at 14% -12%, var(--room-light), transparent 62%),
+    radial-gradient(
+      90% 60% at 92% 4%,
+      color-mix(in srgb, var(--room-light) 45%, transparent),
+      transparent 58%
+    ),
+    linear-gradient(174deg, var(--bg) 0%, var(--bg-2) 58%, var(--bg-3) 100%);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * Grain: fractal noise as one inline SVG, so the light has something to land on and the large flat
+ * areas do not band. No network request, no image asset, and one fixed layer for the whole page
+ * rather than a texture per surface.
+ *
+ * z-index: -1 puts it above the canvas background (see above) and below every element in the
+ * document, so nothing has to opt in and no component's stacking order changes.
+ */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--grain);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 h1,
