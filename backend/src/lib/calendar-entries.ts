@@ -85,6 +85,13 @@ export function toCalendarEntry(
  * the way a day reads: the all-day items first, then the timed ones in clock order. The range
  * is a single index scan on calendar_entries_user_date_idx.
  *
+ * CANCELLED ENTRIES ARE NOT ENTRIES. A day removed with DELETE /api/goals/:id/occurrences/:id
+ * keeps its row on purpose — that row is what occupies (recurrence_id, entry_date) and therefore
+ * what stops the repeat rule materialising the day again (20260924100000). It is a tombstone, not
+ * an occurrence: public.goal_progress has excluded `cancelled` from every count since 0.1.1, and
+ * this filter is the other half of that. Without it a deleted Thursday would vanish from the
+ * glass and stay on the calendar, which is the same bug reported from the other side.
+ *
  * Two round-trips, in sequence: the goal lookup needs the ids the first query returns. It is
  * skipped entirely when the range contains no goal-linked entries.
  */
@@ -99,6 +106,7 @@ export async function fetchCalendarEntries(
       client
         .from('calendar_entries')
         .select(CALENDAR_ENTRY_COLUMNS)
+        .neq('status', 'cancelled')
         .gte('entry_date', from)
         .lte('entry_date', to)
         .order('entry_date', { ascending: true })

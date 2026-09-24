@@ -56,6 +56,9 @@ const NOT_FOUND_TOKENS: Record<string, NotFoundReason> = {
 /** Tokens that mean "the request is fine but the state is not". */
 const CONFLICT_TOKENS: Record<string, ConflictReason> = {
   wrong_goal_kind: 'wrong_goal_kind',
+  // Removing a day that is completed. public.delete_occurrence() refuses it so a record of
+  // something somebody did cannot vanish through a route called "delete"; undo is the way back.
+  entry_completed: 'entry_completed',
 };
 
 /**

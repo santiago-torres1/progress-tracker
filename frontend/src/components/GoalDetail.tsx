@@ -44,6 +44,14 @@ export interface GoalDetailProps {
   onDelete: () => void;
   onSaveRecurrence: (input: RecurrenceInput) => void;
   onRemoveRecurrence: () => void;
+  /**
+   * Take one day off the calendar. Omitted, the list is read-only.
+   *
+   * Not offered for a day already completed: that is the record of something the person did, and
+   * the way back is to take the tick off the tile first. The API refuses it too, so this is the
+   * interface agreeing with the rule rather than enforcing one of its own.
+   */
+  onRemoveEntry?: (entry: CalendarEntry) => void;
   onClose: () => void;
 }
 
@@ -181,6 +189,22 @@ export function GoalDetail(props: GoalDetailProps) {
                     {formatCalendarDate(entry.date, { day: 'numeric', month: 'long' })}
                   </span>
                   <span className="goal-detail__what">{ENTRY_STATE[entry.status]}</span>
+                  {props.onRemoveEntry !== undefined && entry.status !== 'completed' && (
+                    <button
+                      className="goal-detail__drop"
+                      type="button"
+                      disabled={busy}
+                      aria-label={`Take ${formatCalendarDate(entry.date, {
+                        day: 'numeric',
+                        month: 'long',
+                      })} off the calendar`}
+                      onClick={() => {
+                        props.onRemoveEntry?.(entry);
+                      }}
+                    >
+                      Remove
+                    </button>
+                  )}
                 </li>
               ))}
             </ul>

@@ -591,6 +591,26 @@ export interface UndoCompletionResponse {
   goal: GoalSummary;
 }
 
+/**
+ * The result of removing one occurrence from the calendar — "I am not running this Thursday".
+ *
+ * `action` is honest about what the database did, and both values mean the same thing to a
+ * client: that day is gone, remove `id` from whatever calendar it is holding.
+ *
+ * - `cancelled` — the day came from a repeat rule, so the occurrence is cancelled in place
+ *   rather than erased. That row is what stops the rule materialising the day again the next
+ *   time it is edited; no progress figure counts it and no read returns it.
+ * - `deleted` — the day belonged to no rule, so nothing could bring it back and the row is gone.
+ *
+ * The recomputed `goal` comes back with it: removing a day a scheduled goal was due changes the
+ * denominator of its adherence, so the tile is already different by the time this is read.
+ */
+export interface DeleteOccurrenceResponse {
+  id: string;
+  action: 'cancelled' | 'deleted';
+  goal: GoalSummary;
+}
+
 /** A check-in, with the tile it moved. */
 export interface MeasurementResponse {
   measurement: Measurement;
@@ -660,8 +680,12 @@ export type NotFoundReason = 'goal' | 'entry' | 'recurrence' | 'measurement';
  *
  * - `wrong_goal_kind` — a check-in against a goal that is not measured.
  * - `duplicate` — a row like that already exists (correcting a check-in onto a day that has one).
+ * - `entry_completed` — a request to remove a day that is completed. Deleting it would erase the
+ *   record of something the person did; taking the completion back is a different route, and it
+ *   restores the exact state the day held before. Whatever copy renders this has to stay
+ *   encouraging — it is the app protecting an achievement, not refusing a mistake.
  */
-export type ConflictReason = 'wrong_goal_kind' | 'duplicate';
+export type ConflictReason = 'wrong_goal_kind' | 'duplicate' | 'entry_completed';
 
 export interface ApiErrorResponse {
   error: string;

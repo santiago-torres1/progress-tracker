@@ -23,6 +23,7 @@ import { TodayStrip } from '../components/TodayStrip';
 import {
   createGoal,
   createRecurrence,
+  deleteOccurrence,
   deleteRecurrence,
   fetchAreas,
   fetchCalendar,
@@ -231,6 +232,25 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
     setRecurrenceMessage(occurrenceSummary(result.data.occurrences));
   }
 
+  /**
+   * One day off the calendar.
+   *
+   * The response carries the recomputed goal, so the tile refills from it rather than refetching
+   * the board — a scheduled goal that loses a day it was due changes how full it is. A 404 means
+   * the day was already gone, which is the outcome asked for, so it is success.
+   */
+  async function handleRemoveEntry(goal: GoalSummary, entry: CalendarEntry): Promise<void> {
+    const result = await call((options) => deleteOccurrence(goal.id, entry.id, options));
+
+    if (result.kind === 'ok') {
+      board.replace(result.data.goal);
+    } else if (result.kind !== 'missing') {
+      setRecurrenceMessage(failureCopy(result).title);
+      return;
+    }
+    timeline.reload();
+  }
+
   async function handleRemoveRecurrence(goal: GoalSummary): Promise<void> {
     if (existingRecurrenceId === null) return;
 
@@ -328,6 +348,9 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
             void board.remove(goal).then((done) => {
               if (done) close();
             });
+          }}
+          onRemoveEntry={(entry) => {
+            void handleRemoveEntry(goal, entry);
           }}
           onSaveRecurrence={(input) => {
             void handleRecurrence(goal, input);

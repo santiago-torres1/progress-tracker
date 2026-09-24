@@ -268,6 +268,19 @@ const COMPLETION_ROW = {
 
 const UNDO_ROW = { ...COMPLETION_ROW, created: undefined, action: 'deleted' };
 
+/**
+ * One row of public.delete_occurrence(), for a day that came from a repeat rule.
+ *
+ * `cancelled`, not `deleted`, and that is the whole feature: the row stays as a tombstone so the
+ * rule's next re-expansion finds something at (recurrence_id, entry_date) and leaves the day
+ * alone. Verified on PostgreSQL 17, not here — see supabase/tests/delete_occurrence.sql.
+ */
+const DELETED_OCCURRENCE_ROW = {
+  action: 'cancelled',
+  id: ENTRY_ID,
+  entry_date: '2026-10-01',
+};
+
 const MEASUREMENT_ROW = {
   id: MEASUREMENT_ID,
   goal_id: GOAL_ID,
@@ -462,6 +475,8 @@ beforeEach(() => {
         return rows([COMPLETION_ROW]);
       case 'undo_occurrence':
         return rows([UNDO_ROW]);
+      case 'delete_occurrence':
+        return rows([DELETED_OCCURRENCE_ROW]);
       case 'log_measurement':
         return rows([MEASUREMENT_ROW]);
       case 'set_goal_layout':
@@ -487,6 +502,7 @@ const WRITES = [
   ['reorder tiles', 'patch', '/api/goals/layout', { tiles: [{ id: GOAL_ID, sortOrder: 20 }] }],
   ['complete an occurrence', 'post', `/api/goals/${GOAL_ID}/completions`, {}],
   ['undo a completion', 'delete', `/api/goals/${GOAL_ID}/completions/${ENTRY_ID}`, undefined],
+  ['remove a day', 'delete', `/api/goals/${GOAL_ID}/occurrences/${ENTRY_ID}`, undefined],
   ['log a measurement', 'post', `/api/goals/${GOAL_ID}/measurements`, { value: 81.6 }],
   [
     'correct a measurement',
@@ -1027,6 +1043,117 @@ describe('undoing a completion', () => {
         entry: expect.objectContaining({ status: 'planned' }) as unknown,
       }),
     );
+  });
+});
+
+// --- Removing one day ---------------------------------------------------------------------------
+
+/*
+ * "I am not running this Thursday."
+ *
+ * The thing these tests CANNOT prove is the one that matters most: that the repeat rule does not
+ * put the day straight back the next time it is edited. That is a fact about public.expand_recurrence
+ * and public.resync_recurrence, and a mock would happily assert it without any of it being true.
+ * It is proved where it lives, against a real PostgreSQL 17 with every migration applied —
+ * supabase/tests/delete_occurrence.sql, which is runnable and asserts it row by row.
+ *
+ * What is provable from here is the half that lives in TypeScript, and it is not nothing: that the
+ * route goes through the RPC that cancels in place rather than issuing a DELETE of its own (a
+ * DELETE is exactly the bug — the row it removes is what stops the day coming back), that a day
+ * already gone and another session's day are the same answer to the byte, and that a completed
+ * day is refused rather than quietly erased.
+ */
+describe('removing one occurrence', () => {
+  const PATH = `/api/goals/${GOAL_ID}/occurrences/${ENTRY_ID}`;
+
+  it('goes through the RPC that tombstones the day, and issues no DELETE of its own', async () => {
+    const res = await send('delete', PATH);
+
+    expect(res.status).toBe(200);
+    expect(rpcCalls.find((rpc) => rpc.fn === 'delete_occurrence')?.args).toEqual({
+      p_goal_id: GOAL_ID,
+      p_entry_id: ENTRY_ID,
+    });
+    // The row has to survive as a tombstone. A route that deleted it here would take out the
+    // one thing occupying (recurrence_id, entry_date), and re-expansion would restore the day.
+    expect(queries.filter((query) => query.verb === 'delete')).toEqual([]);
+    expect(res.body).toEqual({
+      id: ENTRY_ID,
+      action: 'cancelled',
+      goal: expect.objectContaining({ id: GOAL_ID }) as unknown,
+    });
+  });
+
+  it('answers with the recomputed tile, so the glass moves without a second request', async () => {
+    const res = await send('delete', PATH);
+
+    expect(queries.filter((query) => query.table === 'goal_dashboard')).toHaveLength(1);
+    expect(bodyOf(res).goal).toEqual(
+      expect.objectContaining({
+        id: GOAL_ID,
+        progress: expect.objectContaining({ basis: 'period_completion' }) as unknown,
+      }),
+    );
+  });
+
+  it('deletes a day that came from no rule outright, and says so', async () => {
+    respondRpc = (call) =>
+      call.fn === 'begin_request'
+        ? rows([SESSION_ROW])
+        : rows([{ ...DELETED_OCCURRENCE_ROW, action: 'deleted' }]);
+
+    const res = await send('delete', PATH);
+
+    expect(res.status).toBe(200);
+    expect(bodyOf(res).action).toBe('deleted');
+  });
+
+  it('answers 404 when the day is already gone, which a client reads as success', async () => {
+    respondRpc = (call) =>
+      call.fn === 'begin_request' ? rows([SESSION_ROW]) : fails('P0002', 'entry_not_found');
+
+    const res = await send('delete', PATH);
+
+    expect(res.status).toBe(404);
+    expect(res.body).toEqual({ error: 'not_found', reason: 'entry' });
+    expect(res.headers['cache-control']).toBe('no-store');
+    expectNoSecrets(res.text);
+  });
+
+  it("gives another session's occurrence the identical answer, to the byte", async () => {
+    respondRpc = (call) =>
+      call.fn === 'begin_request' ? rows([SESSION_ROW]) : fails('P0002', 'entry_not_found');
+
+    const gone = await send('delete', PATH);
+    // RLS makes another account's row invisible to the SELECT inside the RPC, so it raises the
+    // same token. Nothing here may add a distinguishing detail back on top of that.
+    const someoneElses = await send(
+      'delete',
+      `/api/goals/${GOAL_ID}/occurrences/c1000000-0000-4000-8000-0000000000ff`,
+    );
+
+    expect(someoneElses.status).toBe(gone.status);
+    expect(someoneElses.text).toBe(gone.text);
+  });
+
+  it('refuses a completed day with 409, and does not erase it', async () => {
+    respondRpc = (call) =>
+      call.fn === 'begin_request' ? rows([SESSION_ROW]) : fails('22023', 'entry_completed');
+
+    const res = await send('delete', PATH);
+
+    expect(res.status).toBe(409);
+    expect(res.body).toEqual({ error: 'conflict', reason: 'entry_completed' });
+    expect(queries.filter((query) => query.verb === 'delete')).toEqual([]);
+    expectNoSecrets(res.text);
+  });
+
+  it('refuses a path id that is not an id, without asking Supabase', async () => {
+    const res = await send('delete', `/api/goals/${GOAL_ID}/occurrences/not-an-id`);
+
+    expect(res.status).toBe(400);
+    expect(bodyOf(res).field).toBe('entryId');
+    expect(rpcCalls).toHaveLength(0);
   });
 });
 

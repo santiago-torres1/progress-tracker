@@ -195,7 +195,8 @@ request. Missing or invalid token → 401 with a short reason code; over quota �
   one fact, so a 404 would leak which ids exist.
 - Writes: `POST`/`PATCH`/`DELETE /api/goals`, `PATCH /api/goals/layout` (batched reorder and
   resize — one request, all-or-nothing), `POST`/`DELETE /api/goals/:id/completions` (complete and
-  undo), `POST`/`PATCH`/`DELETE /api/goals/:id/measurements`, and
+  undo), `DELETE /api/goals/:id/occurrences/:entryId` (remove one day),
+  `POST`/`PATCH`/`DELETE /api/goals/:id/measurements`, and
   `POST`/`PUT`/`DELETE /api/goals/:id/recurrences`.
 - Every mutating response returns the **recomputed goal**, so a tile refills from the response
   without refetching. `404` on an undo or delete means "already gone" — treat it as success. `409`
@@ -206,6 +207,22 @@ request. Missing or invalid token → 401 with a short reason code; over quota �
   already lived keep the plan they were lived under. Rewriting them would retroactively add "was
   due" days and drop adherence for doing nothing — which is the failure state this product does not
   have.
+- **Removing one occurrence does not freeze the past, and does not delete the row.** "I am not
+  running this Thursday" cancels that occurrence in place (`status = 'cancelled'`, `is_exception`),
+  because that row is what occupies `(recurrence_id, entry_date)` and therefore what stops the rule
+  materialising the day again the next time it is edited — a deletion that the next rule edit
+  undoes is worse than no feature at all. It is invisible: no progress figure counts a cancelled
+  entry and `GET /api/calendar` does not return one. A day with no rule behind it is deleted
+  outright. **No date is refused**, because removing an occurrence only ever takes a day out of
+  `due_count` and so can never lower a goal's progress — which is the only thing freezing the past
+  protects. A **completed** occurrence is refused with `409 entry_completed`: it is the record of
+  something they did, and undo is the exact way back, after which the day removes like any other. A
+  skipped day is removable. Already cancelled, never existed, and another session's are all `404` —
+  one fact under RLS — and the client treats that as success.
+- **A goal can hold more than one repeat rule, and the interface must be able to reach all of
+  them.** `0.3.0-alpha` addressed only the first, and a bug that let a second be created therefore
+  made its occurrences permanent. `supabase/maintenance/dedupe_recurrences.sql` reports and merges
+  rules that are identical in every field deciding which days they produce.
 
 A schema change an `/api` route depends on must be applied to Supabase **before** the pull request
 needing it merges — the same rule `infra/` follows, and for the same reason: `/health` never

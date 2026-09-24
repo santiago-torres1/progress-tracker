@@ -2,6 +2,7 @@ import { fireEvent, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it } from 'vitest';
 import {
   NOW,
+  calendarPayload,
   completionEntry,
   goalById,
   goalsPayload,
@@ -561,6 +562,38 @@ describe('Dashboard — target days', () => {
     // A weekly rule needs a day, or the form answers with a question instead of saving.
     fireEvent.click(screen.getByRole('checkbox', { name: 'Monday' }));
   }
+
+  it('takes one day off the calendar, and refills the tile from the answer', async () => {
+    const goal = goalsPayload().goals[0];
+    if (goal === undefined) throw new Error('the fixture board is empty');
+    const entry = calendarPayload('2026-09-14', '2026-09-20').entries.find(
+      (row) => row.goal?.id === goal.id && row.status === 'planned',
+    );
+    if (entry === undefined) throw new Error('the fixture fortnight has no planned day');
+
+    const stub = stubFetch({
+      write: (request) =>
+        request.method === 'DELETE' && request.path.includes('/occurrences/')
+          ? jsonResponse({ id: entry.id, action: 'cancelled', goal })
+          : undefined,
+    });
+
+    renderSignedIn(board());
+    fireEvent.click(await screen.findByRole('button', { name: 'Run three times a week' }));
+
+    const [remove] = await screen.findAllByRole('button', { name: /off the calendar$/ });
+    if (remove === undefined) throw new Error('no day offered a way off the calendar');
+    fireEvent.click(remove);
+
+    await waitFor(() => {
+      expect(
+        stub.seen.some(
+          (r) =>
+            r.method === 'DELETE' && r.path === `/api/goals/${goal.id}/occurrences/${entry.id}`,
+        ),
+      ).toBe(true);
+    });
+  });
 
   it('replaces the rule on a second save instead of adding another', async () => {
     const goal = goalsPayload().goals[0];

@@ -87,6 +87,7 @@ interface FakeBuilder extends PromiseLike<PostgrestLikeResult> {
   select(columns: string): FakeBuilder;
   eq(column: string, value: unknown): FakeBuilder;
   in(column: string, values: readonly unknown[]): FakeBuilder;
+  neq(column: string, value: unknown): FakeBuilder;
   or(filter: string): FakeBuilder;
   gte(column: string, value: unknown): FakeBuilder;
   lte(column: string, value: unknown): FakeBuilder;
@@ -122,6 +123,10 @@ function createBuilder(table: string): FakeBuilder {
     },
     in(column, values) {
       record.ops.push(`in:${column}=${values.map(String).join('|')}`);
+      return builder;
+    },
+    neq(column, value) {
+      record.ops.push(`neq:${column}=${String(value)}`);
       return builder;
     },
     or(filter) {
@@ -808,6 +813,8 @@ describe('GET /api/calendar', () => {
     expect(queries).toHaveLength(2);
     expect(queries[0]?.table).toBe('calendar_entries');
     expect(queries[0]?.ops).toEqual([
+      // A cancelled entry is a tombstone that keeps a deleted day deleted, not an occurrence.
+      'neq:status=cancelled',
       'gte:entry_date=2026-09-17',
       'lte:entry_date=2026-09-18',
       'order:entry_date:asc',
