@@ -7,6 +7,7 @@
  */
 
 import { useCallback, useMemo, useState, type ReactNode } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { CalendarDay } from '../components/CalendarDay';
 import { CalendarMonth } from '../components/CalendarMonth';
 import { CalendarViewSwitcher, type CalendarView } from '../components/CalendarViewSwitcher';
@@ -61,6 +62,23 @@ export function CalendarScreen({ now }: CalendarScreenProps) {
   const { call, profile } = useAppSession();
 
   // The week is the view that shows a shape without asking anyone to scan a grid.
+  /*
+   * An entry is a way into the goal that put it there.
+   *
+   * The calendar had no interaction at all — which is why "I cannot delete this from the calendar"
+   * was true in the plainest possible sense. Rather than grow a second place to manage a goal, an
+   * entry opens the goal itself, where its days, its repeat rule and everything else about it
+   * already live.
+   */
+  const navigate = useNavigate();
+  const openGoal = useCallback(
+    (entry: CalendarEntry) => {
+      if (entry.goal === null) return;
+      void navigate(`/?goal=${encodeURIComponent(entry.goal.id)}`);
+    },
+    [navigate],
+  );
+
   const [view, setView] = useState<CalendarView>('week');
   const [anchor, setAnchor] = useState(() => startOfDay(now));
   const [selected, setSelected] = useState<string | null>(null);
@@ -140,6 +158,7 @@ export function CalendarScreen({ now }: CalendarScreenProps) {
             entries={entriesOn(date)}
             nowLabel={nowLabelFor(now, date)}
             displayFor={displayFor}
+            onSelectEntry={openGoal}
           />
         );
       }
@@ -156,6 +175,7 @@ export function CalendarScreen({ now }: CalendarScreenProps) {
             headline={copy.headline}
             summary={copy.summary}
             displayFor={displayFor}
+            onSelectEntry={openGoal}
             onShowMore={openDay}
           />
         );

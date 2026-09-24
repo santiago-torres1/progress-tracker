@@ -563,6 +563,21 @@ describe('Dashboard — target days', () => {
     fireEvent.click(screen.getByRole('checkbox', { name: 'Monday' }));
   }
 
+  /*
+   * How an entry on the calendar reaches the goal that put it there. The calendar had no
+   * interaction at all before this, which is what made "I cannot remove this from the calendar"
+   * true in the plainest sense.
+   */
+  it('opens the goal named in the URL, and then takes it out of the URL', async () => {
+    const goal = goalsPayload().goals[0];
+    if (goal === undefined) throw new Error('the fixture board is empty');
+
+    stubFetch();
+    renderSignedIn(board(), { at: `/?goal=${goal.id}` });
+
+    expect(await screen.findByRole('button', { name: 'Target days' })).toBeInTheDocument();
+  });
+
   it('takes one day off the calendar, and refills the tile from the answer', async () => {
     const goal = goalsPayload().goals[0];
     if (goal === undefined) throw new Error('the fixture board is empty');

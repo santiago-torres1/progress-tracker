@@ -43,6 +43,7 @@ import {
 } from '../lib/copy';
 import { addDays, isoDateIn, toIsoDate } from '../lib/dates';
 import { stillToCome } from '../lib/entries';
+import { useSearchParams } from 'react-router-dom';
 import { useAppSession } from '../lib/sessionContext';
 import { useApiResource } from '../lib/useApiResource';
 import { useArrange } from '../lib/useArrange';
@@ -77,7 +78,18 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
   const todayIso = isoDateIn(now, profile.timeZone);
 
   const board = useGoalBoard(call);
-  const [overlay, setOverlay] = useState<Overlay>({ kind: 'none' });
+  /*
+   * `/?goal=<id>` opens that goal, which is how an entry on the calendar gets you here.
+   *
+   * Read once, as this screen's opening state, rather than applied from an effect afterwards: an
+   * effect that sets state during mount is a second render nobody needed, and React says so.
+   * Arriving from the calendar mounts this screen fresh, so once is exactly right.
+   */
+  const [params, setParams] = useSearchParams();
+  const requested = params.get('goal');
+  const [overlay, setOverlay] = useState<Overlay>(() =>
+    requested === null ? { kind: 'none' } : { kind: 'detail', goalId: requested },
+  );
   const [composerNotice, setComposerNotice] = useState<StatusCopy | null>(null);
   const [recurrenceMessage, setRecurrenceMessage] = useState<string | null>(null);
   const [composing, setComposing] = useState(false);
@@ -177,6 +189,23 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
     savedRecurrence !== null && savedRecurrence.goalId === openGoalId
       ? savedRecurrence.id
       : readRecurrenceId;
+
+  /*
+   * The parameter is now spent: it opened the panel at first render (see `overlay` above), and
+   * leaving it in the URL would reopen that panel on every reload, back button and shared link.
+   * Only the address bar is touched here — no React state — which is what an effect is for.
+   */
+  useEffect(() => {
+    if (requested === null) return;
+    setParams(
+      (current) => {
+        const next = new URLSearchParams(current);
+        next.delete('goal');
+        return next;
+      },
+      { replace: true },
+    );
+  }, [requested, setParams]);
 
   // A plain function, not a memoized one: nothing depends on its identity, and wrapping it would
   // only be a promise about stability that the React Compiler would have to verify.
