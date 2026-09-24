@@ -1,6 +1,19 @@
 import { describe, expect, it, vi } from 'vitest';
-import { areasPayload, calendarPayload, goalsPayload, jsonResponse } from '../test/fixtures';
-import { fetchAreas, fetchCalendar, fetchGoals, fetchRecurrences } from './api';
+import {
+  areasPayload,
+  calendarPayload,
+  goalsPayload,
+  jsonResponse,
+  sessionPayload,
+} from '../test/fixtures';
+import {
+  fetchAreas,
+  fetchCalendar,
+  fetchGoals,
+  fetchRecurrences,
+  fetchSession,
+  updateSession,
+} from './api';
 
 function respondWith(body: unknown, status = 200) {
   return vi.fn<typeof fetch>().mockResolvedValue(jsonResponse(body, status));
@@ -234,5 +247,139 @@ describe('fetchRecurrences', () => {
     const result = await fetchRecurrences('g1', { fetchImpl: respondWith(body) });
 
     expect(result).toEqual({ kind: 'failed', reason: 'malformed', status: 200 });
+  });
+});
+
+/*
+ * The session profile, which the profile page renders whole.
+ *
+ * `types/api.ts` is a hand-kept mirror of the backend's contract, so these are the tests that
+ * notice when the two drift: every field the backend documents has to survive the parser, and a
+ * body missing one has to come back `malformed` rather than as a profile with holes in it.
+ */
+describe('fetchSession', () => {
+  it('keeps every field of the profile, stats included', async () => {
+    const fetchImpl = respondWith(sessionPayload());
+    const result = await fetchSession({ fetchImpl });
+
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.data.session).toEqual({
+      timeZone: 'Europe/Madrid',
+      weekStartsOn: 1,
+      isAnonymous: true,
+      expiresAt: '2026-12-16T09:30:00.000Z',
+      createdAt: '2026-08-14T08:12:00.000Z',
+      stats: {
+        goalsOnBoard: 5,
+        glassesFilled: 7,
+        completionsRecorded: 128,
+        measurementsRecorded: 19,
+        daysSinceStart: 34,
+      },
+    });
+    expect(fetchImpl).toHaveBeenCalledWith('/api/session', expect.anything());
+  });
+
+  it('carries a row of zeros through as the real answer it is', async () => {
+    const body = sessionPayload({
+      stats: {
+        goalsOnBoard: 0,
+        glassesFilled: 0,
+        completionsRecorded: 0,
+        measurementsRecorded: 0,
+        daysSinceStart: 0,
+      },
+    });
+    const result = await fetchSession({ fetchImpl: respondWith(body) });
+
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.data.session.stats.goalsOnBoard).toBe(0);
+    expect(result.data.session.stats.daysSinceStart).toBe(0);
+  });
+
+  it('keeps a null expiresAt null — a permanent account has no such date', async () => {
+    const body = sessionPayload({ isAnonymous: false, expiresAt: null });
+    const result = await fetchSession({ fetchImpl: respondWith(body) });
+
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.data.session.expiresAt).toBeNull();
+    expect(result.data.session.isAnonymous).toBe(false);
+  });
+
+  it('rejects a profile with no stats rather than inventing an empty account', async () => {
+    const { stats, ...session } = sessionPayload().session;
+    expect(stats).toBeDefined();
+
+    const result = await fetchSession({ fetchImpl: respondWith({ session }) });
+
+    expect(result).toEqual({ kind: 'failed', reason: 'malformed', status: 200 });
+  });
+
+  it('rejects a profile with no createdAt', async () => {
+    const { createdAt, ...session } = sessionPayload().session;
+    expect(createdAt).toBeDefined();
+
+    const result = await fetchSession({ fetchImpl: respondWith({ session }) });
+
+    expect(result).toEqual({ kind: 'failed', reason: 'malformed', status: 200 });
+  });
+
+  it('rejects one stat that is not a number, rather than coercing it', async () => {
+    const payload = sessionPayload();
+    const body = {
+      session: { ...payload.session, stats: { ...payload.session.stats, glassesFilled: '7' } },
+    };
+    const result = await fetchSession({ fetchImpl: respondWith(body) });
+
+    expect(result).toEqual({ kind: 'failed', reason: 'malformed', status: 200 });
+  });
+
+  it('rejects a stat that is not finite', async () => {
+    const payload = sessionPayload();
+    const body = {
+      session: {
+        ...payload.session,
+        stats: { ...payload.session.stats, completionsRecorded: Number.POSITIVE_INFINITY },
+      },
+    };
+    const result = await fetchSession({ fetchImpl: respondWith(body) });
+
+    expect(result).toEqual({ kind: 'failed', reason: 'malformed', status: 200 });
+  });
+});
+
+describe('updateSession', () => {
+  it('PATCHes only what it was given, and reads the recomputed profile back', async () => {
+    const answered = sessionPayload({ weekStartsOn: 7 });
+    const fetchImpl = respondWith(answered);
+    const result = await updateSession({ weekStartsOn: 7 }, { fetchImpl });
+
+    expect(result.kind).toBe('ok');
+    if (result.kind !== 'ok') return;
+    expect(result.data.session.weekStartsOn).toBe(7);
+
+    const init = fetchImpl.mock.calls[0]?.[1];
+    expect(init?.method).toBe('PATCH');
+    expect(init?.body).toBe(JSON.stringify({ weekStartsOn: 7 }));
+  });
+
+  it('reports a rejected zone as rejected, not as a broken app', async () => {
+    const body = { error: 'invalid_time_zone', message: 'Unknown zone', field: 'timeZone' };
+    const result = await updateSession(
+      { timeZone: 'Mars/Olympus' },
+      {
+        fetchImpl: respondWith(body, 400),
+      },
+    );
+
+    expect(result).toEqual({
+      kind: 'rejected',
+      error: 'invalid_time_zone',
+      message: 'Unknown zone',
+      field: 'timeZone',
+    });
   });
 });

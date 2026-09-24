@@ -5,6 +5,11 @@
  * redefines colour only — no type, spacing, radius or motion changes, so a component never has
  * to know which theme it is in.
  *
+ * Two families were added for "Deep glass": --glass-*, --etch-*, --caustic*, --grain and
+ * --room-light, which are the material (all of them light values, never hues), and --sh-glass* for
+ * what a vessel does to the surface it stands on. Where a number in here looks oddly specific, it is
+ * a contrast cap and the comment beside it says which pairing set it.
+ *
  * Components never write a hex. A goal, entry or area names its life area with
  * `data-area="<slug>"` and reads `var(--goal)`; the slug -> colour mapping is at the bottom of
  * this file. Slugs are the six built-in life areas the API returns; anything else falls back to
@@ -17,12 +22,15 @@
   --font-sans: system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
 
-  /* Type: five steps. --fs-xs is reserved for dense calendar annotation. */
+  /* Type: five steps, plus one display step. --fs-xs is reserved for dense calendar annotation;
+     --fs-2xl is for a page's single headline and nothing else, which is what keeps it a scale of
+     six rather than a free-for-all. */
   --fs-xs: 0.75rem;
   --fs-sm: 0.8125rem;
   --fs-md: 0.9375rem;
   --fs-lg: 1.125rem;
   --fs-xl: 1.625rem;
+  --fs-2xl: 2.125rem;
 
   /* The one size outside the scale, and only for what a person types into. Below 16px, iOS Safari
      zooms the page when a field takes focus and never zooms back out — which on a 400px screen
@@ -85,21 +93,31 @@
   /* How much of a goal's hue is mixed into a surface. Tokenised so dark mode can be more
      generous without any structural change.
 
-     The `-full` pair is the one step deeper a glass goes when it reaches the brim: the same hue,
-     never a different one. It is deliberately a small step, and it is capped by contrast rather
-     than by taste — a full tile's copy sits on `-bot-full`, and past about 23% (27% in dark) the
-     darkest life areas take `--muted` text below 4.5:1. The rim and the full-strength surface
-     line carry the rest of the moment. */
+     Three stops now, not two: light travels furthest through the bottom of a glass, so the water
+     goes one step deeper again in its last fifth (`-deep`). That is the whole of "Deep glass" as
+     far as colour is concerned.
+
+     The `-full` triple is the one step deeper a glass goes when it reaches the brim: the same hue,
+     never a different one. Every one of these is capped by contrast rather than by taste. A tile's
+     copy sits at the BOTTOM of the glass — the title, the value line and the foot are pushed down
+     by the head's auto margin — so the deepest water in the app is under the smallest text in it.
+     Hence --muted-water below: with it, the worst pairing (indigo at 25% in light, amber at 29% in
+     dark, caustic included) holds 5.2:1 and 5.0:1. With plain --muted it would be 4.4:1. */
   --tint-top: 9%;
   --tint-bot: 17%;
+  --tint-deep: 23%;
   --tint-top-full: 14%;
   --tint-bot-full: 22%;
+  --tint-deep-full: 26%;
   --tint-bar: 12%;
   --tint-bar-2: 19%;
 
   /* --- Surfaces, ink, accent -------------------------------- */
+  /* --bg to --bg-3 are a room rather than a panel: a lit wall, a middle, and the floor the
+     glasses stand on. index.css composes them into one horizon. */
   --bg: #eef2ef;
   --bg-2: #e7edef;
+  --bg-3: #dfe7e3;
   --surface: #ffffff;
   --surface-2: #f4f7f4;
   --surface-3: #e9efea;
@@ -107,9 +125,20 @@
   --border-strong: #c2ccc5;
   --text: #16201a;
   --muted: #55605a;
+  /* The reading grey, one step further from the water, for the copy that sits ON a tile's liquid.
+     --muted is correct on a surface and on the 12–19% wash a calendar bar uses; it is not correct
+     on 23–26% of a life-area hue, which is where a tile's value line and foot actually sit. This
+     is the only second grey in the app and it exists for exactly that. */
+  --muted-water: #4b5651;
   --accent: #2f6f5c;
   --accent-contrast: #ffffff;
   --accent-soft: #dcebe4;
+
+  /* Ink on a fully saturated area hue — a filled pill, a primary button inside a goal's panel.
+     The same two values as --accent-contrast, because all six areas clear 5:1 against white in
+     light (Health is the tightest at 5.02:1, Money next at 5.37:1) and 7.4:1 against #0d1714 in
+     dark. The no-area fallback, --area-neutral, holds 4.76:1 and 7.12:1. */
+  --goal-contrast: var(--accent-contrast);
 
   /* What a person types into. A field's edge is the boundary of a control rather than a seam
      between two surfaces, so --border-strong cannot carry it: as a hairline it sits well under the
@@ -126,6 +155,57 @@
     0 1px 1px rgba(20, 38, 30, 0.04), 0 3px 8px -2px rgba(20, 38, 30, 0.07),
     0 14px 28px -10px rgba(20, 38, 30, 0.12);
   --sh-rim: inset 0 1px 0 rgba(255, 255, 255, 0.7);
+
+  /* --- The material of glass -------------------------------------------------
+     These are the whole of "Deep glass". Every one of them is a light value and
+     never a hue: glass is colourless, and the water is the thing that carries the
+     area's colour. A component composing these therefore cannot accidentally
+     invent a seventh area, or tint a wall with a status. */
+
+  --glass-hi: rgba(255, 255, 255, 0.92); /* specular — the brightest edge light */
+  --glass-hi-soft: rgba(255, 255, 255, 0.5); /* the far wall, catching less */
+  --glass-rim: rgba(255, 255, 255, 0.85); /* the top lip */
+  --glass-edge: rgba(22, 40, 32, 0.13); /* a wall seen edge-on */
+  --glass-under: rgba(22, 40, 32, 0.07); /* thickness of the base */
+  --glass-sheen: rgba(255, 255, 255, 0.42); /* the room, reflected in the front wall */
+
+  /* An etch scratched into the wall — a habit's minimum, or the level a goal has come down from. It
+     has to read with water behind it AND with empty glass behind it, which no single grey does:
+     --border-strong is 1.2:1 against mid-depth water in light and 1.2:1 against it in dark. So an
+     etch is two lines, the way an engraved line really is — the shadow in the groove and the light
+     caught on its lower edge. That pair reads on anything. */
+  --etch-ink: rgba(22, 40, 32, 0.42);
+  --etch-lit: rgba(255, 255, 255, 0.72);
+
+  /* Light that got through the liquid: how much pools inside the base, and how much reaches the
+     table. --caustic is well under the mockup's 0.5 on purpose — the pool sits directly beneath a
+     tile's foot line, and every point of it is spent out of that text's contrast budget. */
+  --caustic: 0.45;
+  --caustic-floor: 55%;
+  --caustic-floor-hi: 68%;
+
+  /* Paper, not plastic. One fixed noise field over the whole room. */
+  --grain: 0.05;
+  --room-light: rgba(255, 255, 255, 0.72); /* the window, top-left */
+
+  /* A glass standing on a surface: contact, then lift. Hue-free — the pool of colour the water
+     throws onto the floor is composed at the tile, where --goal is in scope. */
+  --sh-glass:
+    0 1px 2px rgba(20, 38, 30, 0.07), 0 2px 6px -2px rgba(20, 38, 30, 0.06),
+    0 12px 22px -14px rgba(20, 38, 30, 0.24), 0 26px 44px -28px rgba(20, 38, 30, 0.3);
+  --sh-glass-hi:
+    0 1px 2px rgba(20, 38, 30, 0.07), 0 3px 8px -2px rgba(20, 38, 30, 0.07),
+    0 18px 30px -16px rgba(20, 38, 30, 0.26), 0 34px 56px -30px rgba(20, 38, 30, 0.32);
+  /* A glass SET DOWN: the first two layers of --sh-glass and none of the lift. "My full glasses" is
+     a shelf, and a glass standing on a shelf casts contact rather than height. It is a token rather
+     than two layers written into ArchiveScreen.css because it is the one place in the app where a
+     vessel is at rest, and the next place will want the same two numbers. */
+  --sh-set: 0 1px 2px rgba(20, 38, 30, 0.07), 0 2px 6px -2px rgba(20, 38, 30, 0.06);
+
+  /* The drawer's veil. Not themed towards the room: a scrim is a shadow cast over the page, so it
+     is the same near-black in both themes and only its strength changes — a dark room needs a
+     little more of it before the page behind reads as "not this". */
+  --scrim: rgba(8, 17, 13, 0.46);
 
   /* The area colour in scope. Overridden by [data-area] below; this is the fallback for
      anything that has no area at all. */
@@ -144,13 +224,18 @@
 
     --tint-top: 13%;
     --tint-bot: 24%;
+    --tint-deep: 28%;
     --tint-top-full: 18%;
     --tint-bot-full: 27%;
+    /* 30%, not the mockup's 34%: in dark the hues are the LIGHT end of the pair, so deeper water
+       means a lighter background under light-grey copy. 34% put amber at 3.98:1. */
+    --tint-deep-full: 30%;
     --tint-bar: 18%;
     --tint-bar-2: 26%;
 
     --bg: #0f1412;
     --bg-2: #101817;
+    --bg-3: #0a0e0d;
     --surface: #161b18;
     --surface-2: #1b211d;
     --surface-3: #121715;
@@ -158,6 +243,9 @@
     --border-strong: #3a443e;
     --text: #e7ece9;
     --muted: #a8b2ac;
+    /* Lighter than --muted here, for the same reason it is darker than --muted in light: away from
+       the water, not towards it. */
+    --muted-water: #bcc5c0;
     --accent: #74c2a8;
     --accent-contrast: #0d1714;
     --accent-soft: #172a23;
@@ -169,6 +257,35 @@
       0 1px 2px rgba(0, 0, 0, 0.4), 0 4px 10px -2px rgba(0, 0, 0, 0.45),
       0 18px 34px -12px rgba(0, 0, 0, 0.6);
     --sh-rim: inset 0 1px 0 rgba(255, 255, 255, 0.045);
+
+    /* Glass in a dark room reflects far less, and what it does reflect is the room's own light. */
+    --glass-hi: rgba(255, 255, 255, 0.34);
+    --glass-hi-soft: rgba(255, 255, 255, 0.14);
+    --glass-rim: rgba(255, 255, 255, 0.16);
+    --glass-edge: rgba(255, 255, 255, 0.08);
+    --glass-under: rgba(0, 0, 0, 0.3);
+    --glass-sheen: rgba(255, 255, 255, 0.055);
+
+    /* the pair swaps duty in the dark: the lit edge is what you see, the groove barely registers */
+    --etch-ink: rgba(0, 0, 0, 0.45);
+    --etch-lit: rgba(255, 255, 255, 0.34);
+
+    --caustic: 0.6;
+    --caustic-floor: 72%;
+    --caustic-floor-hi: 84%;
+
+    --grain: 0.07;
+    --room-light: rgba(150, 214, 190, 0.07);
+
+    --sh-glass:
+      0 1px 2px rgba(0, 0, 0, 0.45), 0 3px 8px -2px rgba(0, 0, 0, 0.4),
+      0 16px 28px -16px rgba(0, 0, 0, 0.62), 0 32px 52px -30px rgba(0, 0, 0, 0.7);
+    --sh-glass-hi:
+      0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 10px -2px rgba(0, 0, 0, 0.45),
+      0 22px 34px -16px rgba(0, 0, 0, 0.66), 0 40px 62px -32px rgba(0, 0, 0, 0.74);
+    --sh-set: 0 1px 2px rgba(0, 0, 0, 0.45), 0 3px 8px -2px rgba(0, 0, 0, 0.4);
+
+    --scrim: rgba(4, 9, 7, 0.62);
   }
 }
 

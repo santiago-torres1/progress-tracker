@@ -31,16 +31,21 @@ button.entry-bar {
   -webkit-tap-highlight-color: transparent;
 }
 
-/* Untimed: it belongs to the whole day, so it takes the whole width. */
+/* Untimed: it belongs to the whole day, so it takes the whole width. The wash runs off the rail
+   rather than lying flat, which is the same fact a tile's water states at full height — the colour
+   is deepest where it enters. One rim highlight, and nothing else: a bar is the same material as a
+   glass at a sixth of the drama. */
 .entry-bar--any {
   background-color: var(--surface-2);
   background-image: linear-gradient(
-    color-mix(in srgb, var(--goal) var(--tint-bar), var(--surface)),
+    to right,
+    color-mix(in srgb, var(--goal) var(--tint-bar-2), var(--surface)),
     color-mix(in srgb, var(--goal) var(--tint-bar), var(--surface))
   );
   border-left: 3px solid var(--goal);
   border-top-left-radius: var(--r-xs);
   border-bottom-left-radius: var(--r-xs);
+  box-shadow: inset 0 1px 0 var(--glass-rim);
 }
 
 /* Timed: inset from the leading edge, and it carries its hour. */
@@ -49,7 +54,9 @@ button.entry-bar {
   width: calc(100% - 1.125rem);
   background-color: var(--surface);
   border-color: var(--border);
-  box-shadow: var(--sh-1);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    var(--sh-1);
 }
 
 .entry-bar--at::before {
@@ -59,6 +66,7 @@ button.entry-bar {
   height: 0.5rem;
   border-radius: 50%;
   background-color: var(--goal);
+  background-image: radial-gradient(100% 100% at 32% 24%, var(--glass-hi), transparent 60%);
 }
 
 .entry-bar__time {
@@ -131,6 +139,7 @@ button.entry-bar {
 
   button.entry-bar--any:hover {
     background-image: linear-gradient(
+      to right,
       color-mix(in srgb, var(--goal) var(--tint-bar-2), var(--surface)),
       color-mix(in srgb, var(--goal) var(--tint-bar-2), var(--surface))
     );

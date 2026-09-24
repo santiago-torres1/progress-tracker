@@ -5,6 +5,23 @@
  * climbs both walls. Only this component draws water, so a full glass always means the same
  * thing. The level, the old level and the habit minimum arrive as --p, --from and --min.
  *
+ * Material — "Deep glass". The vessel has thickness: a rim along the top lip, a bright near wall
+ * and a dimmer far one, a base you look through, the room reflected in the front wall, and the
+ * colour the water throws onto the table underneath. All of it is composed from --glass-* and
+ * --sh-glass* in tokens.css, none of which is a hue: glass is colourless and the water is the only
+ * thing that carries the area's colour, so no wall can ever accidentally state a status.
+ *
+ * THE WHOLE VESSEL PAINTS IN THREE LAYERS, and that is a budget rather than an accident. A board
+ * holds a hundred tiles, so the walls, the rim, the base, the sheen and the caustic are seven
+ * gradients on ONE layer (.goal-tile__glass::after) instead of seven elements; the water's depth and
+ * its wall absorption are two gradients on the body it already had; and the sheet of light on the
+ * surface is a background layer inside the meniscus. Nothing here uses filter or backdrop-filter.
+ * Everything that can be a background layer is one.
+ *
+ * .goal-tile__glass::after is drawn LAST INSIDE THE VESSEL so the glass sits over the liquid.
+ * Anything else that draws water — the canvas simulation — must therefore be a child of
+ * .goal-tile__glass, not a sibling of it, or the walls end up behind the water.
+ *
  * Motion — the level is never a height. The body is a full-bleed box scaled from its bottom edge
  * and the surface is a full-height sheet slid down by (100 - --p)% of the glass. Both are
  * transforms and nothing else on the tile animates its geometry, so a pour, an undo, or a whole
@@ -20,6 +37,13 @@
  */
 
 .goal-tile {
+  /* How far a mark etched on the wall reaches in from it. Always the tile's own padding, so an
+     etch can never reach the copy — see "the habit minimum" below. */
+  --etch: var(--sp-3);
+  --etch-far: var(--sp-2);
+  /* How far the room's reflection has slid across the front wall. Hover moves it. */
+  --sheen-x: 0px;
+
   position: relative;
   display: flex;
   flex-direction: column;
@@ -32,17 +56,30 @@
   font: inherit;
   color: inherit;
   background-color: var(--surface);
-  border: 1px solid var(--border);
   border-radius: var(--r-xl);
-  box-shadow: var(--sh-1), var(--sh-rim);
+  /*
+   * A glass standing on a table. Three parts, and the list length never changes so every state
+   * below interpolates rather than jumping:
+   *   1–4  --sh-glass: contact, then lift
+   *   5    the pool of colour this glass's own water throws onto the floor, scaled by the level —
+   *        an empty glass casts none, because there is nothing in it for the light to pass through
+   *   6    an empty slot, which "held" fills with a ring (see GoalCanvas.css)
+   *
+   * There is no `border`: a glass has thickness, not an outline, and the rim highlight and the
+   * edge-on wall are drawn on .goal-tile__glass::after where the water cannot cover them.
+   */
+  box-shadow:
+    var(--sh-glass),
+    0 14px 26px -20px
+      color-mix(in srgb, var(--goal) calc(var(--caustic-floor) * var(--p, 0) / 100), transparent),
+    0 0 0 0 transparent;
   animation: pt-settle var(--mo-slow) var(--ease-out) backwards;
   /* Capped: a board settles in one after another, but a goal created onto a board of twenty
      should not wait most of a second for its turn to exist. */
   animation-delay: calc(min(var(--i, 0), 8) * 40ms);
   transition:
     transform var(--mo-slow) var(--ease-out),
-    box-shadow var(--mo-slow) var(--ease-out),
-    border-color var(--mo) var(--ease);
+    box-shadow var(--mo-slow) var(--ease-out);
 }
 
 button.goal-tile {
@@ -52,12 +89,16 @@ button.goal-tile {
 
 @media (min-width: 40rem) {
   .goal-tile {
+    --etch: var(--sp-4);
+
     padding: var(--sp-4);
     border-radius: var(--r-2xl);
   }
 
   /* the smallest tile keeps tighter padding — it is one row tall */
   .goal-tile--sm {
+    --etch: var(--sp-3);
+
     padding: var(--sp-3);
     border-radius: var(--r-xl);
   }
@@ -79,23 +120,35 @@ button.goal-tile {
   button.goal-tile:hover,
   .goal-tile:has(> .goal-tile__open:hover) {
     --surface-nudge: -1px;
+    --sheen-x: 8px;
 
     transform: translateY(-2px);
-    border-color: var(--border-strong);
-    box-shadow: var(--sh-2), var(--sh-rim);
+    box-shadow:
+      var(--sh-glass-hi),
+      0 20px 34px -20px
+        color-mix(
+          in srgb,
+          var(--goal) calc(var(--caustic-floor-hi) * var(--p, 0) / 100),
+          transparent
+        ),
+      0 0 0 0 transparent;
   }
 }
 
 button.goal-tile:active,
 .goal-tile:has(> .goal-tile__open:active) {
   --surface-nudge: 0.5px;
+  --sheen-x: 0px;
 
   transform: translateY(0) scale(0.988);
-  box-shadow: var(--sh-1), var(--sh-rim);
+  box-shadow:
+    var(--sh-glass),
+    0 8px 16px -14px
+      color-mix(in srgb, var(--goal) calc(var(--caustic-floor) * var(--p, 0) / 100), transparent),
+    0 0 0 0 transparent;
   transition:
     transform var(--mo-fast) var(--ease-out),
-    box-shadow var(--mo-fast) var(--ease-out),
-    border-color var(--mo-fast) var(--ease);
+    box-shadow var(--mo-fast) var(--ease-out);
 }
 
 /* The copy sits above the water. Everything else on the tile — the glass, the etched minimum,
@@ -118,17 +171,35 @@ button.goal-tile:active,
   pointer-events: none;
 }
 
+/*
+ * Three stops, not two: light is absorbed as it travels, so the water is deepest where it has come
+ * furthest — the last fifth, against the base. The horizontal pair on top of it is the same fact
+ * sideways: the liquid is fractionally deeper where you are looking through the wall as well as
+ * through the water.
+ *
+ * Both are background layers on the one element rather than extra boxes. A board can hold a
+ * hundred tiles; gradients on an existing layer are free, and another positioned child is not.
+ */
 .goal-tile__body {
   position: absolute;
   inset: 0;
   transform-origin: bottom;
   transform: scaleY(calc(var(--p, 0) / 100));
   background-color: var(--surface-2);
-  background-image: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--goal) var(--tint-top), var(--surface)),
-    color-mix(in srgb, var(--goal) var(--tint-bot), var(--surface))
-  );
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--goal) 13%, transparent) 0,
+      transparent 9%,
+      transparent 91%,
+      color-mix(in srgb, var(--goal) 10%, transparent) 100%
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--goal) var(--tint-top), var(--surface)) 0%,
+      color-mix(in srgb, var(--goal) var(--tint-bot), var(--surface)) 78%,
+      color-mix(in srgb, var(--goal) var(--tint-deep), var(--surface)) 100%
+    );
   animation: goal-tile-rise var(--mo-settle) var(--ease-out) backwards;
   animation-delay: calc(min(var(--i, 0), 8) * 40ms + 90ms);
   transition: transform var(--mo-pour) var(--ease-pour);
@@ -141,11 +212,20 @@ button.goal-tile:active,
   position: absolute;
   inset: 0;
   opacity: 0;
-  background-image: linear-gradient(
-    to bottom,
-    color-mix(in srgb, var(--goal) var(--tint-top-full), var(--surface)),
-    color-mix(in srgb, var(--goal) var(--tint-bot-full), var(--surface))
-  );
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--goal) 13%, transparent) 0,
+      transparent 9%,
+      transparent 91%,
+      color-mix(in srgb, var(--goal) 10%, transparent) 100%
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--goal) var(--tint-top-full), var(--surface)) 0%,
+      color-mix(in srgb, var(--goal) var(--tint-bot-full), var(--surface)) 78%,
+      color-mix(in srgb, var(--goal) var(--tint-deep-full), var(--surface)) 100%
+    );
   transition: opacity var(--mo-settle) var(--ease);
 }
 
@@ -159,7 +239,12 @@ button.goal-tile:active,
   transition: transform var(--mo-pour) var(--ease-pour);
 }
 
-/* the meniscus: one line, thinning as it climbs each wall */
+/*
+ * The meniscus: one line, thinning as it climbs each wall — and, in the 3px of padding box above
+ * that line, the sheet of light lying on the water. The specular is a background layer inset 14%
+ * from each wall rather than a third element, for the same reason the water's two gradients share
+ * one box: a hundred tiles cannot each afford another layer.
+ */
 .goal-tile__line::before {
   content: '';
   position: absolute;
@@ -171,6 +256,11 @@ button.goal-tile:active,
   border-bottom: 2px solid color-mix(in srgb, var(--goal) 90%, transparent);
   border-bottom-left-radius: 15px 5px;
   border-bottom-right-radius: 15px 5px;
+  background-clip: padding-box;
+  background-repeat: no-repeat;
+  background-position: 50% 0;
+  background-size: 72% 100%;
+  background-image: linear-gradient(90deg, transparent, var(--glass-hi), transparent);
   transform: translateY(var(--surface-nudge, 0px));
   transition:
     transform var(--mo-fast) var(--ease-out),
@@ -195,14 +285,77 @@ button.goal-tile:active,
   transition: transform var(--mo-fast) var(--ease-out);
 }
 
-/* where the level used to be, for a goal that has gone backwards.
-   A hairline, the colour of a border. No red, no badge. */
-.goal-tile__was {
+/* --- the glass itself: thickness ------------------------------------------ */
+
+/*
+ * THE WALLS, and everything that is glass rather than water. One layer, seven gradients, drawn
+ * last inside the vessel so it sits over the liquid — a wall you can see the water through is
+ * still in front of it. Back to front, which is bottom to top in this list:
+ *
+ *   caustic      the light that made it through, pooling against the base
+ *   base         --glass-under: the thickness you look through to the table
+ *   base rim     the bright edge where the base meets the wall
+ *   rim          the top lip, thickest where you would put your mouth
+ *   far wall     catching less of the window
+ *   near wall    the specular: the brightest line in the tile
+ *   sheen        the room, reflected in the front wall — it slides on hover
+ *
+ * The caustic is deliberately confined to the bottom fifth AND fades to nothing by 94% of the
+ * tile's height, because the foot line's box reaches 94% on the largest tile. Every point of hue
+ * laid over that text comes out of its contrast budget, which is why --caustic is 0.45/0.6 here
+ * rather than the mockup's 0.5/0.72.
+ */
+.goal-tile__glass::after {
+  content: '';
   position: absolute;
-  left: 0;
-  right: 0;
-  bottom: calc(var(--from) * 1%);
-  border-top: 1px dashed var(--border-strong);
+  inset: 0;
+  border-radius: inherit;
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(118deg, transparent 16%, var(--glass-sheen) 29%, transparent 43%),
+    linear-gradient(
+      90deg,
+      var(--glass-hi) 0,
+      color-mix(in srgb, var(--glass-hi) 38%, transparent) 1.5px,
+      transparent 8px
+    ),
+    linear-gradient(270deg, var(--glass-hi-soft) 0, transparent 6px),
+    linear-gradient(to bottom, color-mix(in srgb, var(--glass-hi) 55%, transparent), transparent),
+    linear-gradient(to top, var(--glass-rim) 0, transparent 3px),
+    linear-gradient(to top, var(--glass-under) 0, transparent 16px),
+    radial-gradient(
+      76% 100% at 50% 128%,
+      color-mix(in srgb, var(--goal) calc(30% * var(--caustic) * var(--p, 0) / 100), transparent),
+      transparent 60%
+    );
+  background-size:
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    100% 10px,
+    100% 100%,
+    100% 100%,
+    100% 20%;
+  background-position:
+    var(--sheen-x) 0,
+    0 0,
+    0 0,
+    0 0,
+    0 0,
+    0 0,
+    0 100%;
+  /*
+   * The rim highlight and the edge-on wall, then an empty slot the "full" state fills with a ring
+   * of the goal's own colour. The slot is what makes that ring fade in: a three-shadow list that
+   * only changes colour interpolates, where adding a fourth shadow would snap.
+   */
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px var(--glass-edge),
+    inset 0 0 0 1px transparent;
+  transition:
+    background-position var(--mo-slow) var(--ease-out),
+    box-shadow var(--mo-settle) var(--ease);
 }
 
 /* --- full ----------------------------------------------------------------- */
@@ -221,17 +374,16 @@ button.goal-tile:active,
  * from the first paint, so there is no change to animate. Full is a state, not an event.
  */
 
-.goal-tile__glass::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--goal) 32%, transparent);
-  opacity: 0;
-  transition: opacity var(--mo-settle) var(--ease);
+.goal-tile--full .goal-tile__glass::after {
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px var(--glass-edge),
+    inset 0 0 0 1px color-mix(in srgb, var(--goal) 34%, transparent);
+  transition:
+    background-position var(--mo-slow) var(--ease-out),
+    box-shadow var(--mo-settle) var(--ease) 180ms;
 }
 
-.goal-tile--full .goal-tile__glass::after,
 .goal-tile--full .goal-tile__body::after {
   opacity: 1;
   transition-delay: 180ms;
@@ -244,36 +396,79 @@ button.goal-tile:active,
     border-color var(--mo-settle) var(--ease) 180ms;
 }
 
-/* --- the habit minimum ---------------------------------------------------- */
+/* --- marks etched on the wall --------------------------------------------- */
 
-/* etched on the glass, not drawn in the water: the minimum that keeps a habit alive */
-.goal-tile__min {
+/*
+ * THE COPY OWNS THE MIDDLE OF THE GLASS; MARKS LIVE ON THE WALLS. That one rule is the fix, and it
+ * is geometric rather than a judgement about which levels look bad.
+ *
+ * A tile's title, value line and foot are pushed to the BOTTOM of the glass by the head's auto
+ * margin, and they are left-aligned and free to wrap. So there is no height and no width at which
+ * a rule drawn across the vessel — or a label floating on one — is guaranteed to miss them. A
+ * full-width rule struck through the title. Half a rule on the right still met wrapped lines, and
+ * the label on its end sat on "Run four times a week" and on "Call Mum" at the levels a weekly
+ * habit actually spends its time at. Reserving a gutter for the label would shrink every habit
+ * tile's text column to protect one word; occluding the copy is not available either, because the
+ * mark has to stay behind .goal-tile__open for the whole glass to remain one click target.
+ *
+ * So the mark is now two etches on the glass WALLS, each exactly as long as the tile's own padding
+ * (--etch, --etch-far). Inside the padding there is no copy at any size, at any level, in any
+ * language — 5% and 95% are as safe as 50%. Two marks at one height read as a measure, which is
+ * what this is.
+ *
+ * The word goes. It is not lost: a habit's value line already says it in full — "3 of 4 this week
+ * · minimum is 1" — so dropping the floating label removes a duplicate rather than a fact, and it
+ * is the only version of this that cannot collide.
+ */
+.goal-tile__min,
+.goal-tile__was {
   position: absolute;
   left: 0;
   right: 0;
-  bottom: calc(var(--min) * 1%);
-  display: flex;
-  justify-content: flex-end;
-  border-top: 1px dashed var(--border-strong);
   pointer-events: none;
+  background-repeat: no-repeat;
+  /* left wall, then right wall */
+  background-position:
+    0 0,
+    100% 0;
+}
+
+/* The minimum that keeps a habit alive: two firm etches, because it is a height you are meant to
+   notice. Clamped off the very rim and the very base so a minimum equal to the target still reads
+   as a mark on the glass rather than as part of the lip. Each etch is the groove-and-light pair from
+   tokens.css, which is what lets it read with water behind it and with empty glass behind it. */
+.goal-tile__min {
+  height: 2px;
+  bottom: calc(clamp(2, var(--min, 0), 96) * 1%);
+  background-size:
+    var(--etch-far) 2px,
+    var(--etch) 2px;
+  background-image:
+    linear-gradient(to bottom, var(--etch-ink) 0 1px, var(--etch-lit) 1px 2px),
+    linear-gradient(to bottom, var(--etch-ink) 0 1px, var(--etch-lit) 1px 2px);
 }
 
 /*
- * Crossed. The etch stops being a dashed intention and sets solid in the goal's own colour: the
- * water passed it, and the line acknowledges that once. It waits 240ms so the water is past it
- * before it answers, which is the whole point — the line is reacting, not announcing.
+ * Crossed. The etch stops being a quiet grey intention and sets in the goal's own colour: the water
+ * passed it, and the mark acknowledges that once. It waits 240ms so the water is past it before it
+ * answers, which is the whole point — the mark is reacting, not announcing.
  *
- * It is drawn as an overlay rather than by swapping border-style, because a style cannot fade
- * and a line that snaps would read as a verdict.
+ * Drawn as an overlay rather than by swapping the colour, because a background-image cannot fade
+ * and a mark that snapped would read as a verdict.
  */
 .goal-tile__min::before {
   content: '';
   position: absolute;
-  top: -1px;
-  left: 0;
-  right: 0;
-  height: 1px;
-  background-color: color-mix(in srgb, var(--goal) 65%, transparent);
+  inset: 0;
+  background-repeat: no-repeat;
+  background-position:
+    0 0,
+    100% 0;
+  background-size:
+    var(--etch-far) 2px,
+    var(--etch) 2px;
+  background-image:
+    linear-gradient(var(--goal), var(--goal)), linear-gradient(var(--goal), var(--goal));
   opacity: 0;
   transition: opacity var(--mo-settle) var(--ease);
 }
@@ -283,18 +478,32 @@ button.goal-tile:active,
   transition-delay: 240ms;
 }
 
-.goal-tile__min span {
-  padding: 0 var(--sp-1);
-  margin-top: -0.6rem;
-  font-size: var(--fs-xs);
-  line-height: 1.1;
-  color: var(--muted);
-  background-color: color-mix(in srgb, var(--surface) 80%, transparent);
-  border-radius: var(--r-xs);
+/* Where the level used to be, for a goal that has gone backwards. The same two wall etches at a
+   little over half strength — a whisper, and the one grey sentence in the foot says the rest. No
+   red, no badge, nothing to answer for. */
+.goal-tile__was {
+  height: 2px;
+  bottom: calc(clamp(2, var(--from, 0), 96) * 1%);
+  background-size:
+    var(--etch-far) 2px,
+    var(--etch) 2px;
+  background-image:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--etch-ink) 55%, transparent) 0 1px,
+      color-mix(in srgb, var(--etch-lit) 55%, transparent) 1px 2px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--etch-ink) 55%, transparent) 0 1px,
+      color-mix(in srgb, var(--etch-lit) 55%, transparent) 1px 2px
+    );
 }
 
-/* the smallest tile keeps the etch but not the word — no room */
-.goal-tile--sm .goal-tile__min span {
+/* The label the etch used to carry. Kept in the DOM (the element is aria-hidden either way, and
+   GoalTile.tsx is not this file's to change) and taken out of the layout: see above for why no
+   position on a glass can hold a floating word without meeting the copy. */
+.goal-tile__min span {
   display: none;
 }
 
@@ -334,47 +543,47 @@ button.goal-tile:active,
   outline-offset: -3px;
 }
 
-.goal-tile__actions {
-  position: absolute;
-  top: var(--sp-3);
-  right: var(--sp-3);
+/*
+ * The top row: what the goal is, and what you can do to it, side by side.
+ *
+ * This used to be an absolutely positioned cluster in the corner, with the head reserving space for
+ * it through four hard-coded `padding-right` values — 7rem, 4rem, 10.5rem, 7rem — one for each
+ * combination of controls that might turn up. It did not survive contact with its own content.
+ * Absolute positioning made the cluster's width a shrink-to-fit puzzle, the tick settled at its
+ * min-width, the label inside collapsed, and "Done" hung out of both ends of a 28px circle with the
+ * check mark stranded outside the pill.
+ *
+ * In the flow there is no puzzle: the head takes the space that is left, the controls take the
+ * space they need, and no number here has to be kept in step with a button that might appear.
+ *
+ * Clicks: the whole glass is a target (`.goal-tile__open`, laid over the copy), so the row lets
+ * them through and only the controls take their own — otherwise the head would swallow every tap
+ * that landed on the area name.
+ */
+.goal-tile__topbar {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
+  width: 100%;
+  margin-bottom: auto;
+  min-width: 0;
+  pointer-events: none;
 }
 
-.goal-tile--sm > .goal-tile__actions {
+.goal-tile__actions {
+  position: relative;
+  /* Above `.goal-tile__open`, which is positioned and comes later in the document. */
+  z-index: 1;
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-left: auto;
+  pointer-events: auto;
+}
+
+.goal-tile--sm .goal-tile__actions {
   gap: var(--sp-1);
-}
-
-/*
- * The head runs under the controls, so it gives them room rather than eliding into them. How much
- * room depends on what is up there: a tick and a grip are two round-ish things, and an undo — which
- * is only ever there for a moment after a tap — is a word as well. The area name ellipses into
- * whatever is left, which is the right thing to lose: it is the quietest line on the tile and its
- * colour is still on the dot beside it.
- */
-.goal-tile:has(> .goal-tile__actions) .goal-tile__head {
-  padding-right: 7rem;
-}
-
-.goal-tile--sm:has(> .goal-tile__actions) .goal-tile__head {
-  padding-right: 4rem;
-}
-
-.goal-tile:has(.goal-tile__undo) .goal-tile__head {
-  padding-right: 10.5rem;
-}
-
-.goal-tile--sm:has(.goal-tile__undo) .goal-tile__head {
-  padding-right: 7rem;
-}
-
-@media (min-width: 40rem) {
-  .goal-tile:not(.goal-tile--sm) > .goal-tile__actions {
-    top: var(--sp-4);
-    right: var(--sp-4);
-  }
 }
 
 /*
@@ -399,7 +608,10 @@ button.goal-tile:active,
   white-space: nowrap;
   color: var(--muted);
   background-color: color-mix(in srgb, var(--surface) 78%, transparent);
-  border: 1px solid var(--border-strong);
+  /* --field-border, not --border-strong: this is a control's boundary, and as a hairline
+     --border-strong sits at 1.65:1 against the pill's own fill — well under the 3:1 a control
+     outline has to clear. The same reasoning tokens.css gives for a text field's edge. */
+  border: 1px solid var(--field-border);
   border-radius: var(--r-full);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -572,19 +784,24 @@ button.goal-tile:active,
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  margin-bottom: auto;
+  /* Yields to the controls beside it; the area name is what ellipses, and its colour is still on
+     the dot, so the meaning survives the truncation. */
+  flex: 1 1 auto;
   min-width: 0;
-  max-width: 100%;
   font-size: var(--fs-xs);
-  color: var(--muted);
+  color: var(--muted-water);
 }
 
+/* The area's colour as a bead of its own liquid, lit from the same window as the glass. The area is
+   always named in the text beside it — the bead is never the only thing saying which one. */
 .goal-tile__dot {
   flex: none;
   width: 0.5rem;
   height: 0.5rem;
   border-radius: 50%;
   background-color: var(--goal);
+  background-image: radial-gradient(100% 100% at 32% 24%, var(--glass-hi), transparent 62%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--goal) 22%, transparent);
 }
 
 .goal-tile__area {
@@ -623,10 +840,25 @@ button.goal-tile:active,
   font-size: var(--fs-sm);
 }
 
+/* --muted-water, not --muted: this line and the foot below it sit on the DEEPEST water in the app.
+   See tokens.css — with --muted the worst pairing is 4.4:1, with --muted-water it is 5.2:1. */
 .goal-tile__val {
   font-size: var(--fs-sm);
-  color: var(--muted);
+  color: var(--muted-water);
   font-variant-numeric: tabular-nums;
+}
+
+/*
+ * The smallest tile is deliberately one row tall, and `.goal-tile` hides its overflow — so a value
+ * line long enough to wrap did not wrap, it was cut off mid-word on a second line nobody could see
+ * ("1 of 1 this week · full this"). One line, and an ellipsis where it runs out, which at least
+ * says that it ran out. The whole line is still in the goal's own detail panel.
+ */
+.goal-tile--sm .goal-tile__val,
+.goal-tile--sm .goal-tile__name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .goal-tile--sm .goal-tile__val {
@@ -652,12 +884,21 @@ button.goal-tile:active,
   display: inline-flex;
   align-items: center;
   gap: var(--sp-1);
-  color: var(--muted);
+  color: var(--muted-water);
 }
 
-/* the tick turns up the moment the minimum is met, so it arrives with the etch rather than
-   before it */
-.goal-tile__tick {
+/*
+ * The mark beside "Kept alive this week". It turns up the moment the minimum is met, so it arrives
+ * with the etch rather than before it.
+ *
+ * It answered to `goal-tile__tick` until now — the same class as the control in the top corner —
+ * and because this rule sits further down the file it won. So the BUTTON was handed `width:
+ * 0.8125rem`, clamped back up to its own `min-width`, and rendered as a 28px circle with the check
+ * stranded outside it and "Done" hanging out of both ends. One class, two elements, and the one
+ * that looked broken was not the one being styled.
+ */
+.goal-tile__kept-mark {
+  flex: none;
   width: 0.8125rem;
   height: 0.8125rem;
   color: var(--goal);
@@ -667,7 +908,7 @@ button.goal-tile:active,
 /* one quiet line for a goal that slipped */
 .goal-tile__drift {
   font-size: var(--fs-sm);
-  color: var(--muted);
+  color: var(--muted-water);
 }
 
 /* --- motion: water settling ----------------------------------------------- */

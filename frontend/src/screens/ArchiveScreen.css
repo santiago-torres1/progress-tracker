@@ -11,6 +11,9 @@
  * they lose their lift: a shelved glass sits on its shelf instead of hovering above it, which says
  * "finished" without saying "scored". The shelf itself is one hairline under the row — a shelf is a
  * line things stand on, and that is the entire ornament budget for this screen.
+ *
+ * There is no headline on this page either, and that is the same argument: the shell names the
+ * section, the line under it says what a shelf is for, and then the glasses are the page.
  */
 
 .archive {
@@ -30,6 +33,14 @@
   gap: var(--sp-2) var(--sp-4);
 }
 
+/*
+ * This heading says the same words as the shell's `<h1>` above it, which now sets those words as the
+ * page's eyebrow — so the page currently names itself twice. It is kept at --fs-xl rather than
+ * promoted to --fs-2xl for exactly that reason: a quiet repeat reads as a label above a title, where
+ * a 34px repeat reads as a mistake. The fix is to delete the duplicate from the markup (see the
+ * report accompanying this pass); `margin-inline-start: auto` on the button below means this head
+ * lays out correctly either way.
+ */
 .archive__title {
   min-width: 0;
   font-size: var(--fs-xl);
@@ -37,19 +48,24 @@
   letter-spacing: -0.025em;
 }
 
+/* The same quiet pill as the board's "My full glasses", down to the edge: --field-border, because a
+   1px --border-strong boundary sits at 1.4:1 against its own fill and is the only thing here saying
+   this is a control. `margin-inline-start: auto` rather than the head's `space-between`, so the
+   button stays at the trailing edge whether or not a title sits beside it. */
 .archive__back {
   display: inline-flex;
   flex: none;
   align-items: center;
   justify-content: center;
   min-height: 2.5rem;
+  margin-inline-start: auto;
   padding-inline: var(--sp-4);
   font: inherit;
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
   color: var(--muted);
-  background-color: var(--surface);
-  border: 1px solid var(--border-strong);
+  background-color: color-mix(in srgb, var(--surface) 70%, transparent);
+  border: 1px solid var(--field-border);
   border-radius: var(--r-full);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
@@ -62,7 +78,7 @@
 @media (hover: hover) {
   .archive__back:hover {
     color: var(--text);
-    background-color: var(--surface-2);
+    background-color: var(--surface);
   }
 }
 
@@ -74,22 +90,41 @@
 
 .archive__body {
   max-width: 56ch;
-  font-size: var(--fs-sm);
+  font-size: var(--fs-md);
   color: var(--muted);
 }
 
 /*
  * The shelf. One hairline under the glasses, and nothing below it — no summary line, nothing to
- * add up. The tiles keep their border and their rim but give up their drop shadow: they are
- * standing on something now.
+ * add up.
  */
 .archive .goal-canvas {
   padding-bottom: var(--sp-5);
   border-bottom: 1px solid var(--border-strong);
 }
 
+/*
+ * A GLASS SET DOWN. This rule used to be `box-shadow: var(--sh-rim)`, which was right when a tile
+ * was a bordered card and a drop shadow was the only thing to remove. It is not right now: the tile's
+ * whole box-shadow is the vessel standing on a table — contact, lift, and the pool of its own colour
+ * the water throws onto the floor — so replacing the list with one inset highlight did not settle the
+ * glass onto a shelf, it flattened it into a rectangle and turned the light inside it off.
+ *
+ * What "at rest" actually means here: keep the contact, drop the lift, keep a pool but a tight one —
+ * light still passes through the water, it simply has nowhere to travel before it reaches the shelf.
+ * So --sh-set (the first two layers of --sh-glass) plus the same caustic at a fifth of its reach. The
+ * rim, the walls and the base are untouched: they live on `.goal-tile__glass::after`, where the water
+ * cannot cover them, and a shelved glass is still glass.
+ *
+ * The list keeps the empty last slot GoalTile.css leaves for the "held" ring, even though nothing on
+ * this screen can be picked up — one shape for a tile's shadow, whichever screen it is standing on.
+ */
 .archive .goal-tile {
-  box-shadow: var(--sh-rim);
+  box-shadow:
+    var(--sh-set),
+    0 5px 10px -10px
+      color-mix(in srgb, var(--goal) calc(var(--caustic-floor) * var(--p, 0) / 100), transparent),
+    0 0 0 0 transparent;
 }
 
 /* Nothing here yet is room, in the same dashed frame the empty board and every status note use. */

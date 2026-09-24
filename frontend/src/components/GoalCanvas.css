@@ -100,6 +100,11 @@
  * the only place on the board where a colour means something other than a life area, and it lasts
  * exactly as long as the tile is off the ground. The cell is raised so the lift is not clipped by
  * whatever tile comes next in the grid.
+ *
+ * The ring goes in the empty sixth slot GoalTile.css leaves in the tile's box-shadow, so picking a
+ * glass up interpolates from the resting shadow instead of swapping one list for another. It is a
+ * ring rather than an outline because the tile's focus ring is an outline and a held tile is
+ * usually also the focused one.
  */
 .goal-canvas__cell--held {
   position: relative;
@@ -108,6 +113,9 @@
 
 .goal-canvas__cell--held .goal-tile {
   transform: translateY(-2px) scale(1.015);
-  border-color: var(--accent);
-  box-shadow: var(--sh-2), var(--sh-rim);
+  box-shadow:
+    var(--sh-glass-hi),
+    0 22px 38px -20px
+      color-mix(in srgb, var(--goal) calc(var(--caustic-floor-hi) * var(--p, 0) / 100), transparent),
+    0 0 0 2px var(--accent);
 }

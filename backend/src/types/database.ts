@@ -229,3 +229,27 @@ export interface ProgressEntryRow {
   created_at: string;
   updated_at: string;
 }
+
+// --- public.session_overview -----------------------------------------------------------------
+
+/**
+ * The account's own facts, as GET /api/session reads them (20260923100000).
+ *
+ * Every count is computed by the view, over rows this API never fetches: the backend does no
+ * arithmetic behind it, exactly as it does none behind public.goal_dashboard. Row-level security
+ * on public.users means a session's query returns one row — its own — so the caller is never
+ * named in the query and `user_id` is never selected.
+ */
+export interface SessionOverviewRow {
+  created_at: string;
+  /** Whole days from the account's first day to its today, both in the account's zone. 0 on day one. */
+  days_since_start: number;
+  /** Goals with status 'active': exactly what GET /api/goals returns by default. */
+  goals_on_board: number;
+  /** Goals with status 'completed' or 'archived'. */
+  glasses_filled: number;
+  /** Occurrences ticked off, goal-linked or not. */
+  completions_recorded: number;
+  /** Numeric check-ins logged. */
+  measurements_recorded: number;
+}

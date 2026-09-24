@@ -1,0 +1,35 @@
+/*
+ * The canvas the liquid is drawn into. Orchestrator-owned, not part of the design pass — the
+ * vessel around it (walls, rim, shadow, the copy) is `GoalTile.css` and belongs to design-agent.
+ *
+ * `color` is set from `--goal` for one reason: canvas cannot read a custom property, so the
+ * renderer asks for the element's computed `color` and gets the area's hue through it.
+ */
+
+.goal-tile__water {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  display: block;
+  color: var(--goal);
+  pointer-events: none;
+}
+
+/* Created in JS, never by React — see the note in GoalWater.tsx about lost contexts. */
+.goal-tile__water-surface {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+/*
+ * When the simulation is actually running, the CSS water underneath must go — otherwise two
+ * surfaces sit at slightly different levels and the glass looks doubled. It comes back by itself
+ * for anyone who asked for less motion, or if the canvas never started, because this class is
+ * only added once the canvas has measured itself and joined the loop.
+ */
+.goal-tile:has(> .goal-tile__glass > .goal-tile__water--live) .goal-tile__body,
+.goal-tile:has(> .goal-tile__glass > .goal-tile__water--live) .goal-tile__line,
+.goal-tile:has(> .goal-tile__glass > .goal-tile__water--live) .goal-tile__was {
+  display: none;
+}

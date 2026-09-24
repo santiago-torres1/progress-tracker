@@ -381,7 +381,11 @@ export function calendarPayload(from: string, to: string): CalendarResponse {
   return { from, to, entries: ENTRIES.filter((entry) => entry.date >= from && entry.date <= to) };
 }
 
-/** The profile a signed-in visitor reads back: a real zone, and a week that starts on Monday. */
+/**
+ * The profile a signed-in visitor reads back: a real zone, a week that starts on Monday, and the
+ * plain counts the profile page states. Nothing here is a score — `glassesFilled` is simply how
+ * many goals are filed away as done.
+ */
 export function sessionPayload(
   overrides: Partial<SessionResponse['session']> = {},
 ): SessionResponse {
@@ -391,6 +395,14 @@ export function sessionPayload(
       weekStartsOn: 1,
       isAnonymous: true,
       expiresAt: '2026-12-16T09:30:00.000Z',
+      createdAt: '2026-08-14T08:12:00.000Z',
+      stats: {
+        goalsOnBoard: 5,
+        glassesFilled: 7,
+        completionsRecorded: 128,
+        measurementsRecorded: 19,
+        daysSinceStart: 34,
+      },
       ...overrides,
     },
   };

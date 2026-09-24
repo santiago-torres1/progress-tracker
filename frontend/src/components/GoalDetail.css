@@ -9,6 +9,17 @@
  * a gap in it is just a gap, and "Put it on the shelf" is a place, not a prize. The only ornament
  * in here is the goal's own glass at the top, which is the same tile it has on the board — opening
  * a goal should feel like picking it up, not like opening its file.
+ *
+ * COLOUR IS THE AREA'S, NOT THE APP'S. Every highlight in here — the on tab, the chosen day, the
+ * radio, the button that saves — is var(--goal), so opening a Learning goal gives you a purple
+ * panel and opening a Health one gives you a green panel. It used to be the app's accent green
+ * regardless, which said that the highlight belonged to the software rather than to the goal.
+ * There is now no var(--accent) left in this file at all: the only accent anywhere on the panel is
+ * the focus ring, and that comes from the one :focus-visible rule in index.css — chrome, and it has
+ * to be the same colour in every panel or it stops reading as focus.
+ *
+ * This depends on data-area="<slug>" being on the root, which is what puts --goal in scope for the
+ * whole panel including the goal form and the recurrence editor nested inside it.
  */
 
 .goal-detail {
@@ -17,9 +28,11 @@
   margin-inline: auto;
   padding: var(--sp-5);
   background-color: var(--surface);
-  border: 1px solid var(--border);
   border-radius: var(--r-2xl);
-  box-shadow: var(--sh-1), var(--sh-rim);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px var(--glass-edge),
+    var(--sh-1);
   animation: pt-settle var(--mo-slow) var(--ease-out) backwards;
 }
 
@@ -163,13 +176,16 @@
 @media (hover: hover) {
   .goal-detail__tab[aria-pressed='false']:hover {
     color: var(--text);
-    background-color: var(--accent-soft);
+    background-color: color-mix(in srgb, var(--goal) 10%, var(--surface));
   }
 }
 
+/* The on tab, in the goal's own colour. --goal-contrast is white in light and near-black in dark;
+   all six areas clear 5:1 and 7.4:1 against them respectively, which is what makes one ink usable
+   for all of them. The tab is also aria-pressed, so the state is never colour alone. */
 .goal-detail__tab[aria-pressed='true'] {
-  color: var(--accent-contrast);
-  background-color: var(--accent);
+  color: var(--goal-contrast);
+  background-color: var(--goal);
 }
 
 @media (pointer: coarse) {
@@ -275,11 +291,16 @@
     border-color var(--mo) var(--ease);
 }
 
-/* Finishing a goal is the good ending, so it is the one that carries the accent — softly. This is
-   not a "complete" button competing with the tick on the board; it is the last thing you do once. */
+/*
+ * Finishing a goal is the good ending, so it is the one that carries colour — softly, and the
+ * colour is this goal's area rather than the app's accent. The ink is the hue with a sixth of the
+ * reading colour mixed in, which is what takes it clear of its own wash: the raw hue on a 10% wash
+ * of itself is 4.40:1 for Health, and this is 5.29:1. The mix works in both themes, because --text
+ * moves with the theme and so does the direction the ink needs to go.
+ */
 .goal-detail__done {
-  color: var(--accent);
-  background-color: var(--accent-soft);
+  color: color-mix(in srgb, var(--goal) 85%, var(--text));
+  background-color: color-mix(in srgb, var(--goal) 10%, var(--surface));
 }
 
 .goal-detail__archive,
@@ -291,7 +312,7 @@
 
 @media (hover: hover) {
   .goal-detail__done:hover:not(:disabled) {
-    background-color: color-mix(in srgb, var(--accent) 18%, var(--surface));
+    background-color: color-mix(in srgb, var(--goal) 18%, var(--surface));
   }
 
   .goal-detail__archive:hover:not(:disabled),

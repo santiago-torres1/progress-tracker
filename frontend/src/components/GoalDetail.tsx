@@ -92,7 +92,7 @@ export function GoalDetail(props: GoalDetailProps) {
   }
 
   return (
-    <section className="goal-detail" aria-label={goal.title}>
+    <section className="goal-detail" data-area={goal.area?.slug} aria-label={goal.title}>
       <header className="goal-detail__head">
         <h2 className="goal-detail__title">{goal.title}</h2>
         <button className="goal-detail__close" type="button" onClick={props.onClose}>

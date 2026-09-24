@@ -43,6 +43,7 @@ export function LogValueForm({ goal, todayIso, busy, onSubmit, onCancel }: LogVa
   return (
     <form
       className="log-value"
+      data-area={goal.area?.slug}
       onSubmit={handleSubmit}
       aria-label={`Log a value for ${goal.title}`}
     >

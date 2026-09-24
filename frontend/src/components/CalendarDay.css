@@ -79,6 +79,7 @@
   gap: var(--sp-4);
 }
 
+/* a bead of the goal's own liquid on the spine, lit from the same window as everything else */
 .calendar-day__slot::before {
   content: '';
   position: absolute;
@@ -88,6 +89,7 @@
   height: 0.5rem;
   border-radius: 50%;
   background-color: var(--surface);
+  background-image: radial-gradient(100% 100% at 32% 24%, var(--glass-hi), transparent 60%);
   box-shadow: 0 0 0 1.5px var(--goal);
   transform: translate(-50%, -50%);
 }

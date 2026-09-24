@@ -8,6 +8,15 @@
  * is not an admin panel: the groups have no boxes around them, because a card inside a card inside
  * a page is how a calm product turns into a settings screen. Whitespace does the grouping and a
  * small uppercase label says what each group is — the same eyebrow the rest of the app uses.
+ *
+ * EVERY HIGHLIGHT IS var(--goal), NOT var(--accent). The form brings no colour of its own: it takes
+ * the colour of the goal it is editing, or of the area chosen a step earlier in the composer. So a
+ * Learning goal gets a purple chosen-row and a purple Save, and a Money one gets amber. The one
+ * thing that stays the app's accent is the focus ring, which is chrome and has to be the same
+ * colour in every panel or it stops reading as focus.
+ *
+ * --goal comes from data-area="<slug>" on whichever panel this form stands in — the composer or the
+ * detail panel — and inherits from there; nothing in here sets it.
  */
 
 .goal-form {
@@ -51,7 +60,7 @@
 
 .goal-form__input:focus-visible {
   background-color: var(--surface);
-  border-color: var(--accent);
+  border-color: var(--goal);
 }
 
 /* A count is three characters wide; a date and a period are what they are. Left to stretch, each
@@ -132,7 +141,7 @@ select.goal-form__input {
   width: 1rem;
   height: 1rem;
   margin: 0;
-  accent-color: var(--accent);
+  accent-color: var(--goal);
   cursor: pointer;
 }
 
@@ -152,14 +161,16 @@ select.goal-form__input {
   }
 }
 
-/* Chosen. More specific than the hover above on its own, so the order of the two cannot matter. */
+/* Chosen. More specific than the hover above on its own, so the order of the two cannot matter.
+   The wash is a tenth of the goal's hue, the edge seven tenths of it mixed towards a border —
+   4.01:1 against the card at its lightest, so the row's edge stays a legible boundary. */
 .goal-form__choice:has(input:checked) {
-  background-color: var(--accent-soft);
-  border-color: var(--accent);
+  background-color: color-mix(in srgb, var(--goal) 10%, var(--surface));
+  border-color: color-mix(in srgb, var(--goal) 70%, var(--border-strong));
 }
 
 .goal-form__choice:has(input:focus-visible) {
-  border-color: var(--accent);
+  border-color: var(--goal);
 }
 
 /* --- notes, and what did not fit ------------------------------------------ */
@@ -201,11 +212,16 @@ select.goal-form__input {
   font: inherit;
   font-size: var(--fs-sm);
   font-weight: var(--fw-medium);
-  color: var(--accent-contrast);
-  background-color: var(--accent);
+  /* The goal's colour, not the app's: this button saves THIS goal. Every area clears 5:1 against
+     --goal-contrast in light and 7.4:1 in dark; Health is the tightest of the six at 5.02:1. */
+  color: var(--goal-contrast);
+  background-color: var(--goal);
   border: 1px solid transparent;
   border-radius: var(--r-full);
-  box-shadow: var(--sh-1);
+  /* a rim, so the one solid button belongs to the same material world as the glasses */
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--glass-rim) 26%, transparent),
+    var(--sh-1);
   cursor: pointer;
   -webkit-tap-highlight-color: transparent;
   transition:
@@ -219,13 +235,17 @@ select.goal-form__input {
 @media (hover: hover) {
   .goal-form__submit:hover:not(:disabled) {
     transform: translateY(-1px);
-    box-shadow: var(--sh-2);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--glass-rim) 26%, transparent),
+      var(--sh-2);
   }
 }
 
 .goal-form__submit:active:not(:disabled) {
   transform: translateY(0) scale(0.97);
-  box-shadow: var(--sh-1);
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--glass-rim) 26%, transparent),
+    var(--sh-1);
   transition-duration: var(--mo-fast);
 }
 

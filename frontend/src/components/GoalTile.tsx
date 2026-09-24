@@ -10,6 +10,7 @@ import type {
 } from '../types/api';
 import type { StyleWithVars } from '../types/style';
 import { formatCalendarDate, formatNumber, formatPercent, toLevel } from './format';
+import { GoalWater } from './GoalWater';
 import { CheckIcon } from './icons';
 import './GoalTile.css';
 
@@ -282,6 +283,7 @@ export function GoalTile({
         <span className="goal-tile__body" />
         {detail.previousLevel !== null && <span className="goal-tile__was" />}
         <span className="goal-tile__line" />
+        <GoalWater level={detail.level / 100} />
       </span>
 
       {detail.minimumLevel !== null && (
@@ -290,10 +292,13 @@ export function GoalTile({
         </span>
       )}
 
-      <span className="goal-tile__head">
-        <i className="goal-tile__dot" aria-hidden="true" />
-        <span className="goal-tile__area">{areaName}</span>
-        <span className="goal-tile__kind">{goal.kind}</span>
+      <span className="goal-tile__topbar">
+        <span className="goal-tile__head">
+          <i className="goal-tile__dot" aria-hidden="true" />
+          <span className="goal-tile__area">{areaName}</span>
+          <span className="goal-tile__kind">{goal.kind}</span>
+        </span>
+        {action !== undefined && <span className="goal-tile__actions">{action}</span>}
       </span>
 
       <span className="goal-tile__name">{goal.title}</span>
@@ -304,7 +309,7 @@ export function GoalTile({
           {detail.measure !== null && <span className="goal-tile__pct">{detail.measure}</span>}
           {stateText !== null && (
             <span className="goal-tile__state">
-              {detail.stateTick && <CheckIcon className="goal-tile__tick" />}
+              {detail.stateTick && <CheckIcon className="goal-tile__kept-mark" />}
               {stateText}
             </span>
           )}
@@ -317,8 +322,9 @@ export function GoalTile({
   );
 
   // A control inside the tile means the tile cannot itself be a button. The whole-glass target
-  // becomes a transparent overlay instead, placed after the copy so it takes the click and
-  // before the control so the control takes its own.
+  // becomes a transparent overlay instead, laid over the copy. The controls sit above that overlay
+  // (see `.goal-tile__actions`), and the rest of the top row lets clicks through to it, so tapping
+  // the area name still opens the goal.
   if (action !== undefined) {
     return (
       <div className={className} data-area={goal.area?.slug} style={style}>
@@ -331,7 +337,6 @@ export function GoalTile({
             onClick={handleClick}
           />
         )}
-        <span className="goal-tile__actions">{action}</span>
       </div>
     );
   }

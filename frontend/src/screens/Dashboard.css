@@ -2,8 +2,9 @@
  * The dashboard's layout, and nothing else: every part of this screen is a component with its
  * own file. What is decided here is the order they stand in and the air between them.
  *
- * The headline is the loudest type on the page on purpose — "Your glass is half full." is the
- * one sentence this product exists to say, so the app's own name above it stays smaller.
+ * The headline is the loudest type in the app on purpose — "Your glass is half full." is the one
+ * sentence this product exists to say. Above it the shell sets the section's name as an eyebrow
+ * (`.content__heading`), which is what lets this line take --fs-2xl without two headings competing.
  */
 
 .dashboard {
@@ -21,15 +22,15 @@
 }
 
 .dashboard__headline {
-  font-size: var(--fs-xl);
-  line-height: 1.15;
-  letter-spacing: -0.025em;
+  font-size: var(--fs-2xl);
+  line-height: 1.08;
+  letter-spacing: -0.032em;
 }
 
 .dashboard__detail {
-  margin-top: var(--sp-1);
-  max-width: 44ch;
-  font-size: var(--fs-sm);
+  margin-top: var(--sp-2);
+  max-width: 48ch;
+  font-size: var(--fs-md);
   color: var(--muted);
 }
 
@@ -70,27 +71,54 @@
     box-shadow var(--mo) var(--ease-out);
 }
 
+/*
+ * The one accent button in the app, and now made of the same material as everything around it: a rim
+ * of light along its top lip, a soft inner light falling from it, and a pool of its own colour on
+ * the floor under it. It used to carry a bare --sh-1 — a shadow stamped under a flat pill, which was
+ * the only object left on this screen that did not belong to "Deep glass".
+ *
+ * The inner light stops at 58% of the height and is --glass-hi rather than white, so it lights the
+ * button from above in both themes and never reaches the label's band: at the top edge it would cost
+ * the label a point of contrast, and at the middle it costs it 0.4 of one.
+ */
 .dashboard__add {
   color: var(--accent-contrast);
   background-color: var(--accent);
-  box-shadow: var(--sh-1);
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--glass-hi) 18%, transparent),
+    transparent 58%
+  );
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--glass-rim) 26%, transparent),
+    var(--sh-1),
+    0 8px 18px -10px color-mix(in srgb, var(--accent) 80%, transparent);
 }
 
+/*
+ * The shelf is a door, not an offer: the quiet pill the calendar bar and a tile's own controls use.
+ * Its edge is --field-border rather than --border-strong for the reason tokens.css gives — at
+ * --border-strong a 1px boundary sits at 1.4:1 against the fill it encloses, well under the 3:1 a
+ * control's outline has to clear, and the border is the only thing here saying "button".
+ */
 .dashboard__shelf {
   color: var(--muted);
-  background-color: var(--surface);
-  border-color: var(--border-strong);
+  background-color: color-mix(in srgb, var(--surface) 70%, transparent);
+  border-color: var(--field-border);
 }
 
 @media (hover: hover) {
   .dashboard__add:hover {
     transform: translateY(-1px);
-    box-shadow: var(--sh-2);
+    box-shadow:
+      inset 0 1px 0 color-mix(in srgb, var(--glass-rim) 26%, transparent),
+      var(--sh-2),
+      0 14px 26px -12px color-mix(in srgb, var(--accent) 85%, transparent);
   }
 
   .dashboard__shelf:hover {
     color: var(--text);
-    background-color: var(--surface-2);
+    background-color: var(--surface);
   }
 }
 
@@ -98,8 +126,14 @@
 .dashboard__add:active,
 .dashboard__shelf:active {
   transform: translateY(0) scale(0.97);
-  box-shadow: var(--sh-1);
   transition-duration: var(--mo-fast);
+}
+
+.dashboard__add:active {
+  box-shadow:
+    inset 0 1px 0 color-mix(in srgb, var(--glass-rim) 26%, transparent),
+    var(--sh-1),
+    0 4px 10px -8px color-mix(in srgb, var(--accent) 80%, transparent);
 }
 
 @media (pointer: coarse) {

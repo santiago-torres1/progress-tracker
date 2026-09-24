@@ -183,12 +183,28 @@ export function SessionGate({ children, store, browserTimeZone }: SessionGatePro
     setAttempt((count) => count + 1);
   }, []);
 
+  /*
+   * A profile a write just returned, stamped as the answer to the question now being asked.
+   *
+   * Reusing `answer` rather than keeping a second piece of state is what stops the two disagreeing:
+   * there is one held profile, and the only difference is whether it arrived from a GET this effect
+   * ran or from a PATCH a screen made. It is deliberately not a reload — re-reading would blank the
+   * app behind a "one moment" while somebody was changing a setting.
+   */
+  const applyProfile = useCallback(
+    (profile: SessionProfile) => {
+      setAnswer({ attempt, call, result: { kind: 'ok', data: profile } });
+    },
+    [attempt, call],
+  );
+
   const current =
     answer !== null && answer.attempt === attempt && answer.call === call ? answer.result : null;
 
   const session = useMemo<AppSession | null>(
-    () => (current?.kind === 'ok' ? { call, profile: current.data, reloadProfile } : null),
-    [current, call, reloadProfile],
+    () =>
+      current?.kind === 'ok' ? { call, profile: current.data, reloadProfile, applyProfile } : null,
+    [current, call, reloadProfile, applyProfile],
   );
 
   if (auth.status === 'unavailable') {

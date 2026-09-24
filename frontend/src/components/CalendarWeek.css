@@ -3,12 +3,16 @@
  * for seeing shape, not for scheduling by the minute.
  */
 
+/* A card in the same material as a glass, at a sixth of the drama: a rim along the top edge and a
+   hairline of the wall seen edge-on, instead of a border and a stamped shadow. */
 .calendar-week__head {
   padding: var(--sp-4) var(--sp-4) var(--sp-3);
   background-color: var(--surface);
-  border: 1px solid var(--border);
   border-radius: var(--r-xl);
-  box-shadow: var(--sh-1), var(--sh-rim);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px var(--glass-edge),
+    var(--sh-1);
 }
 
 .calendar-week__headline {
@@ -38,23 +42,49 @@
   text-align: center;
 }
 
-/* each day is a small glass: filled is done, outline is still ahead */
+/*
+ * Each day is a small glass, made of the same material as a tile: a rim on the lip, the wall seen
+ * edge-on, the room in the front wall and a whisper of contact shadow underneath. Filled is done,
+ * outline is still ahead.
+ *
+ * It is ACCENT, not an area colour, and that is deliberate: a day is not a life area. The strip
+ * answers "how much of my week has happened", which is chrome — the same reason "Today" is accent.
+ */
 .calendar-week__glass {
   position: relative;
   width: 100%;
   max-width: 2.25rem;
   height: 2.5rem;
-  background-color: var(--surface-2);
-  border: 1px solid var(--border);
+  background-color: color-mix(in srgb, var(--surface) 70%, transparent);
   border-radius: var(--r-xs) var(--r-xs) var(--r-md) var(--r-md);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px var(--glass-edge),
+    0 4px 8px -6px rgba(20, 38, 30, 0.35);
   overflow: hidden;
 }
 
+/* the room, reflected in the front wall — the one gradient that makes this read as glass and not
+   as a progress bar with rounded corners */
+.calendar-week__glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image: linear-gradient(
+    116deg,
+    transparent 24%,
+    var(--glass-sheen) 34%,
+    transparent 46%
+  );
+}
+
+/* translucent, so the wall and the rim stay visible through what is planned */
 .calendar-week__planned {
   position: absolute;
   inset: auto 0 0 0;
   height: calc(var(--planned) * 1%);
-  background-color: var(--accent-soft);
+  background-color: color-mix(in srgb, var(--accent) 14%, transparent);
 }
 
 /* box-shadow, not border-top: a day with nothing done draws nothing */
@@ -62,15 +92,24 @@
   position: absolute;
   inset: auto 0 0 0;
   height: calc(var(--done) * 1%);
-  background-color: color-mix(in srgb, var(--accent) 50%, transparent);
-  box-shadow: inset 0 2px 0 0 var(--accent);
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--accent) 34%, transparent),
+    color-mix(in srgb, var(--accent) 52%, transparent)
+  );
+  box-shadow: inset 0 2px 0 -1px var(--accent);
   animation: calendar-week-rise var(--mo-settle) var(--ease-out) backwards;
   animation-delay: calc(var(--i, 0) * 40ms + 120ms);
 }
 
+/* Today: the same glass, held in a soft halo. The date underneath says "Today" in words, so the
+   ring is never the only thing carrying it. */
 .calendar-week__strip li[data-today='1'] .calendar-week__glass {
-  border-color: var(--accent);
-  box-shadow: 0 0 0 1px var(--accent);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 60%, transparent),
+    0 0 0 3px color-mix(in srgb, var(--accent) 16%, transparent),
+    0 4px 8px -6px rgba(20, 38, 30, 0.35);
 }
 
 .calendar-week__day {
@@ -109,31 +148,60 @@
   margin-top: var(--sp-4);
 }
 
+/*
+ * EVERY ROW RESERVES THE SAME BOX, whether it is today or not.
+ *
+ * Today's row is a card: a left edge in the accent, a border, a shadow. When only that row carried
+ * them, only that row's content moved — 3px of border plus 4px of extra padding pushed "Wed 23"
+ * seven pixels right of every other date in the column, which is precisely the sort of thing the
+ * eye catches without being able to name. So all seven rows carry the same border widths and the
+ * same padding, and being today changes nothing but colour.
+ */
 .calendar-week__row {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--sp-2);
-  padding: var(--sp-4) var(--sp-2);
-  border-top: 1px solid var(--border);
+  padding: var(--sp-4) var(--sp-3);
+  border: 1px solid transparent;
+  border-top-color: var(--border);
+  border-left: 3px solid transparent;
   animation: pt-settle var(--mo-slow) var(--ease-out) backwards;
   animation-delay: calc(var(--i, 0) * 40ms);
 }
 
+/*
+ * One grid for the whole week, shared by every row.
+ *
+ * Each row used to be its own two-column grid with the date column pinned to 5.5rem. Two things
+ * went wrong with that. The "Today" pill does not fit in 5.5rem, so it overflowed its own column
+ * and sat on top of the entry bar next to it — 21px past the column's edge, 5px over the bar. And
+ * because the rows were seven independent grids, widening the column on one row would have put it
+ * out of step with the other six.
+ *
+ * `subgrid` answers both: the columns are defined once, up here, so every row shares the same two
+ * tracks and the first track is as wide as the widest thing any row puts in it — pill included.
+ */
 @media (min-width: 40rem) {
+  .calendar-week__rows {
+    grid-template-columns: max-content minmax(0, 1fr);
+  }
+
   .calendar-week__row {
-    grid-template-columns: 5.5rem minmax(0, 1fr);
+    grid-column: 1 / -1;
+    grid-template-columns: subgrid;
     gap: var(--sp-4);
     align-items: start;
   }
 }
 
 .calendar-week__row--today {
-  padding-inline: var(--sp-3);
   background-color: var(--surface);
-  border: 1px solid var(--border);
-  border-left: 3px solid var(--accent);
+  border-color: var(--border);
+  border-left-color: var(--accent);
   border-radius: var(--r-lg);
-  box-shadow: var(--sh-1), var(--sh-rim);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    var(--sh-1);
 }
 
 .calendar-week__rail {

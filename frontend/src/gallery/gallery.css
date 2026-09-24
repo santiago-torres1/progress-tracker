@@ -1,0 +1,36 @@
+/* Chrome for the gallery itself. Nothing here is part of the app. */
+
+.gal {
+  max-width: 68rem;
+  margin: 0 auto;
+  padding: var(--sp-6) var(--sp-4) var(--sp-7);
+}
+
+.gal__title {
+  margin-bottom: var(--sp-5);
+  font-size: var(--fs-xl);
+  letter-spacing: -0.02em;
+}
+
+.gal__case {
+  margin-bottom: var(--sp-7);
+}
+
+.gal__h {
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
+}
+
+.gal__note {
+  margin-top: var(--sp-1);
+  margin-bottom: var(--sp-4);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+/* A hairline around each case, so a screenshot shows where one surface ends and the page begins. */
+.gal__stage {
+  padding: var(--sp-4);
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--r-lg);
+}

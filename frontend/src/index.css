@@ -2,8 +2,8 @@
  * Base styles for progress-tracker.
  *
  * Every custom property lives in styles/tokens.css — components reference those, never a raw
- * colour or size. This file is the reset, the document-level type and background, and the two
- * utility classes that more than one component needs.
+ * colour or size. This file is the reset, the document-level type and background, the one shared
+ * surface (`.card`), and the small utility classes that more than one component needs.
  */
 
 @import './styles/tokens.css';
@@ -25,6 +25,19 @@ html {
   text-size-adjust: 100%;
 }
 
+/*
+ * The room.
+ *
+ * The background is no longer a flat panel with a gradient on it: it is a lit room for the glasses
+ * to stand in. A window top-left, a weaker bounce top-right, and a horizon where the wall meets the
+ * floor (--bg to --bg-2 to --bg-3). Everything is `fixed`, so the room does not travel with the
+ * scroll — a room that slid past would be a texture, not a place.
+ *
+ * All of it lives on `body` deliberately. With no background on `html`, the body's background is
+ * propagated to the canvas and painted beneath every element in the document, including the
+ * negative-z grain layer below. That is what lets one pseudo-element cover the whole viewport
+ * without any component needing to know it is there.
+ */
 body {
   min-height: 100vh;
   font-family: var(--font-sans);
@@ -32,10 +45,35 @@ body {
   line-height: var(--lh-body);
   color: var(--text);
   background-color: var(--bg);
-  background-image: linear-gradient(172deg, var(--bg) 0%, var(--bg-2) 100%);
+  background-image:
+    radial-gradient(110% 70% at 14% -12%, var(--room-light), transparent 62%),
+    radial-gradient(
+      90% 60% at 92% 4%,
+      color-mix(in srgb, var(--room-light) 45%, transparent),
+      transparent 58%
+    ),
+    linear-gradient(174deg, var(--bg) 0%, var(--bg-2) 58%, var(--bg-3) 100%);
   background-attachment: fixed;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+ * Grain: fractal noise as one inline SVG, so the light has something to land on and the large flat
+ * areas do not band. No network request, no image asset, and one fixed layer for the whole page
+ * rather than a texture per surface.
+ *
+ * z-index: -1 puts it above the canvas background (see above) and below every element in the
+ * document, so nothing has to opt in and no component's stacking order changes.
+ */
+body::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--grain);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='180' height='180'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='180' height='180' filter='url(%23n)'/%3E%3C/svg%3E");
 }
 
 h1,
@@ -73,6 +111,20 @@ samp {
 img,
 svg {
   display: block;
+}
+
+/*
+ * Raster art arrives at whatever size it was saved at and must not overflow its column, so it is
+ * clamped. An icon must NOT be: it is sized in CSS, and `max-width: 100%` resolves that percentage
+ * against a box whose own width is being derived from the icon — a cycle, which Chrome settles by
+ * treating the icon as contributing nothing.
+ *
+ * That is not theoretical. `svg` was in this rule, and every control that pairs an icon with a
+ * word collapsed to its `min-width`: the tick on a goal tile rendered as a 28px circle with the
+ * check mark stranded outside it and "Done" hanging out of both ends. It looked like a bug in the
+ * tile, and it lived here.
+ */
+img {
   max-width: 100%;
 }
 
@@ -85,6 +137,55 @@ svg {
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
+}
+
+/* Surfaces ----------------------------------------------------------------- */
+
+/*
+ * THE CARD: the app's one shared surface, and the same material as a glass at a sixth of the drama.
+ *
+ * It lives here rather than beside a component because no component owns it — the profile page is
+ * simply the first page to ask for one, and a card is what any page will reach for next. It brings a
+ * surface, a radius, a rim along the top lip, the hairline of a wall seen edge-on, and one band of
+ * the room reflected across it. It brings no layout: a card that also decided how its contents were
+ * arranged could only ever hold one kind of thing, so padding beyond the default and any grid inside
+ * belong to whatever put the card on the page (see `.profile__card`).
+ *
+ * The sheen is a pseudo-element rather than a background layer because the element's own
+ * `background-color` has to stay free for a page to tint a card — and `.card > *` lifts the contents
+ * over it, which is why the sheen can lie across the whole surface without fogging any text. The
+ * cost of that: an absolutely positioned child of a card that wants to escape it cannot, because of
+ * `overflow: hidden`. Nothing needs to yet; a card that grows a popover will have to stop clipping.
+ */
+.card {
+  position: relative;
+  padding: var(--sp-5);
+  background-color: color-mix(in srgb, var(--surface) 92%, transparent);
+  border-radius: var(--r-2xl);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px var(--glass-edge),
+    var(--sh-1);
+  overflow: hidden;
+}
+
+.card::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  background-image: linear-gradient(
+    118deg,
+    transparent 22%,
+    color-mix(in srgb, var(--glass-sheen) 55%, transparent) 32%,
+    transparent 44%
+  );
+}
+
+.card > * {
+  position: relative;
+  z-index: 1;
 }
 
 /* Utilities ---------------------------------------------------------------- */
@@ -117,6 +218,18 @@ svg {
   font-weight: 400;
   letter-spacing: 0.02em;
   text-transform: none;
+}
+
+/*
+ * The quiet line at the foot of something: how long a session lasts, what a shelf is for. Three
+ * components already ask for this class and nothing defined it, so until now those sentences
+ * rendered at body size in full-strength ink — the loudest copy on the profile page was its
+ * smallest print. Caption size, the reading grey, and a measure short enough to be skipped.
+ */
+.footnote {
+  max-width: 64ch;
+  font-size: var(--fs-xs);
+  color: var(--muted);
 }
 
 /* Motion ------------------------------------------------------------------- */

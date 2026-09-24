@@ -19,9 +19,11 @@
   margin-inline: auto;
   padding: var(--sp-5);
   background-color: var(--surface);
-  border: 1px solid var(--border);
   border-radius: var(--r-2xl);
-  box-shadow: var(--sh-1), var(--sh-rim);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px var(--glass-edge),
+    var(--sh-1);
   animation: pt-settle var(--mo-slow) var(--ease-out) backwards;
 }
 
@@ -121,7 +123,9 @@
   width: 0.5rem;
   height: 0.5rem;
   background-color: var(--goal);
+  background-image: radial-gradient(100% 100% at 32% 24%, var(--glass-hi), transparent 62%);
   border-radius: 50%;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--goal) 22%, transparent);
 }
 
 .composer__area-count {
@@ -168,7 +172,7 @@
 
 @media (hover: hover) {
   .composer__template--custom:hover {
-    border-color: var(--accent);
+    border-color: color-mix(in srgb, var(--goal) 60%, var(--border-strong));
   }
 }
 
