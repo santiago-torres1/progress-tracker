@@ -16,12 +16,17 @@ pushed commit.
 
 **`0.1.1-alpha` — the read-only Meadow dashboard — is done, live and tagged.**
 
-**Current milestone: `0.2.0-alpha` — the first version people can actually use.** Visitors get an
+**`0.2.0-alpha` — the first version people can actually use — is done and live.** Visitors get an
 **anonymous account** (Supabase anonymous sign-in: no sign-in screen, a real `auth.users` row and
-token), create their own goals, complete them, and log measurements. The seeded demo data stops
+token), create their own goals, complete them, and log measurements. The seeded demo data stopped
 being the product — a new visitor sees an empty board. A session whose owner has not returned for
 **90 days** is deleted, freeing its rows. Converting an anonymous account into a real one
 (email/OAuth) keeps every row and is a later release.
+
+**Current milestone: `0.3.0-alpha` — the app stops being one page.** Four routes behind a
+persistent frame (top bar, collapsible column, drawer on a phone), a profile page, the "Deep
+glass" visual pass, and a real liquid in the glasses — a simulated water surface that pours,
+sloshes when a tile is dragged, and settles.
 
 **Product rules that the code must not quietly break:**
 
@@ -167,9 +172,19 @@ request. Missing or invalid token → 401 with a short reason code; over quota �
   explicit `timing: 'timed' | 'untimed'` discriminant, plus enough of its goal to render.
 - `GET /api/areas` → the six life areas.
 - `GET`/`PATCH /api/session` → the caller's profile: `timeZone`, `weekStartsOn`, `isAnonymous`,
-  `expiresAt`. The client should send the browser's zone on first run — **nothing sets it
-  automatically, and a visitor left on UTC completes things on the wrong day.** No account id is
-  ever returned by any route; the token is the identity.
+  `expiresAt`, `createdAt`, and a `stats` block (`goalsOnBoard`, `glassesFilled`,
+  `completionsRecorded`, `measurementsRecorded`, `daysSinceStart`). The client should send the
+  browser's zone on first run — **nothing sets it automatically, and a visitor left on UTC
+  completes things on the wrong day.** No account id is ever returned by any route; the token is
+  the identity. `stats` is **plain facts, never achievements** — no trophy, badge, streak, score
+  or personal best may be added to it, and `goalsOnBoard` is `status = 'active'` so it always
+  equals the tiles a person can see (a paused goal is in neither count). Every number is counted
+  by `public.session_overview` (`20260923100000`), `daysSinceStart` in the caller's own zone: the
+  backend does no arithmetic behind that view, and a browser subtracting instants lands on the
+  wrong day. The view costs this route one extra query and no other route anything — counting in
+  `begin_request()` would charge the dashboard, the calendar and every write for it. A new account
+  is a row of zeros, never an absent block. `PATCH` answers with the whole profile, recomputed in
+  the zone it just set, so the client applies that response rather than reloading the session.
 - `GET /api/goal-templates` → the catalogue (`docs/goal-catalogue.md` is its source of truth),
   grouped by area, plus a `custom` block. There is no `template_id` on a goal and no foreign key
   either way: a template seeds a form and is then forgotten, so editing one later cannot reach a
@@ -191,6 +206,11 @@ request. Missing or invalid token → 401 with a short reason code; over quota �
   already lived keep the plan they were lived under. Rewriting them would retroactively add "was
   due" days and drop adherence for doing nothing — which is the failure state this product does not
   have.
+
+A schema change an `/api` route depends on must be applied to Supabase **before** the pull request
+needing it merges — the same rule `infra/` follows, and for the same reason: `/health` never
+touches Supabase, so a missing table or view is invisible to every deploy check and the first
+person to find out is a visitor.
 
 Shapes live in `backend/src/types/api.ts` and are the contract the frontend imports. Successful
 responses carry `Cache-Control: public, max-age=60`; errors carry `no-store`. `backend/src/types/database.ts`
@@ -215,6 +235,54 @@ header — keeps answering `200`. `0.2.0-alpha` shipped this way and the live si
 single call while every check was green. Adding a method or header to the client means widening
 the `cors` block **and running `terraform apply`**; merging is not what makes it true, and
 `deploy.yml` now refuses to publish a frontend the deployed config cannot support.
+
+## Screens, and looking at them
+
+**Routes** (react-router, `frontend/src/App.tsx`; the table itself is `lib/navigation.ts`, which is
+the only place a path is spelled out): `/` the board, `/calendar`, `/glasses` ("My full glasses"),
+`/profile`, and everything else a not-found page. Deep links work in the deploy because CloudFront
+already rewrites **403 and 404** to `/index.html` with a 200 (`infra/main/frontend.tf`) — S3
+answers 403 rather than 404 without `s3:ListBucket`, which is why both are there.
+
+**The gallery is how the app is looked at.** `frontend/gallery.html` renders the real components
+from fixtures with no session and no API behind them, and `frontend/water.html` is a bench for the
+liquid. Neither is in the production build's inputs. They exist because **jsdom has no layout**:
+every test can pass while a pill overflows its column, a control collapses to a circle, or a rule
+is drawn through a title. Three such defects shipped in `0.2.0-alpha`.
+
+Screenshotting them needs no install — from WSL, drive the Windows Chrome that is already there:
+
+```
+CHROME="/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
+"$CHROME" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=2 \
+  --virtual-time-budget=4000 --window-size=660,460 \
+  --screenshot='C:\Users\Santi\AppData\Local\Temp\pt-shots\out.png' \
+  "http://localhost:5173/gallery.html?only=shell"
+```
+
+The file lands at `/mnt/c/Users/Santi/AppData/Local/Temp/pt-shots/out.png`; read it and LOOK at it.
+`?only=` narrows the page to the cases whose title matches, which is not a convenience: a window
+tall enough for the whole gallery comes back blank. `--dump-dom` with a `<pre>` that measures
+elements is how to get numbers rather than impressions — that is what found all three defects.
+
+**The water.** A goal's glass holds a simulated liquid (`frontend/src/lib/water/`): a
+one-dimensional height field of springs, one shared animation loop for the whole board that stops
+when nothing is moving, and two renderers behind one interface — Pixi for the eight tiles the
+pool lends a WebGL context to, canvas 2D for the rest, because a browser keeps only about sixteen
+contexts and a board can hold a hundred goals.
+
+The CSS water (`.goal-tile__body`, `.goal-tile__line`) is **not dead code and must keep working on
+its own**: it is what shows for anyone who asked for less motion, for a browser that gives no
+context, and in jsdom, where the test setup returns null from `getContext` so that path is
+exercised on every run. The canvas hides it only once it is live.
+
+Two things that cost an afternoon and will do so again:
+
+- Anything that takes a resource to check whether that resource is available **is taking it**. A
+  WebGL capability probe disabled the GPU path for the whole board on a software renderer.
+- A canvas that has lost a WebGL context can never be given another, and React reuses DOM nodes
+  across an effect's cleanup — which StrictMode does on every mount in development. The canvas is
+  created in the effect, not rendered, for that reason.
 
 ## Deploy contract (what `deploy.yml` does → what the IAM role must allow)
 
