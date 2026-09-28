@@ -18,15 +18,15 @@
  */
 
 import {
-  SHEEN_ALPHA,
-  SHEEN_OFFSET,
-  SHEEN_WIDTH,
+  DEPTH_OFFSETS,
   SURFACE_ALPHA,
-  SURFACE_POINTS,
   SURFACE_WIDTH,
+  UNDER_ALPHA,
+  UNDER_DEPTH,
   depthStops,
   surfacePoints,
   tint,
+  traceSurface,
   type WaterPaint,
   type WaterRenderer,
 } from './renderer';
@@ -99,9 +99,9 @@ export async function createPixiRenderer(canvas: HTMLCanvasElement): Promise<Wat
   }
 
   const body = new Graphics();
+  const under = new Graphics();
   const surface = new Graphics();
-  const sheen = new Graphics();
-  app.stage.addChild(body, surface, sheen);
+  app.stage.addChild(body, under, surface);
 
   let width = 0;
   let height = 0;
@@ -120,60 +120,51 @@ export async function createPixiRenderer(canvas: HTMLCanvasElement): Promise<Wat
       if (destroyed || width === 0 || height === 0) return;
 
       const points = surfacePoints(sample, width, height);
+      const last = points.length - 2;
       const hue = toHex(paint.color);
       const radius = Math.max(0, Math.min(paint.radius, width / 2, height));
-      const [near, middle, floor] = depthStops(paint.full);
+      const [near, middle, floor] = depthStops(paint);
+
+      const rest = height - Math.min(1, Math.max(0, paint.level)) * height;
+      const top = Math.max(0, Math.min(height, rest));
 
       /*
-       * The same three-stop gradient the 2D renderer draws, from the same shared recipe. A flat
-       * fill here is what made a board come out with some glasses deep and some flat, which is how
-       * this was reported: the water looking glitchy.
-       *
-       * The gradient is built per frame because its top follows the surface, and Pixi's fill
-       * gradients are cheap objects rather than GPU resources.
+       * The same gradient, the same curve, the same band as the 2D renderer — every number and the
+       * path tracer itself come from `renderer.ts`. Two implementations of one picture drifted
+       * once already and shipped a board of eight flat glasses among deep ones.
        */
-      const top = points[1] ?? height;
-      // Alpha rides in the colour rather than beside it: a Pixi colour stop has no alpha field,
-      // and `tint` is the same function the 2D renderer uses, so the two cannot disagree about
-      // what "26% of this area's hue" means.
       const gradient = new FillGradient({
         type: 'linear',
-        start: { x: 0, y: Math.max(0, Math.min(height, top)) },
+        start: { x: 0, y: top },
         end: { x: 0, y: height },
         colorStops: [
-          { offset: 0, color: tint(paint.color, near) },
-          { offset: 0.55, color: tint(paint.color, middle) },
-          { offset: 1, color: tint(paint.color, floor) },
+          { offset: DEPTH_OFFSETS[0], color: tint(paint.color, near) },
+          { offset: DEPTH_OFFSETS[1], color: tint(paint.color, middle) },
+          { offset: DEPTH_OFFSETS[2], color: tint(paint.color, floor) },
         ],
         textureSpace: 'global',
       });
 
       body.clear();
-      body.moveTo(0, top);
-      for (let i = 0; i <= SURFACE_POINTS; i += 1) {
-        body.lineTo(points[i * 2] ?? 0, points[i * 2 + 1] ?? height);
-      }
-      // Down the right wall, across the rounded floor, back up the left.
-      body.lineTo(width, height - radius);
+      traceSurface(body, points);
+      body.lineTo(points[last] ?? width, height - radius);
       body.quadraticCurveTo(width, height, width - radius, height);
       body.lineTo(radius, height);
       body.quadraticCurveTo(0, height, 0, height - radius);
       body.closePath();
       body.fill(gradient);
 
-      surface.clear();
-      surface.moveTo(points[0] ?? 0, points[1] ?? height);
-      for (let i = 1; i <= SURFACE_POINTS; i += 1) {
-        surface.lineTo(points[i * 2] ?? 0, points[i * 2 + 1] ?? height);
+      under.clear();
+      traceSurface(under, points, UNDER_DEPTH);
+      for (let i = points.length / 2 - 1; i >= 0; i -= 1) {
+        under.lineTo(points[i * 2] ?? 0, points[i * 2 + 1] ?? 0);
       }
-      surface.stroke({ width: SURFACE_WIDTH, color: hue, alpha: SURFACE_ALPHA });
+      under.closePath();
+      under.fill({ color: hue, alpha: UNDER_ALPHA });
 
-      sheen.clear();
-      sheen.moveTo(points[0] ?? 0, (points[1] ?? height) + SHEEN_OFFSET);
-      for (let i = 1; i <= SURFACE_POINTS; i += 1) {
-        sheen.lineTo(points[i * 2] ?? 0, (points[i * 2 + 1] ?? height) + SHEEN_OFFSET);
-      }
-      sheen.stroke({ width: SHEEN_WIDTH, color: 0xffffff, alpha: SHEEN_ALPHA });
+      surface.clear();
+      traceSurface(surface, points);
+      surface.stroke({ width: SURFACE_WIDTH, color: hue, alpha: SURFACE_ALPHA, join: 'round' });
 
       app.render();
     },

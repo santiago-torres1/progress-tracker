@@ -43,6 +43,12 @@
   --etch-far: var(--sp-2);
   /* How far the room's reflection has slid across the front wall. Hover moves it. */
   --sheen-x: 0px;
+  /* The light the copy scatters into the water behind it — see "copy over water" below. Mixed from
+     the tile's OWN surface, so it lightens in light and darkens in dark with no second declaration,
+     and so it is invisible by construction wherever there is no water: a 76% wash of --surface laid
+     over --surface is nothing. It costs the empty part of every glass exactly zero. */
+  --halo: color-mix(in srgb, var(--surface) 76%, transparent);
+  --halo-soft: color-mix(in srgb, var(--surface) 26%, transparent);
 
   position: relative;
   display: flex;
@@ -151,14 +157,84 @@ button.goal-tile:active,
     box-shadow var(--mo-fast) var(--ease-out);
 }
 
-/* The copy sits above the water. Everything else on the tile — the glass, the etched minimum,
-   the whole-tile target, the control — places itself, so this names the copy rather than
-   excluding a list that grows every time the tile gains a layer. */
+/* --- copy over water ------------------------------------------------------ */
+
+/*
+ * The copy sits above the water. Everything else on the tile — the glass, the etched minimum,
+ * the whole-tile target, the control — places itself, so this names the copy rather than
+ * excluding a list that grows every time the tile gains a layer.
+ *
+ * AND THE WATERLINE IS DRAWN THROUGH IT. The surface line sits at the goal's own level, the copy is
+ * pushed to the bottom of the glass, and the two therefore meet: on the smallest tile (244x88) the
+ * title occupies 50–61px and the value line 63–76px, so the line lands inside one of them for every
+ * level between about 12% and 45% once its own 2px are counted. Larger tiles have the same collision
+ * over a narrower band, and at the top of the range it crosses the area name instead. The line cannot
+ * move — it is the number — and the copy cannot move either, so the two are going to keep meeting.
+ * The only thing left is to make the meeting read as depth.
+ *
+ * THIS IS NOT A CONTRAST FAILURE, IT IS A FIGURE-GROUND FAILURE, which is why no amount of darker
+ * ink fixes it. Measured against the value line's --muted-water, the surface line sits at 1.69–2.04:1
+ * in light and 1.44–1.80:1 in dark — that is, it is almost exactly as light as the text is. A 2px
+ * band of near-identical luminance running horizontally through 13px type does not reduce its
+ * contrast so much as dissolve its edges, and then joins the letters up into something that looks
+ * struck through. Worst pairing of the twelve: money in dark at 1.44:1.
+ *
+ * So: an aura on the glyphs, and nothing else. Not a scrim, not a plate, not a gutter. Every
+ * box-shaped answer was rejected on the same grounds the etched minimum was — the copy is
+ * left-aligned, free to wrap, and pushed to the bottom, so no box has an edge it can put anywhere
+ * without that edge landing on something at some size. An aura has no edges. It also fixes all three
+ * water paths at once (canvas 2D, Pixi, and the CSS water that serves reduced motion and jsdom),
+ * which no change to the canvas could.
+ *
+ * WHY THREE LAYERS AND WHY TWO OF THEM ARE IDENTICAL. A blurred text-shadow reaches only half its
+ * alpha at the glyph's own edge, which is the one place the number has to hold; 1px at 76% therefore
+ * delivers 38%. Stacking it twice gives 62%, and the 4px layer takes the edge to ~67% while also
+ * being what closes the two or three pixels BETWEEN letters, where two neighbouring auras overlap.
+ * That is the part that stops the line reading as a strikethrough: it passes behind the letters and
+ * shows through only in the word spaces, which is what "behind" looks like.
+ *
+ * What ~67% of --surface at the glyph edge buys, worst case of all six areas, caustic and the deepest
+ * water included — the figure is the value line's contrast against whatever is locally behind it:
+ *
+ *                   bare line   with halo        bare line   with halo
+ *   health              2.04        5.14            1.61        5.47
+ *   learning            1.69        4.92            1.80        5.69
+ *   money               1.93        5.09            1.44        5.21
+ *   relationships       1.76        4.93            1.63        5.50
+ *   work                1.81        5.00            1.53        5.31
+ *   creative            1.72        4.96            1.68        5.54
+ *                   ---- light ----             ---- dark ----
+ *
+ * All six land within a fifth of a stop of the 5.2:1 / 5.0:1 that tokens.css promises --muted-water
+ * on still water, so the line stops being a special case: copy over the waterline is now exactly as
+ * legible as copy over the water. The title (--text) is 10.8:1 light / 7.7:1 dark in the same places.
+ * Two currently-shipping AA failures go with it: the dark-mode sheen band over the value line
+ * (3.81:1 -> 7.80:1) and, in the reduced-motion path, the CSS meniscus highlight in dark
+ * (2.03:1 -> 5.94:1).
+ *
+ * It is also headroom for the water to get richer — a dark band under the surface, the thing that
+ * gives the liquid thickness, puts indigo's value line at 4.10:1 on its own and 6.27:1 with this.
+ */
 .goal-tile__head,
 .goal-tile__name,
 .goal-tile__val,
 .goal-tile__foot {
   position: relative;
+  text-shadow:
+    0 0 1px var(--halo),
+    0 0 1px var(--halo),
+    0 0 4px var(--halo-soft);
+}
+
+/* Forced colours replaces the water with a system background; an aura over it has nothing left to
+   separate the copy from and only smears it. */
+@media (forced-colors: active) {
+  .goal-tile__head,
+  .goal-tile__name,
+  .goal-tile__val,
+  .goal-tile__foot {
+    text-shadow: none;
+  }
 }
 
 /* --- the water ------------------------------------------------------------ */

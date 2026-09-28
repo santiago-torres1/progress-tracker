@@ -35,6 +35,25 @@ export interface GoalWaterProps {
  * to call dead — the same move `supabaseAuth.ts` makes for `localStorage`. Answering "no" when
  * there is nothing to ask is right: a test environment has no reader with a preference.
  */
+/**
+ * The three water tints for one theme, as fractions, or undefined if the page has no opinion.
+ *
+ * Undefined is the ordinary answer in jsdom, where nothing is painted anyway — the renderer then
+ * falls back to its own constants rather than drawing with `NaN`.
+ */
+function readTints(
+  styles: CSSStyleDeclaration,
+  suffix: string,
+): readonly [number, number, number] | undefined {
+  const read = (name: string): number => Number.parseFloat(styles.getPropertyValue(name)) / 100;
+  const stops = [
+    read(`--tint-top${suffix}`),
+    read(`--tint-bot${suffix}`),
+    read(`--tint-deep${suffix}`),
+  ] as const;
+  return stops.every((stop) => Number.isFinite(stop)) ? stops : undefined;
+}
+
 function prefersLessMotion(): boolean {
   const ask = (globalThis as { matchMedia?: (query: string) => MediaQueryList }).matchMedia;
   return ask?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -43,6 +62,16 @@ function prefersLessMotion(): boolean {
 export function GoalWater({ level }: GoalWaterProps) {
   const hostRef = useRef<HTMLSpanElement | null>(null);
   const colorRef = useRef('rgb(100, 116, 139)');
+  /** The theme's own water tints, read from the tokens rather than hardcoded twice. */
+  const tintsRef = useRef<{
+    resting?: readonly [number, number, number];
+    full?: readonly [number, number, number];
+  }>({});
+  /**
+   * Something other than the waves has changed — the level, the size, the theme — so the next
+   * frame must paint even if the water is perfectly still.
+   */
+  const dirty = useRef(true);
   const [live, setLive] = useState(false);
 
   // `useState` with an initialiser rather than a ref, so the field is built exactly once and
@@ -56,6 +85,7 @@ export function GoalWater({ level }: GoalWaterProps) {
   useEffect(() => {
     field.setLevel(level, poured.current);
     poured.current = true;
+    dirty.current = true;
     wake();
   }, [field, level]);
 
@@ -120,8 +150,24 @@ export function GoalWater({ level }: GoalWaterProps) {
         renderer.resize(boxWidth, boxHeight, window.devicePixelRatio || 1);
         // The area colour is a custom property and canvas cannot read one, so it is resolved here
         // through the host's own `color`, once, rather than every frame.
-        colorRef.current = getComputedStyle(host).color.trim() || colorRef.current;
+        const styles = getComputedStyle(host);
+        colorRef.current = styles.color.trim() || colorRef.current;
         radius = Number.parseFloat(getComputedStyle(tile).borderBottomLeftRadius) || radius;
+
+        /*
+         * The water's depth comes from the theme, not from a constant in the renderer.
+         *
+         * `--tint-top` / `-bot` / `-deep` are what the CSS water uses and they differ between
+         * light and dark; the canvas had one recipe for both, so the liquid changed colour when
+         * anyone turned reduced motion on. Read here, once per measure, alongside the hue — the
+         * same reason and the same place.
+         */
+        tintsRef.current = {
+          resting: readTints(styles, ''),
+          full: readTints(styles, '-full'),
+        };
+
+        dirty.current = true;
         setLive(true);
       };
 
@@ -141,10 +187,23 @@ export function GoalWater({ level }: GoalWaterProps) {
         },
         render(elapsed) {
           const moving = field.advance(elapsed);
+
+          /*
+           * Still water is not redrawn. The loop runs while ANY glass on the board is moving or a
+           * pointer is down, so without this a single tile being dragged repaints every other tile
+           * on the board sixty times a second, for a picture identical to the one already there.
+           */
+          if (!moving && !dirty.current) return false;
+          dirty.current = false;
+
+          const full = field.level >= 1;
+          const stops = full ? tintsRef.current.full : tintsRef.current.resting;
           renderer.draw((at) => field.heightAt(at), {
             color: colorRef.current,
-            full: field.level >= 1,
+            full,
+            level: field.level,
             radius,
+            ...(stops === undefined ? {} : { stops }),
           });
           return moving;
         },

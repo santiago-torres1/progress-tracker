@@ -57,6 +57,7 @@ function Glass({ name, color, level, drag, poured }: GlassProps) {
       renderer.draw((at) => field.heightAt(at), {
         color,
         full: field.level >= 1,
+        level: field.level,
         radius: 14,
       });
       frame = requestAnimationFrame(loop);
