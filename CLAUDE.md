@@ -6,6 +6,17 @@ conflicts with an explicit instruction from the human, the human wins — then u
 
 ## What this is
 
+**The product is called `Half Full`.** Two words, capital F, and never set as one lowercase
+string: `halffull` runs five near-identical vertical strokes in six characters. The repository,
+the npm packages and every storage key stay `progress-tracker` — renaming the GitHub repo would
+break the OIDC trust policy's `sub` claim (see the deploy contract), and renaming a storage key
+signs every existing visitor out of a board they cannot reach again. The name is a product fact,
+not an identifier.
+
+No string in the app says the product's name back to the reader. The board's headline used to
+read "Your glass is half full." and with this name that is an advertisement sitting where a
+reading should be.
+
 A personal, minimalist life-tracking app: ongoing tasks/projects, a built-in calendar with
 Google/Apple Calendar sync, and encouraging reminder notifications. Login is optional.
 Single-user for now; may go public later.
@@ -23,10 +34,14 @@ being the product — a new visitor sees an empty board. A session whose owner h
 **90 days** is deleted, freeing its rows. Converting an anonymous account into a real one
 (email/OAuth) keeps every row and is a later release.
 
-**Current milestone: `0.3.0-alpha` — the app stops being one page.** Four routes behind a
+**`0.3.0-alpha` — the app stops being one page — is done and live.** Four routes behind a
 persistent frame (top bar, collapsible column, drawer on a phone), a profile page, the "Deep
-glass" visual pass, and a real liquid in the glasses — a simulated water surface that pours,
-sloshes when a tile is dragged, and settles.
+glass" visual pass, and a real liquid in the glasses. **`0.3.1-alpha`** followed it: deletable
+days, one repeat rule saved once, and water that moves like water.
+
+**Current milestone: `0.4.0` — the product introduces itself.** A name and a mark, every word in
+the interface rewritten by somebody with a voice, more words than there were, a front door for
+people who have never seen it, and the liquid finished as a material.
 
 **Product rules that the code must not quietly break:**
 
@@ -99,11 +114,17 @@ CLAUDE.md  README.md  CHANGELOG.md  cliff.toml
 The main interactive session is the **orchestrator**; the human approves. Delegate scoped
 work to the specialist that owns it rather than doing everything in the main session.
 
-| Agent               | Owns                                                                                   | Must not touch                         |
-| ------------------- | -------------------------------------------------------------------------------------- | -------------------------------------- |
-| `design-agent`      | CSS, design tokens, layout, component appearance                                       | Terraform, workflows, backend, logic   |
-| `features-agent`    | Business logic: tasks/projects, reminders, calendar UX, client state, product routes   | Infra, Supabase schema/client, styling |
-| `integration-agent` | Backend runtime shell, Supabase schema/client, external APIs, Terraform, CI/CD, deploy | Styling, business logic                |
+| Agent               | Owns                                                                                   | Must not touch                              |
+| ------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------- |
+| `design-agent`      | CSS, design tokens, layout, component appearance                                       | Terraform, workflows, backend, logic        |
+| `features-agent`    | Business logic: tasks/projects, reminders, calendar UX, client state, product routes   | Infra, Supabase schema/client, styling      |
+| `integration-agent` | Backend runtime shell, Supabase schema/client, external APIs, Terraform, CI/CD, deploy | Styling, business logic                     |
+| `copy-agent`        | Every word the interface says, including `aria-label`, `alt` and visually-hidden text  | Logic, layout, styling, config              |
+| `marketing-agent`   | The name, the mark's geometry, positioning, store framing — how it introduces itself   | Anything under `frontend/`, in-product copy |
+
+`copy-agent` changes string literals and nothing else — not logic, not JSX, not a class name —
+and updates only the test assertions that quote the exact words it changed. `marketing-agent`
+writes no code at all: it hands over geometry and reasons, and `design-agent` draws.
 
 **Gotcha — new agent definitions load on the next turn.** A file added to `.claude/agents/`
 isn't callable via the Agent tool until the orchestrator's next turn (a user message or a
@@ -288,18 +309,40 @@ when nothing is moving, and two renderers behind one interface — Pixi for the 
 pool lends a WebGL context to, canvas 2D for the rest, because a browser keeps only about sixteen
 contexts and a board can hold a hundred goals.
 
+**`renderer.ts` owns every coordinate and both renderers own none.** Each shape — the vessel, the
+body, the band under the surface, the two wall strips, the glint, the light on the floor — is
+traced by one shared function into a `PathSink`, the four path methods canvas and Pixi agree on. A
+renderer decides only how to put a shape on a screen: canvas clips to the vessel, Pixi masks to
+the same one, and each supplies its own fills and blend modes. This is not tidiness. The two drew
+different liquids once — Pixi a flat 22%, canvas a three-stop gradient — and which tiles got which
+depended on the order they mounted, so a board came out with some glasses deep and some flat. It
+was reported as the water looking glitchy, and it was.
+
+`water.html` draws both renderers, one row above the other, from the same field. A divergence is
+now something a screenshot shows rather than something a visitor finds.
+
 The CSS water (`.goal-tile__body`, `.goal-tile__line`) is **not dead code and must keep working on
 its own**: it is what shows for anyone who asked for less motion, for a browser that gives no
 context, and in jsdom, where the test setup returns null from `getContext` so that path is
-exercised on every run. The canvas hides it only once it is live.
+exercised on every run. The canvas hides it only once it is live. Every number describing the
+liquid's depth therefore exists twice — as `--tint-*` in `tokens.css` and as what the canvas reads
+from them — and a change to one is a change to both.
 
-Two things that cost an afternoon and will do so again:
+Three things that cost an afternoon and will do so again:
 
 - Anything that takes a resource to check whether that resource is available **is taking it**. A
   WebGL capability probe disabled the GPU path for the whole board on a software renderer.
 - A canvas that has lost a WebGL context can never be given another, and React reuses DOM nodes
   across an effect's cleanup — which StrictMode does on every mount in development. The canvas is
   created in the effect, not rendered, for that reason.
+- **A threshold nobody measured is a guess, and a guess drawn at 13% alpha looks exactly like a
+  bug.** The light on the waves and the light on the floor are both driven by properties of the
+  surface — its slope and its curvature — and both constants arrived as estimates. This field's
+  peak slope is 0.04 after a pour and 0.36–0.50 during a drag; its peak curvature is twenty times
+  smaller after a pour than the number chosen for it. Drawn, that came out as an even band of
+  light that never moved: crest and trough read identical to the byte when the pixels were probed.
+  Anything keyed to the simulation's own numbers gets calibrated against the simulation, and the
+  test that pins it must fail against the value it replaced.
 
 ## Deploy contract (what `deploy.yml` does → what the IAM role must allow)
 
