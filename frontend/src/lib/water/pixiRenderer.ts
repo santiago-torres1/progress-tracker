@@ -17,9 +17,19 @@
  * one a given glass got is not something a reader can see.
  */
 
-import type { WaterPaint, WaterRenderer } from './renderer';
-
-const SURFACE_POINTS = 48;
+import {
+  SHEEN_ALPHA,
+  SHEEN_OFFSET,
+  SHEEN_WIDTH,
+  SURFACE_ALPHA,
+  SURFACE_POINTS,
+  SURFACE_WIDTH,
+  depthStops,
+  surfacePoints,
+  tint,
+  type WaterPaint,
+  type WaterRenderer,
+} from './renderer';
 
 /**
  * Why the last GPU attempt failed, if one did.
@@ -61,8 +71,9 @@ export async function createPixiRenderer(canvas: HTMLCanvasElement): Promise<Wat
    */
   let Application: typeof import('pixi.js').Application;
   let Graphics: typeof import('pixi.js').Graphics;
+  let FillGradient: typeof import('pixi.js').FillGradient;
   try {
-    ({ Application, Graphics } = await import('pixi.js'));
+    ({ Application, Graphics, FillGradient } = await import('pixi.js'));
   } catch (error) {
     lastFailure = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     return null;
@@ -89,7 +100,8 @@ export async function createPixiRenderer(canvas: HTMLCanvasElement): Promise<Wat
 
   const body = new Graphics();
   const surface = new Graphics();
-  app.stage.addChild(body, surface);
+  const sheen = new Graphics();
+  app.stage.addChild(body, surface, sheen);
 
   let width = 0;
   let height = 0;
@@ -107,18 +119,37 @@ export async function createPixiRenderer(canvas: HTMLCanvasElement): Promise<Wat
     draw(sample, paint: WaterPaint) {
       if (destroyed || width === 0 || height === 0) return;
 
-      const points: number[] = [];
-      for (let i = 0; i <= SURFACE_POINTS; i += 1) {
-        const at = i / SURFACE_POINTS;
-        const y = height - Math.min(1, Math.max(0, sample(at))) * height;
-        points.push(at * width, y);
-      }
-
+      const points = surfacePoints(sample, width, height);
       const hue = toHex(paint.color);
       const radius = Math.max(0, Math.min(paint.radius, width / 2, height));
+      const [near, middle, floor] = depthStops(paint.full);
+
+      /*
+       * The same three-stop gradient the 2D renderer draws, from the same shared recipe. A flat
+       * fill here is what made a board come out with some glasses deep and some flat, which is how
+       * this was reported: the water looking glitchy.
+       *
+       * The gradient is built per frame because its top follows the surface, and Pixi's fill
+       * gradients are cheap objects rather than GPU resources.
+       */
+      const top = points[1] ?? height;
+      // Alpha rides in the colour rather than beside it: a Pixi colour stop has no alpha field,
+      // and `tint` is the same function the 2D renderer uses, so the two cannot disagree about
+      // what "26% of this area's hue" means.
+      const gradient = new FillGradient({
+        type: 'linear',
+        start: { x: 0, y: Math.max(0, Math.min(height, top)) },
+        end: { x: 0, y: height },
+        colorStops: [
+          { offset: 0, color: tint(paint.color, near) },
+          { offset: 0.55, color: tint(paint.color, middle) },
+          { offset: 1, color: tint(paint.color, floor) },
+        ],
+        textureSpace: 'global',
+      });
 
       body.clear();
-      body.moveTo(0, points[1] ?? height);
+      body.moveTo(0, top);
       for (let i = 0; i <= SURFACE_POINTS; i += 1) {
         body.lineTo(points[i * 2] ?? 0, points[i * 2 + 1] ?? height);
       }
@@ -128,14 +159,21 @@ export async function createPixiRenderer(canvas: HTMLCanvasElement): Promise<Wat
       body.lineTo(radius, height);
       body.quadraticCurveTo(0, height, 0, height - radius);
       body.closePath();
-      body.fill({ color: hue, alpha: paint.full ? 0.3 : 0.22 });
+      body.fill(gradient);
 
       surface.clear();
       surface.moveTo(points[0] ?? 0, points[1] ?? height);
       for (let i = 1; i <= SURFACE_POINTS; i += 1) {
         surface.lineTo(points[i * 2] ?? 0, points[i * 2 + 1] ?? height);
       }
-      surface.stroke({ width: 2, color: hue, alpha: 0.85 });
+      surface.stroke({ width: SURFACE_WIDTH, color: hue, alpha: SURFACE_ALPHA });
+
+      sheen.clear();
+      sheen.moveTo(points[0] ?? 0, (points[1] ?? height) + SHEEN_OFFSET);
+      for (let i = 1; i <= SURFACE_POINTS; i += 1) {
+        sheen.lineTo(points[i * 2] ?? 0, (points[i * 2 + 1] ?? height) + SHEEN_OFFSET);
+      }
+      sheen.stroke({ width: SHEEN_WIDTH, color: 0xffffff, alpha: SHEEN_ALPHA });
 
       app.render();
     },

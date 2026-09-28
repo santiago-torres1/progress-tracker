@@ -103,14 +103,21 @@ export function GoalWater({ level }: GoalWaterProps) {
       let radius = 18;
 
       const measure = (): void => {
-        // The HOST is measured, never the canvas. A canvas's size is an output of this call, not
-        // an input to it: Pixi starts every application at its own default of 800x600 and writes
-        // that straight onto the element's inline style, so measuring the canvas just read Pixi's
-        // guess back and agreed with it. Every GPU tile drew its water at the bottom of an 800x600
-        // surface, most of it outside a tile 190px tall, and the glass looked empty.
-        const box = host.getBoundingClientRect();
-        if (box.width === 0 || box.height === 0) return;
-        renderer.resize(box.width, box.height, window.devicePixelRatio || 1);
+        /*
+         * The HOST is measured, never the canvas: a canvas's size is an output of this call, not
+         * an input to it. Pixi starts every application at its own default of 800x600 and writes
+         * that onto the element's inline style, so measuring the canvas read Pixi's guess back and
+         * agreed with it, and every GPU tile drew its water below the visible tile.
+         *
+         * And `offsetWidth`, not `getBoundingClientRect`, because the two disagree under a
+         * transform. A picked-up tile carries `scale(1.015)`, so the rect is 1.5% larger than the
+         * box the water actually has to fill — resizing the canvas to it mid-drag re-rasterises
+         * the liquid at the wrong scale for as long as the tile is held.
+         */
+        const boxWidth = host.offsetWidth;
+        const boxHeight = host.offsetHeight;
+        if (boxWidth === 0 || boxHeight === 0) return;
+        renderer.resize(boxWidth, boxHeight, window.devicePixelRatio || 1);
         // The area colour is a custom property and canvas cannot read one, so it is resolved here
         // through the host's own `color`, once, rather than every frame.
         colorRef.current = getComputedStyle(host).color.trim() || colorRef.current;
