@@ -8,8 +8,8 @@
  *
  * `title` is the page's own `<h1>` — the thing focus moves to after a navigation, and the thing a
  * screen reader reads to say where it has arrived. It is deliberately the section's name rather
- * than a sentence: a screen's own headline changes with its data ("Your glass is half full."),
- * and a heading that moves under you is a poor landmark.
+ * than a sentence: a screen's own headline changes with its data ("Past the middle, and still
+ * rising."), and a heading that moves under you is a poor landmark.
  */
 
 export type SectionId = 'board' | 'calendar' | 'glasses' | 'profile';

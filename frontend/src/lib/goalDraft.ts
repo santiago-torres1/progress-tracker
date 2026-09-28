@@ -189,7 +189,7 @@ function habitProblem(draft: GoalDraft): DraftProblem | null {
   if (minimum > target) {
     return {
       field: 'minimumCount',
-      message: 'The minimum sits below the target — it is the floor, not the goal.',
+      message: 'The minimum sits at or below the target — it is the floor, not the goal.',
     };
   }
   return null;

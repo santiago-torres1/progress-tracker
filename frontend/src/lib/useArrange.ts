@@ -110,7 +110,7 @@ export function useArrange({ goals, applyLocal, commit }: ArrangeOptions): Arran
       setHeldId(goal.id);
       setMessage(
         `${positionMessage(goal.title, index, goals.length, goal.size)} ` +
-          'Use the arrow keys to move it, plus and minus to resize, Enter to drop, Escape to put it back.',
+          'Arrow keys move it, plus and minus resize it, Enter sets it down, Escape puts it back.',
       );
     },
     [goals],
@@ -128,9 +128,9 @@ export function useArrange({ goals, applyLocal, commit }: ArrangeOptions): Arran
       return;
     }
 
-    setMessage('Saving the new arrangement…');
+    setMessage('Saving where everything sits…');
     const saved = await commit(changes, before);
-    setMessage(saved ? 'Arrangement saved.' : 'Put back where it was — that did not save.');
+    setMessage(saved ? 'Saved where you put it.' : 'Put back where it was — that did not save.');
   }, [goals, commit]);
 
   const cancel = useCallback(() => {

@@ -37,8 +37,8 @@ describe('Dashboard — reading the board', () => {
     stubFetch();
     renderSignedIn(board());
 
-    expect(await screen.findByText('Your glass is half full.')).toBeInTheDocument();
-    expect(screen.getByText('5 goals across 5 areas.')).toBeInTheDocument();
+    expect(await screen.findByText('Level with the middle of the glass.')).toBeInTheDocument();
+    expect(screen.getByText('5 goals across 5 areas of your life.')).toBeInTheDocument();
   });
 
   it('shows an open-ended goal its session count, never a 0% glass', async () => {
@@ -61,9 +61,9 @@ describe('Dashboard — reading the board', () => {
     stubFetch();
     renderSignedIn(board());
 
-    await screen.findByText(/90 days from your last visit/);
+    await screen.findByText(/90 days without a visit/);
 
-    const note = screen.getByText(/90 days from your last visit/);
+    const note = screen.getByText(/90 days without a visit/);
     expect(note.textContent).toMatch(/December/);
     expect(note.textContent).toMatch(/2026/);
     expect(document.body.textContent).not.toMatch(/export|download your data|sign in to keep/i);
@@ -81,7 +81,7 @@ describe('Dashboard — making a goal', () => {
 
     const add = await screen.findByRole('button', { name: 'Add your first goal' });
     expect(add).toBeInTheDocument();
-    expect(screen.getByText('Nothing here yet. That is just room.')).toBeInTheDocument();
+    expect(screen.getByText('Every board starts empty.')).toBeInTheDocument();
   });
 
   it('creates a goal from a template, with every suggestion still editable', async () => {
@@ -156,7 +156,7 @@ describe('Dashboard — making a goal', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Add it to the board' }));
 
     expect(await screen.findByText('That is a full board.')).toBeInTheDocument();
-    expect(document.body.textContent).toMatch(/Finish one and it makes room again/);
+    expect(document.body.textContent).toMatch(/Finish one or put it on the shelf/);
     expect(document.body.textContent).not.toMatch(/error|failed|sorry|cannot/i);
   });
 });
@@ -293,7 +293,7 @@ describe('Dashboard — using a goal', () => {
         }),
       ).not.toBeInTheDocument();
     });
-    expect(document.body.textContent).not.toMatch(/not here any more/i);
+    expect(document.body.textContent).not.toMatch(/already gone/i);
   });
 
   it('gives a measured goal a value to log, never a tick', async () => {

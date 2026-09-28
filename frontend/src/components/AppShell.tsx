@@ -142,7 +142,7 @@ function Brand({ className }: { className?: string }) {
     <>
       <MarkIcon className="brand__mark" />
       <span className={className}>
-        progress<span className="brand__tail">-tracker</span>
+        Half<span className="brand__tail"> Full</span>
       </span>
     </>
   );
@@ -311,7 +311,7 @@ export function AppShell({ session, children, footer }: AppShellProps) {
             {session.isAnonymous && (
               <div className="side__foot">
                 <p className="footnote">
-                  Anonymous session. 90 days without a visit and it is removed.
+                  Anonymous session. 90 days without a visit and it is deleted.
                 </p>
               </div>
             )}

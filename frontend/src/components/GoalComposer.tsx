@@ -91,8 +91,8 @@ export function GoalComposer({ catalogue, busy, notice, onCreate, onCancel }: Go
       <div className="composer" aria-label="Add a goal">
         <h2 className="composer__title">Which part of life is this?</h2>
         <p className="composer__body">
-          Six to choose from. It only decides the colour and where it sits in the key — you can
-          change it later, or leave it off entirely.
+          Six of them, and they are the same six for everyone. The area decides the colour of the
+          glass and how it is named in the key, nothing more — change it later, or leave it off.
         </p>
 
         <ul className="composer__areas" role="list">
@@ -132,7 +132,8 @@ export function GoalComposer({ catalogue, busy, notice, onCreate, onCancel }: Go
       >
         <h2 className="composer__title">{group.area.name}</h2>
         <p className="composer__body">
-          Pick something near what you have in mind. Every part of it stays yours to change.
+          Pick whichever is nearest to what you have in mind. It fills the form in and is then
+          forgotten — every number in it stays yours to change.
         </p>
 
         <ul className="composer__templates" role="list">
@@ -184,8 +185,8 @@ export function GoalComposer({ catalogue, busy, notice, onCreate, onCancel }: Go
     <div className="composer" data-area={group?.area.slug} aria-label="Your new goal">
       <h2 className="composer__title">Make it yours</h2>
       <p className="composer__body">
-        Everything here is a suggestion. Change any of it — nothing is fixed because of where it
-        came from.
+        Every line here is a suggestion, including the numbers. Nothing is fixed because of where it
+        came from, and the name is the one you would use out loud.
       </p>
 
       {notice !== null && (

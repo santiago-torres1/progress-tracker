@@ -175,9 +175,7 @@ describe('CalendarScreen', () => {
     });
     renderSignedIn(<CalendarScreen now={NOW} />);
 
-    expect(
-      await screen.findByText('This demo is not connected to any data yet.'),
-    ).toBeInTheDocument();
+    expect(await screen.findByText('Nothing is connected to this page yet.')).toBeInTheDocument();
   });
 
   it('does not claim a week is empty while it is still loading', async () => {

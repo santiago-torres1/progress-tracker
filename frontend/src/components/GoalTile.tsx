@@ -190,20 +190,20 @@ function describeHabit(state: HabitState, progress: GoalProgress): TileDetail {
   const full = completedCount >= targetCount;
 
   const valueLine = full
-    ? `${completedCount} of ${targetCount} ${periodLabel} · full ${periodLabel}`
+    ? `${completedCount} of ${targetCount} ${periodLabel} · target met`
     : `${completedCount} of ${targetCount} ${periodLabel} · minimum is ${minimumCount}`;
 
   // Three encouragements and no fourth. Below the minimum is not a failure — it is a reminder
   // of how little it takes to keep the habit alive.
   let stateText: string;
   if (full) {
-    stateText = `Full ${periodLabel}`;
+    stateText = `That is the whole ${period}`;
   } else if (minimumMet) {
-    stateText = `Kept alive ${periodLabel}`;
+    stateText = `Past the minimum ${periodLabel}`;
   } else if (minimumCount === 1) {
     stateText = `One is still enough ${periodLabel}`;
   } else {
-    stateText = `${minimumCount} keeps it alive ${periodLabel}`;
+    stateText = `${minimumCount} is still enough ${periodLabel}`;
   }
 
   return {

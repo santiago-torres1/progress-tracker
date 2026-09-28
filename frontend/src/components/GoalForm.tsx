@@ -31,9 +31,9 @@ export interface GoalFormProps {
 }
 
 const KIND_COPY: Readonly<Record<GoalKind, { label: string; hint: string }>> = {
-  habit: { label: 'A habit', hint: 'Something repeated in a period — four runs a week.' },
-  measured: { label: 'A number', hint: 'A value moving towards a target — a weight, a balance.' },
-  scheduled: { label: 'Sessions', hint: 'Occasions that happen — twelve classes, a weekly call.' },
+  habit: { label: 'A habit', hint: 'Repeated in a period — four runs a week, one still counts.' },
+  measured: { label: 'A number', hint: 'A number on its way somewhere — a weight, a balance.' },
+  scheduled: { label: 'Sessions', hint: 'Occasions that happen — twelve classes, a Sunday call.' },
 };
 
 const SIZE_COPY: Readonly<Record<GoalSize, string>> = {
@@ -183,8 +183,8 @@ export function GoalForm({
           </div>
 
           <p className="goal-form__note">
-            The minimum is the floor that keeps this going. While you are above it the app is on
-            your side; above the target is simply a full glass.
+            The minimum is the floor, not the goal. On it or above it, this habit is doing what it
+            is for. Below it, the glass simply sits lower and nothing else happens.
           </p>
         </fieldset>
       )}
@@ -293,7 +293,7 @@ export function GoalForm({
       <fieldset className="goal-form__group">
         <legend className="goal-form__legend">How big on the board?</legend>
         <p className="goal-form__note">
-          Size is how much this one matters to you. Nothing else sets it.
+          Size is how much this one matters to you. Not how urgent it is, not how full it is.
         </p>
         {(Object.keys(SIZE_COPY) as GoalSize[]).map((size) => (
           <label className="goal-form__choice" key={size}>

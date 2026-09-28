@@ -17,19 +17,22 @@ export interface EmptyStateProps {
   note?: string;
 }
 
-const DEFAULT_TITLE = 'Nothing here yet. That is just room.';
+const DEFAULT_TITLE = 'Every board starts empty.';
 
 const DEFAULT_BODY =
-  'Add one thing you would like more of, in any part of your life. It starts as an empty glass ' +
-  'and you fill it a little at a time — there is no streak to break and nothing to fall behind on.';
+  'Name one thing you would like more of — a run, a language, money set aside — and it becomes ' +
+  'a glass on this board. Every time you come back and say you did it, the glass fills a little. ' +
+  'That is the whole app. Nothing here turns red, nothing scolds you, and there is no streak ' +
+  'to break.';
 
 const DEFAULT_PLOTS: readonly EmptyPlot[] = [
-  { title: 'Your first goal', detail: 'Scheduled, measured or a habit' },
+  { title: 'Your first glass', detail: 'A habit, a number to move, or sessions' },
   { title: 'Then another', detail: 'Health, money, learning, people, work, making things' },
-  { title: 'Or not', detail: 'Two goals is a perfectly good board' },
+  { title: 'Or a quiet week', detail: 'The glass stays where it is, and nothing is said' },
 ];
 
-const DEFAULT_NOTE = 'Six life areas to choose from. You can rename a goal at any time.';
+const DEFAULT_NOTE =
+  'Six life areas to choose from, and one goal is a whole board. Anything about it can change later.';
 
 /** An empty glass is room, not failure. Nothing here counts anything, and nothing is overdue. */
 export function EmptyState({

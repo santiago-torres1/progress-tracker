@@ -13,7 +13,7 @@ import { Link } from 'react-router-dom';
 export function NotFoundScreen() {
   return (
     <section className="not-found" aria-label="Page not found">
-      <p>There is nothing at that address — at least not in this version.</p>
+      <p>There is nothing at that address — not in this version of the app, anyway.</p>
       <p>
         <Link to="/">Back to your board</Link>
       </p>

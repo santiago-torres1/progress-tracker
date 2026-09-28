@@ -179,7 +179,7 @@ export function GoalDetail(props: GoalDetailProps) {
           <h3 className="goal-detail__subtitle">On the calendar</h3>
           {entries.length === 0 ? (
             <p className="goal-detail__empty">
-              Nothing on the calendar for this one yet. Target days would put some there.
+              No days on the calendar for this one yet. Target days is where they come from.
             </p>
           ) : (
             <ul className="goal-detail__list" role="list">
@@ -271,7 +271,7 @@ export function GoalDetail(props: GoalDetailProps) {
         {confirmingDelete ? (
           <span className="goal-detail__confirm">
             <span className="goal-detail__confirm-text">
-              Deleting removes its history too. Shelving keeps everything.
+              Deleting takes its history with it. The shelf keeps every drop.
             </span>
             <button
               className="goal-detail__delete"
@@ -305,8 +305,8 @@ export function GoalDetail(props: GoalDetailProps) {
       </footer>
 
       <p className="goal-detail__shelf-note">
-        “Put it on the shelf” moves this to <b>My full glasses</b>, where finished goals live. It is
-        a shelf, not a scoreboard — nothing there is ranked.
+        “Put it on the shelf” moves this to <b>My full glasses</b>, where finished goals sit with
+        their water still in them. A shelf, not a scoreboard — nothing there is ranked or scored.
       </p>
     </section>
   );

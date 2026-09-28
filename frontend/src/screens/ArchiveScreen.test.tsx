@@ -37,7 +37,7 @@ describe('ArchiveScreen — "My full glasses"', () => {
 
     await screen.findByText('Finish the Spanish course');
 
-    expect(document.body.textContent).toMatch(/not ranked and nothing here is counted/i);
+    expect(document.body.textContent).toMatch(/not ranked, and none of this is a score/i);
     expect(document.body.textContent).not.toMatch(
       /trophy|badge|achievement|streak|points|level|congratulations|well done/i,
     );
