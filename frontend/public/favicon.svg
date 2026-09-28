@@ -1,12 +1,21 @@
+<!--
+  Half Full. A tumbler, and a copy of the same tumbler cut at the waterline — two paths, one ink,
+  two alphas, no hue at any size. The viewBox is 32 so that 32 → 16 is exactly ÷2: the lip (y=2),
+  the waterline (y=14) and the base (y=28) each land on a whole device pixel at 16px, which is why
+  the waterline needs no line of its own. The alpha step is a harder edge than any hairline.
+
+  Never a ring, never a second horizontal (an etched line inside a glass means a habit's minimum
+  in this app), never an outline, never a hue. See the identity spec before changing a coordinate.
+-->
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
   <style>
-    circle { fill: none; stroke: #4a4fc4; stroke-width: 6; }
-    .track { stroke-opacity: 0.2; }
+    .glass { fill: #16201a; }
+    .empty { opacity: 0.34; }
     @media (prefers-color-scheme: dark) {
-      circle { stroke: #8b90f0; }
-      .track { stroke-opacity: 0.3; }
+      .glass { fill: #e7ece9; }
+      .empty { opacity: 0.3; }
     }
   </style>
-  <circle class="track" cx="16" cy="16" r="10" />
-  <circle cx="16" cy="16" r="10" stroke-linecap="round" stroke-dasharray="41 63" transform="rotate(-90 16 16)" />
+  <path class="glass empty" d="M6 2H26L24.154 26Q24 28 22 28H10Q8 28 7.846 26Z" />
+  <path class="glass" d="M6.923 14H25.077L24.154 26Q24 28 22 28H10Q8 28 7.846 26Z" />
 </svg>

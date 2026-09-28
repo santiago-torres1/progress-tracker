@@ -49,32 +49,66 @@
   box-shadow: inset 0 1px 0 var(--glass-rim);
 }
 
+/*
+ * THE LOCKUP: the glass, then "Half Full". Mark left, words right, on one baseline.
+ *
+ * ONE INK FOR ALL OF IT, and it is --text rather than --accent. Not a preference: --accent #2f6f5c
+ * and --area-health #2e7d57 are four points apart, so an accent-coloured glass 40px above a board
+ * where colour means a life area and nothing else is readable as a health goal. The mark inherits
+ * through `currentColor`, which is why the colour lives here and not in the SVG.
+ */
 .brand {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  /* The mark is the one accent in the bar until a section is current; the words are ink. */
-  color: var(--accent);
+  color: var(--text);
   text-decoration: none;
   border-radius: var(--r-sm);
 }
 
+/*
+ * 18px, down from 20px: the vessel is 26 of 32 units, so an 18px box draws a 14.6px glass against a
+ * ~10.5px cap height — the 1.39 ratio the outgoing ring mark had at 1.31, where 20px gives 16.25px
+ * and looms over the name.
+ *
+ * THE NUDGE GOES DOWN, NOT UP, and the sign is worth the arithmetic because it was specified the
+ * other way. The goal is the vessel's centre on the centre of the CAP BAND. Two things put it above
+ * that band, not below:
+ *
+ * 1. The vessel is y=2..28 of a 32 box, so its own centre is 1/32 of the box ABOVE the box's —
+ *    0.56px at 18px — and `align-items: center` centres the box, not the glass.
+ * 2. A line box hangs more space above the caps than below the baseline, because the ascent carries
+ *    accent room the cap height does not use. At 15px/1.5 the cap band's centre sits BELOW the line
+ *    box's by 0.96px in Segoe UI, 0.02px in SF Pro, -0.21px in Roboto.
+ *
+ * So the correction is +1.52px (Segoe UI), +0.58px (SF Pro), +0.35px (Roboto) downwards. 1px is the
+ * integral value inside that spread — fractional would resample the glyph for a tenth of a pixel —
+ * and it is the right side of centre on all three. -1px put the glass 2.5px high on Windows, which
+ * is 17% of its own height.
+ */
 .brand__mark {
   flex: none;
-  width: 1.25rem;
-  height: 1.25rem;
+  width: 1.125rem;
+  height: 1.125rem;
+  transform: translateY(1px);
 }
 
+/*
+ * Two words, one ink, one weight — no second treatment on either of them. Tinting "Full" would say
+ * the app is about reaching it and tinting "Half" would make half the lesser part, and both make a
+ * reader parse one phrase as two things with different status.
+ *
+ * The tracking is looser than the outgoing -0.02em, which was set for a lowercase compound; a
+ * capitalised two-word phrase needs less. The word-spacing is load-bearing: at 15px semibold with
+ * negative tracking the `f` and the `F` close up on each other and the name starts to read as one
+ * word, which is the one failure this name must never have.
+ */
 .brand__name {
   font-size: var(--fs-md);
   font-weight: var(--fw-semibold);
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
+  word-spacing: 0.04em;
   color: var(--text);
-}
-
-.brand__tail {
-  font-weight: var(--fw-medium);
-  color: var(--muted);
 }
 
 /* Pushes everything after it to the trailing edge. */
@@ -409,9 +443,10 @@
  * headline the screen below writes from its own data.
  *
  * The `<h1>` is the SECTION's name — "Your board", "Profile" — and the mockup draws exactly those
- * words as an eyebrow above the page's real headline ("Your glass is half full."). So it is set as
- * one: the landmark a screen reader arrives on after every navigation stays an `<h1>`, and the
- * largest type on the page belongs to the sentence the page exists to say. The values are
+ * words as an eyebrow above the page's real headline, which on the board is the line
+ * `dashboardHeadline()` writes from how full the glasses are. So it is set as one: the landmark a
+ * screen reader arrives on after every navigation stays an `<h1>`, and the largest type on the page
+ * belongs to the sentence the page exists to say. The values are
  * `.eyebrow`'s from index.css, written out rather than borrowed, because this element is the
  * shell's rather than a class the markup opted into.
  *
@@ -490,11 +525,12 @@
   margin-bottom: var(--sp-3);
 }
 
+/* Same lockup as the top bar's, and the same ink for the same reason — see .brand. */
 .drawer__brand {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  color: var(--accent);
+  color: var(--text);
 }
 
 .drawer__close {

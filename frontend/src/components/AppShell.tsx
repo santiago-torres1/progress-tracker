@@ -137,13 +137,21 @@ function SectionList({ session, onNavigate }: SectionListProps) {
   );
 }
 
-function Brand({ className }: { className?: string }) {
+/**
+ * The lockup: the glass, then the name, on one baseline.
+ *
+ * Two words, one ink, one weight, and one ordinary space that is never allowed to close up — the
+ * space is what makes the name spellable. The mark is decorative, so the accessible name of the
+ * link around this is the product's name and nothing else.
+ *
+ * No prop: the top bar and the drawer set the name identically, and the drawer used to get it
+ * unstyled because the class was passed in from one call site only.
+ */
+function Brand() {
   return (
     <>
       <MarkIcon className="brand__mark" />
-      <span className={className}>
-        Half<span className="brand__tail"> Full</span>
-      </span>
+      <span className="brand__name">Half Full</span>
     </>
   );
 }
@@ -231,7 +239,7 @@ export function AppShell({ session, children, footer }: AppShellProps) {
         </button>
 
         <Link className="brand" to="/">
-          <Brand className="brand__name" />
+          <Brand />
         </Link>
 
         <div className="topbar__grow" />

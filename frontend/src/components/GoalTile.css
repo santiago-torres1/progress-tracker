@@ -248,13 +248,21 @@ button.goal-tile:active,
 }
 
 /*
- * Three stops, not two: light is absorbed as it travels, so the water is deepest where it has come
- * furthest — the last fifth, against the base. The horizontal pair on top of it is the same fact
- * sideways: the liquid is fractionally deeper where you are looking through the wall as well as
- * through the water.
+ * Four stops down the liquid: light is absorbed as it travels, so the water is deepest where it has
+ * come furthest — the last fifth, against the base — and LIGHTEST in the film immediately under the
+ * surface, where you are looking through almost none of it. The horizontal pair on top of them is
+ * the same fact sideways: the liquid is fractionally deeper where you are looking through the wall
+ * as well as through the water.
  *
- * Both are background layers on the one element rather than extra boxes. A board can hold a
- * hundred tiles; gradients on an existing layer are free, and another positioned child is not.
+ * THE FOUR STOPS ARE THE CANVAS WATER'S, and they must stay that way. `DEPTH_OFFSETS` and
+ * `NEAR_SURFACE_LIGHTEN` in `lib/water/renderer.ts` are 0 / 0.14 / 0.78 / 1 and 0.72; this is that
+ * recipe in CSS, reading the same --tint-* tokens the renderer reads. These rules are not a fallback
+ * nobody sees — they are the liquid for anyone who asked for less motion, for a browser that hands
+ * out no context, and in every test. The two disagreeing is exactly the bug that shipped and was
+ * reported as the water looking glitchy.
+ *
+ * Both gradients are background layers on the one element rather than extra boxes. A board can hold
+ * a hundred tiles; gradients on an existing layer are free, and another positioned child is not.
  */
 .goal-tile__body {
   position: absolute;
@@ -272,7 +280,8 @@ button.goal-tile:active,
     ),
     linear-gradient(
       to bottom,
-      color-mix(in srgb, var(--goal) var(--tint-top), var(--surface)) 0%,
+      color-mix(in srgb, var(--goal) calc(var(--tint-top) * 0.72), var(--surface)) 0%,
+      color-mix(in srgb, var(--goal) var(--tint-top), var(--surface)) 14%,
       color-mix(in srgb, var(--goal) var(--tint-bot), var(--surface)) 78%,
       color-mix(in srgb, var(--goal) var(--tint-deep), var(--surface)) 100%
     );
@@ -282,7 +291,9 @@ button.goal-tile:active,
 }
 
 /* One step deeper, for a glass that has reached the brim. A second gradient at opacity 0 rather
-   than a different --tint, because opacity is the only way a gradient can arrive gradually. */
+   than a different --tint, because opacity is the only way a gradient can arrive gradually. The
+   same four stops: the renderer applies `bodyStops` to the full recipe as well, so a brimming glass
+   would otherwise be the one place the two liquids still disagreed. */
 .goal-tile__body::after {
   content: '';
   position: absolute;
@@ -298,7 +309,8 @@ button.goal-tile:active,
     ),
     linear-gradient(
       to bottom,
-      color-mix(in srgb, var(--goal) var(--tint-top-full), var(--surface)) 0%,
+      color-mix(in srgb, var(--goal) calc(var(--tint-top-full) * 0.72), var(--surface)) 0%,
+      color-mix(in srgb, var(--goal) var(--tint-top-full), var(--surface)) 14%,
       color-mix(in srgb, var(--goal) var(--tint-bot-full), var(--surface)) 78%,
       color-mix(in srgb, var(--goal) var(--tint-deep-full), var(--surface)) 100%
     );
@@ -926,9 +938,10 @@ button.goal-tile:active,
 
 /*
  * The smallest tile is deliberately one row tall, and `.goal-tile` hides its overflow — so a value
- * line long enough to wrap did not wrap, it was cut off mid-word on a second line nobody could see
- * ("1 of 1 this week · full this"). One line, and an ellipsis where it runs out, which at least
- * says that it ran out. The whole line is still in the goal's own detail panel.
+ * line long enough to wrap did not wrap, it was cut off mid-word on a second line nobody could see.
+ * A habit's line is longer now than the one that did it ("2 of 4 this week · minimum is 1"), so this
+ * still earns its keep: one line, and an ellipsis where it runs out, which at least says that it ran
+ * out. The whole line is still in the goal's own detail panel.
  */
 .goal-tile--sm .goal-tile__val,
 .goal-tile--sm .goal-tile__name {
@@ -964,8 +977,8 @@ button.goal-tile:active,
 }
 
 /*
- * The mark beside "Kept alive this week". It turns up the moment the minimum is met, so it arrives
- * with the etch rather than before it.
+ * The mark beside "Past the minimum this week". It turns up the moment the minimum is met, so it
+ * arrives with the etch rather than before it.
  *
  * It answered to `goal-tile__tick` until now — the same class as the control in the top corner —
  * and because this rule sits further down the file it won. So the BUTTON was handed `width:
