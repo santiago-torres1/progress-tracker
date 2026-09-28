@@ -17,6 +17,7 @@ import { join, wake } from '../lib/water/driver';
 import { WaterField } from '../lib/water/field';
 import { borrowGpu } from '../lib/water/pool';
 import { createCanvasRenderer } from '../lib/water/renderer';
+import { readWaterTints, type WaterTints } from '../lib/water/tints';
 import './GoalWater.css';
 
 export interface GoalWaterProps {
@@ -35,25 +36,6 @@ export interface GoalWaterProps {
  * to call dead — the same move `supabaseAuth.ts` makes for `localStorage`. Answering "no" when
  * there is nothing to ask is right: a test environment has no reader with a preference.
  */
-/**
- * The three water tints for one theme, as fractions, or undefined if the page has no opinion.
- *
- * Undefined is the ordinary answer in jsdom, where nothing is painted anyway — the renderer then
- * falls back to its own constants rather than drawing with `NaN`.
- */
-function readTints(
-  styles: CSSStyleDeclaration,
-  suffix: string,
-): readonly [number, number, number] | undefined {
-  const read = (name: string): number => Number.parseFloat(styles.getPropertyValue(name)) / 100;
-  const stops = [
-    read(`--tint-top${suffix}`),
-    read(`--tint-bot${suffix}`),
-    read(`--tint-deep${suffix}`),
-  ] as const;
-  return stops.every((stop) => Number.isFinite(stop)) ? stops : undefined;
-}
-
 function prefersLessMotion(): boolean {
   const ask = (globalThis as { matchMedia?: (query: string) => MediaQueryList }).matchMedia;
   return ask?.('(prefers-reduced-motion: reduce)').matches ?? false;
@@ -63,10 +45,7 @@ export function GoalWater({ level }: GoalWaterProps) {
   const hostRef = useRef<HTMLSpanElement | null>(null);
   const colorRef = useRef('rgb(100, 116, 139)');
   /** The theme's own water tints, read from the tokens rather than hardcoded twice. */
-  const tintsRef = useRef<{
-    resting?: readonly [number, number, number];
-    full?: readonly [number, number, number];
-  }>({});
+  const tintsRef = useRef<{ resting?: WaterTints; full?: WaterTints }>({});
   /**
    * Something other than the waves has changed — the level, the size, the theme — so the next
    * frame must paint even if the water is perfectly still.
@@ -162,10 +141,7 @@ export function GoalWater({ level }: GoalWaterProps) {
          * anyone turned reduced motion on. Read here, once per measure, alongside the hue — the
          * same reason and the same place.
          */
-        tintsRef.current = {
-          resting: readTints(styles, ''),
-          full: readTints(styles, '-full'),
-        };
+        tintsRef.current = readWaterTints(styles);
 
         dirty.current = true;
         setLive(true);

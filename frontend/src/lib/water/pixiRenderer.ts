@@ -14,19 +14,36 @@
  * picture.
  *
  * Both renderers implement `WaterRenderer` and are tested against the same expectations, so which
- * one a given glass got is not something a reader can see.
+ * one a given glass got is not something a reader can see. Every coordinate in here comes from
+ * `renderer.ts`: this file owns the mask, the fills and the blend modes, and not one number about
+ * what water looks like.
  */
 
 import {
-  DEPTH_OFFSETS,
+  EDGE_ALPHA_FAR,
+  EDGE_ALPHA_NEAR,
+  FLOOR_ALPHA,
+  FLOOR_DEPTH,
+  GLINT_ALPHA,
   SURFACE_ALPHA,
   SURFACE_WIDTH,
   UNDER_ALPHA,
-  UNDER_DEPTH,
+  bodyStops,
+  createCache,
+  createSurfaceSampler,
   depthStops,
-  surfacePoints,
-  tint,
+  nothingToDraw,
+  traceBody,
+  traceFloorLight,
+  traceGlint,
   traceSurface,
+  traceUnderBand,
+  traceVessel,
+  traceWallStrip,
+  tint,
+  underDepthPx,
+  wallStripPx,
+  type SurfaceSampler,
   type WaterPaint,
   type WaterRenderer,
 } from './renderer';
@@ -70,10 +87,11 @@ export async function createPixiRenderer(canvas: HTMLCanvasElement): Promise<Wat
    * once, in parallel, by whichever tile asks first — and never at all by the people who do not.
    */
   let Application: typeof import('pixi.js').Application;
+  let Container: typeof import('pixi.js').Container;
   let Graphics: typeof import('pixi.js').Graphics;
   let FillGradient: typeof import('pixi.js').FillGradient;
   try {
-    ({ Application, Graphics, FillGradient } = await import('pixi.js'));
+    ({ Application, Container, Graphics, FillGradient } = await import('pixi.js'));
   } catch (error) {
     lastFailure = error instanceof Error ? `${error.name}: ${error.message}` : String(error);
     return null;
@@ -98,14 +116,43 @@ export async function createPixiRenderer(canvas: HTMLCanvasElement): Promise<Wat
     return null;
   }
 
+  /*
+   * One mask for the whole liquid, which is the mirror of canvas's single `clip`.
+   *
+   * Without it every layer would have to know about the vessel's rounded corners, and the wall
+   * strips and the floor light — the two that reach the bottom — would square them off. With it,
+   * each layer is the same path the 2D renderer draws and nothing else.
+   */
+  const liquid = new Container();
+  const vessel = new Graphics();
   const body = new Graphics();
+  const near = new Graphics();
+  const far = new Graphics();
   const under = new Graphics();
-  const surface = new Graphics();
-  app.stage.addChild(body, under, surface);
+  const line = new Graphics();
+  const glint = new Graphics();
+  const floor = new Graphics();
+
+  // Light is added to what is underneath it, never mixed into it — the same `lighter` the 2D
+  // renderer switches to for exactly these two layers.
+  glint.blendMode = 'add';
+  floor.blendMode = 'add';
+
+  liquid.addChild(vessel, body, near, far, under, line, glint, floor);
+  liquid.mask = vessel;
+  app.stage.addChild(liquid);
 
   let width = 0;
   let height = 0;
+  let box = '';
+  let maskKey = '';
+  let sampler: SurfaceSampler | null = null;
   let destroyed = false;
+
+  const bodyFill = createCache<import('pixi.js').FillGradient>();
+  const nearFill = createCache<import('pixi.js').FillGradient>();
+  const farFill = createCache<import('pixi.js').FillGradient>();
+  const floorFill = createCache<import('pixi.js').FillGradient>();
 
   return {
     resize(nextWidth, nextHeight, dpr) {
@@ -114,57 +161,104 @@ export async function createPixiRenderer(canvas: HTMLCanvasElement): Promise<Wat
       height = nextHeight;
       app.renderer.resolution = dpr;
       app.renderer.resize(nextWidth, nextHeight);
+      box = `${nextWidth}x${nextHeight}`;
+      sampler = createSurfaceSampler(nextWidth, nextHeight);
     },
 
     draw(sample, paint: WaterPaint) {
-      if (destroyed || width === 0 || height === 0) return;
-
-      const points = surfacePoints(sample, width, height);
-      const last = points.length - 2;
-      const hue = toHex(paint.color);
-      const radius = Math.max(0, Math.min(paint.radius, width / 2, height));
-      const [near, middle, floor] = depthStops(paint);
-
-      const rest = height - Math.min(1, Math.max(0, paint.level)) * height;
-      const top = Math.max(0, Math.min(height, rest));
-
-      /*
-       * The same gradient, the same curve, the same band as the 2D renderer — every number and the
-       * path tracer itself come from `renderer.ts`. Two implementations of one picture drifted
-       * once already and shipped a board of eight flat glasses among deep ones.
-       */
-      const gradient = new FillGradient({
-        type: 'linear',
-        start: { x: 0, y: top },
-        end: { x: 0, y: height },
-        colorStops: [
-          { offset: DEPTH_OFFSETS[0], color: tint(paint.color, near) },
-          { offset: DEPTH_OFFSETS[1], color: tint(paint.color, middle) },
-          { offset: DEPTH_OFFSETS[2], color: tint(paint.color, floor) },
-        ],
-        textureSpace: 'global',
-      });
+      if (destroyed || width === 0 || height === 0 || sampler === null) return;
 
       body.clear();
-      traceSurface(body, points);
-      body.lineTo(points[last] ?? width, height - radius);
-      body.quadraticCurveTo(width, height, width - radius, height);
-      body.lineTo(radius, height);
-      body.quadraticCurveTo(0, height, 0, height - radius);
-      body.closePath();
+      near.clear();
+      far.clear();
+      under.clear();
+      line.clear();
+      glint.clear();
+      floor.clear();
+
+      const surface = sampler.measure(sample, paint);
+      // Still rendered, not returned early: the frame before this one is on the screen until
+      // something replaces it, so an emptied glass has to be drawn as empty.
+      if (nothingToDraw(surface)) {
+        app.render();
+        return;
+      }
+
+      const hue = toHex(paint.color);
+      const { depthPx } = surface;
+      const strip = wallStripPx(width);
+
+      const wantMask = `${box}|${paint.radius}`;
+      if (maskKey !== wantMask) {
+        vessel.clear();
+        traceVessel(vessel, width, height, paint.radius);
+        vessel.fill({ color: 0xffffff });
+        maskKey = wantMask;
+      }
+
+      const rest = Math.max(0, Math.min(height, height - depthPx));
+      const stops = bodyStops(depthStops(paint), depthPx);
+      const gradient = bodyFill(
+        `${box}|${paint.color}|${rest}|${stops.map((s) => s.alpha).join()}`,
+        () =>
+          new FillGradient({
+            type: 'linear',
+            start: { x: 0, y: rest },
+            end: { x: 0, y: height },
+            colorStops: stops.map((stop) => ({
+              offset: stop.offset,
+              color: tint(paint.color, stop.alpha),
+            })),
+            textureSpace: 'global',
+          }),
+      );
+
+      traceBody(body, surface);
       body.fill(gradient);
 
-      under.clear();
-      traceSurface(under, points, UNDER_DEPTH);
-      for (let i = points.length / 2 - 1; i >= 0; i -= 1) {
-        under.lineTo(points[i * 2] ?? 0, points[i * 2 + 1] ?? 0);
+      if (traceWallStrip(near, surface, 'near')) {
+        near.fill(
+          nearFill(`${box}|${paint.color}`, () =>
+            edgeGradient(FillGradient, paint.color, 0, strip, EDGE_ALPHA_NEAR),
+          ),
+        );
       }
-      under.closePath();
-      under.fill({ color: hue, alpha: UNDER_ALPHA });
+      if (traceWallStrip(far, surface, 'far')) {
+        far.fill(
+          farFill(`${box}|${paint.color}`, () =>
+            edgeGradient(FillGradient, paint.color, width, width - strip, EDGE_ALPHA_FAR),
+          ),
+        );
+      }
 
-      surface.clear();
-      traceSurface(surface, points);
-      surface.stroke({ width: SURFACE_WIDTH, color: hue, alpha: SURFACE_ALPHA, join: 'round' });
+      if (traceUnderBand(under, surface, underDepthPx(depthPx))) {
+        under.fill({ color: hue, alpha: UNDER_ALPHA });
+      }
+
+      traceSurface(line, surface.points);
+      line.stroke({ width: SURFACE_WIDTH, color: hue, alpha: SURFACE_ALPHA, join: 'round' });
+
+      if (traceGlint(glint, surface)) {
+        glint.fill({ color: 0xffffff, alpha: GLINT_ALPHA });
+      }
+      if (traceFloorLight(floor, surface)) {
+        floor.fill(
+          floorFill(
+            box,
+            () =>
+              new FillGradient({
+                type: 'linear',
+                start: { x: 0, y: height - FLOOR_DEPTH },
+                end: { x: 0, y: height },
+                colorStops: [
+                  { offset: 0, color: 'rgba(255, 255, 255, 0)' },
+                  { offset: 1, color: `rgba(255, 255, 255, ${FLOOR_ALPHA})` },
+                ],
+                textureSpace: 'global',
+              }),
+          ),
+        );
+      }
 
       app.render();
     },
@@ -177,4 +271,24 @@ export async function createPixiRenderer(canvas: HTMLCanvasElement): Promise<Wat
       app.destroy({ removeView: false }, { children: true });
     },
   };
+}
+
+/** A wall strip's gradient: the area colour at the wall, nothing at the band's inner edge. */
+function edgeGradient(
+  FillGradient: typeof import('pixi.js').FillGradient,
+  color: string,
+  wall: number,
+  inner: number,
+  alpha: number,
+): import('pixi.js').FillGradient {
+  return new FillGradient({
+    type: 'linear',
+    start: { x: wall, y: 0 },
+    end: { x: inner, y: 0 },
+    colorStops: [
+      { offset: 0, color: tint(color, alpha) },
+      { offset: 1, color: tint(color, 0) },
+    ],
+    textureSpace: 'global',
+  });
 }
