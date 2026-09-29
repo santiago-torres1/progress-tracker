@@ -67,18 +67,20 @@ describe('the glass draws the level it says it holds', () => {
 describe('water is moved, never made — the version of it somebody can see', () => {
   /*
    * The particles conserve their volume exactly; the PICTURE is the thing that can lie. A contour
-   * drawn at a threshold below half sits slightly outside the particles that make it, so the drawn
-   * shape is a few percent larger than the water — measured, three to five percent at rest, and
-   * that is what this pins.
+   * drawn at a threshold below half sits outside the particles that make it, so the drawn shape is
+   * larger than the water — measured at three to five percent when the splat was a circle, and at
+   * half a percent to two once it became an ellipse, because a circular splat at a free surface
+   * reaches out into the air in every direction and an elliptical one lies down along the surface.
+   * This test fails at the round-splat figures.
    */
-  it('draws the area the water occupies, to within a twentieth, at rest', () => {
+  it('draws the area the water occupies, to within a fortieth, at rest', () => {
     const mesh = new Mesh();
     for (const level of [0.12, 0.34, 0.62, 1]) {
       const fluid = resting(level);
       mesh.build(fluid, WIDTH, HEIGHT);
       const ratio = mesh.drawnArea / (fluid.volume() * HEIGHT * HEIGHT);
-      expect(ratio).toBeGreaterThan(0.98);
-      expect(ratio).toBeLessThan(1.06);
+      expect(ratio).toBeGreaterThan(0.99);
+      expect(ratio).toBeLessThan(1.035);
     }
   }, 30_000);
 
@@ -88,10 +90,10 @@ describe('water is moved, never made — the version of it somebody can see', ()
    * follows it — a glass at 62% drew 1.42 times its own area for a fraction of a second, which is a
    * glass reading nearly full when it is not.
    *
-   * The surface tension in `fluid.ts` is what brought that to 1.15, and this is the test that pins
-   * it: it fails at the value it replaced, which was no tension at all.
+   * The bounded surface tension in `fluid.ts` brought that to 1.15 and the elliptical splat to 1.06.
+   * This is the test that pins the tension — it fails with `TENSION` at zero, which is where it was.
    */
-  it('never draws a quarter again its own water, even mid-yank', () => {
+  it('never draws a ninth again its own water, even mid-yank', () => {
     const fluid = resting(0.62);
     const mesh = new Mesh();
     const gesture = GESTURES.find((g) => g.id === 'lift');
@@ -108,7 +110,7 @@ describe('water is moved, never made — the version of it somebody can see', ()
       peak = Math.max(peak, mesh.drawnArea / (fluid.volume() * HEIGHT * HEIGHT));
     }
 
-    expect(peak).toBeLessThan(1.25);
+    expect(peak).toBeLessThan(1.12);
   }, 30_000);
 });
 
@@ -160,8 +162,13 @@ describe('water that separates, which is the whole point', () => {
   });
 
   it('shifts the drawn field by a fraction of a spacing, not by half of one', () => {
-    // A guard on the calibration itself: the two errors cancel, so the residual is small. If the
-    // analysis ever comes back without the measurement, this is what says so.
-    expect(Math.abs(MESH_LIFT)).toBeLessThan(0.2);
+    /*
+     * A guard on the calibration itself. Three errors of about half a spacing meet here and very
+     * nearly cancel: the iso sitting outside the particles pushes the surface up, the solver's own
+     * compaction of the top layer pulls it down, and the anisotropic kernel flattens at a free
+     * surface and pulls it down again. What is left is a fifth of a spacing — a pixel and a bit at
+     * the coarsest — and if the analysis ever comes back without the measurement, this says so.
+     */
+    expect(Math.abs(MESH_LIFT)).toBeLessThan(0.3);
   });
 });

@@ -67,6 +67,15 @@ const LIT_WIDTH = 2.2;
  * rather than as a body of liquid — it is the same alpha the shipped renderer gives its wall
  * absorption, and the same idea.
  */
+/**
+ * How strong the line on a downward-facing edge is, against the line on an upward-facing one.
+ *
+ * Not zero: an edge with nothing at all on it disappears against the tile behind it, and a droplet
+ * would lose its lower half. A fifth is enough to close the shape and not enough to read as a
+ * surface.
+ */
+const UNDERSIDE = 0.22;
+
 const FILM_MAX_PX = 5;
 const FILM_ALPHA = 0.5;
 
@@ -169,11 +178,25 @@ export function createFluidRenderer(canvas: HTMLCanvasElement): FluidRenderer | 
         ctx.stroke(outline);
         ctx.restore();
 
-        // --- the surface itself -------------------------------------------------------------
-        ctx.lineWidth = SURFACE_WIDTH;
+        /*
+         * --- the surface itself ---------------------------------------------------------------
+         * TWO STROKES, NOT ONE. Every edge gets a faint line so that the shape is always closed,
+         * and then the edges that face upwards get the full-strength one — because the bright line
+         * in a glass of water is a highlight on the surface, not an ink outline round the object.
+         * Stroked at one strength the underside of an airborne slab is as bright as its top, and the
+         * whole thing reads as a drawn shape rather than as a liquid.
+         */
         ctx.lineJoin = 'round';
-        ctx.strokeStyle = tint(paint.color, SURFACE_ALPHA);
+        ctx.lineCap = 'round';
+        ctx.lineWidth = SURFACE_WIDTH;
+        ctx.strokeStyle = tint(paint.color, SURFACE_ALPHA * UNDERSIDE);
         ctx.stroke(outline);
+
+        const lit = new Path2D();
+        if (mesh.traceUpper(lit)) {
+          ctx.strokeStyle = tint(paint.color, SURFACE_ALPHA);
+          ctx.stroke(lit);
+        }
       }
 
       // --- the film left on the walls -------------------------------------------------------
@@ -182,12 +205,12 @@ export function createFluidRenderer(canvas: HTMLCanvasElement): FluidRenderer | 
       // --- light: added to what is there, never mixed with it -------------------------------
       if (any) {
         ctx.globalCompositeOperation = 'lighter';
-        const lit = new Path2D();
-        if (mesh.traceLit(lit, LIT_SLOPE)) {
+        const glint = new Path2D();
+        if (mesh.traceLit(glint, LIT_SLOPE)) {
           ctx.lineWidth = LIT_WIDTH;
           ctx.lineCap = 'round';
           ctx.strokeStyle = `rgba(255, 255, 255, ${GLINT_ALPHA})`;
-          ctx.stroke(lit);
+          ctx.stroke(glint);
         }
       }
 
@@ -222,15 +245,22 @@ function paintFilm(
   for (const side of [0, 1] as const) {
     const film = side === 0 ? fluid.filmLeft : fluid.filmRight;
     const x = side === 0 ? 0 : width - FILM_MAX_PX;
-    const surface = mesh.topAt(side === 0 ? 1 : width - 1);
+    const probe = side === 0 ? 1.5 : width - 1.5;
 
     for (let k = 0; k < bins; k += 1) {
       const thickness = film[k] ?? 0;
       if (thickness < 0.02) continue;
       const bottom = height - (k / bins) * height;
       const top = bottom - step;
-      // Nothing below the water: that is the body's job, and a stripe inside the liquid is a bug.
-      if (bottom > surface) continue;
+      /*
+       * Only where there is no water already.
+       *
+       * Asked of the density field rather than of the waterline, because the two are different
+       * things the moment the water leaves the floor: during a yank the body is in mid-air and the
+       * wall BELOW it is bare and wet, which is the shot. A waterline test would have called that
+       * "under the surface" and drawn nothing.
+       */
+      if (mesh.filledAt(probe, (top + bottom) / 2)) continue;
       ctx.fillStyle = tint(color, thickness * FILM_ALPHA);
       ctx.fillRect(x, top, FILM_MAX_PX * thickness, step + 0.5);
     }

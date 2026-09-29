@@ -152,6 +152,69 @@ const TENSION_ON = 3;
 const VISCOSITY = 0.11;
 
 /**
+ * Surface tension, taken from the CURVATURE of the surface and from nothing else.
+ *
+ * This is the term that makes a droplet round, and the reason it is curvature rather than cohesion
+ * is the whole of what went wrong the first time. Cohesion — every particle pulling on every
+ * neighbour — is a force with nothing to balance it along a flat free surface, so the surface is
+ * pulled at forever and the glass never settles; measured, at every constant strength down to 0.02.
+ *
+ * Real surface tension is not like that. It is proportional to how sharply the surface is bent, so a
+ * flat resting surface feels NOTHING and a droplet a few particles across feels a lot. Akinci's
+ * formulation says it in one line: the outward normal of the colour field, differenced against the
+ * neighbours' — parallel normals cancel, fanned normals do not.
+ *
+ * And the normals cost nothing, because the density pass already sums the kernel gradient over every
+ * neighbour in order to build `lambda`'s denominator. That sum IS the colour-field gradient.
+ */
+const TENSION_GAMMA = 0.5;
+
+/**
+ * Below this much curvature the surface is flat enough to leave alone, above this it is fully bent.
+ *
+ * MEASURED against the simulation, not chosen: the resting surface of a settled glass is not exactly
+ * flat — it is a row of particles, so it has a curvature floor of its own, and applying tension to
+ * that floor is applying a force to water that has finished moving. See the calibration in the
+ * report: a settled surface measures under 2 and anything that has torn measures in the tens.
+ */
+const CURVE_OFF = 35;
+const CURVE_ON = 65;
+
+/**
+ * Water wets glass, so the glass holds onto it: motion is damped within this many spacings of a wall.
+ *
+ * WITHOUT IT A FALLING BODY OF WATER IS A RUBBER SLAB. Every particle in a body in free fall feels
+ * exactly the same acceleration, so nothing distinguishes one part of it from another and it simply
+ * translates, keeping its rectangle and its rounded corners. The walls are what break that symmetry
+ * in a real glass: the water touching them is dragged along with the glass while the middle carries
+ * on, so the body stretches at its edges and tears there first.
+ */
+/**
+ * How far the drawn kernel may be stretched along the direction the water is stretched in.
+ *
+ * Splatting every particle as a circle is what makes a particle fluid look like a lava lamp: every
+ * feature on the outline comes out the same size and the same roundness, whatever the water is
+ * actually doing, because the smallest thing the picture can say is "one round blob". Real water
+ * pulled apart THINS — it makes sheets and filaments, and only the ends of them are round.
+ *
+ * So the splat is an ellipse, oriented and stretched by the shape of each particle's own
+ * neighbourhood (Yu & Turk's anisotropic kernels). A particle in the middle of a body has a round
+ * neighbourhood and stays round; a particle in a sheet being pulled apart has a long thin one and
+ * draws long and thin; a particle on its own has no neighbourhood at all and is drawn as a circle,
+ * which is exactly what a droplet is.
+ *
+ * Area-preserving by construction — the ellipse's determinant is one — so stretching the kernel
+ * cannot add or remove water.
+ */
+const SHAPE_RATIO = 3;
+
+/** Below this many neighbours there is no neighbourhood to take a shape from: draw a circle. */
+const SHAPE_MIN_NEIGHBOURS = 5;
+
+const ADHESION = 8;
+const ADHESION_REACH = 1.8;
+
+/**
  * Smoothing radius as a multiple of particle spacing.
  *
  * 2.4 puts about `pi * 2.4^2` = 18 particles inside the kernel, which is the number 2D SPH is
@@ -264,7 +327,7 @@ const STILL_FRAMES = 8;
  * the tail of a slosh, which a calm product wants. It also passes for air resistance on a droplet,
  * which is a thing droplets have.
  */
-const DRAG = 2.4;
+const DRAG = 1.2;
 
 /**
  * Dry friction: a fixed amount of speed removed per second, rather than a fraction of it.
@@ -341,6 +404,18 @@ export class Fluid {
   private readonly qy: Float32Array;
   private readonly rho: Float32Array;
   private readonly lam: Float32Array;
+  /** The colour-field normal: outward at a free surface, near zero inside. Free, see `densities`. */
+  private readonly nx: Float32Array;
+  private readonly ny: Float32Array;
+  /**
+   * Each particle's drawn shape, as the quadratic form `a dx^2 + 2b dx dy + c dy^2`.
+   *
+   * Determinant one, so it is a pure stretch: `mesh.ts` measures distance through it instead of
+   * through a circle. See `SHAPE_RATIO`.
+   */
+  readonly shapeA: Float32Array;
+  readonly shapeB: Float32Array;
+  readonly shapeC: Float32Array;
   private readonly dxs: Float32Array;
   private readonly dys: Float32Array;
   /** Last frame's positions, so stillness can be asked as "did anything move?". */
@@ -391,6 +466,11 @@ export class Fluid {
     this.qy = new Float32Array(cap);
     this.rho = new Float32Array(cap);
     this.lam = new Float32Array(cap);
+    this.nx = new Float32Array(cap);
+    this.ny = new Float32Array(cap);
+    this.shapeA = new Float32Array(cap).fill(1);
+    this.shapeB = new Float32Array(cap);
+    this.shapeC = new Float32Array(cap).fill(1);
     this.dxs = new Float32Array(cap);
     this.dys = new Float32Array(cap);
     this.sx = new Float32Array(cap);
@@ -528,7 +608,10 @@ export class Fluid {
     }
 
     for (let s = 0; s < steps; s += 1) this.substep(SUB_DT);
-    if (steps > 0) this.settleCheck();
+    if (steps > 0) {
+      this.shapes();
+      this.settleCheck();
+    }
     return this.moving();
   }
 
@@ -759,7 +842,8 @@ export class Fluid {
       y[i] = qy[i] ?? 0;
     }
 
-    this.viscosity();
+    this.viscosity(dt);
+    this.adhere(dt);
 
     const drag = Math.max(0, 1 - DRAG * dt);
     const bleed = STICTION * dt;
@@ -864,7 +948,7 @@ export class Fluid {
   }
 
   private densities(): void {
-    const { count, qx, qy, nbrStart, nbrList, rho, lam } = this;
+    const { count, qx, qy, nbrStart, nbrList, rho, lam, nx, ny } = this;
     const h = this.radius;
     const poly = poly6Norm(h);
     const spiky = spikyNorm(h);
@@ -941,6 +1025,9 @@ export class Fluid {
       density += rho0 * support;
 
       rho[i] = density;
+      // The colour-field gradient, which is the surface normal, out of a sum that was needed anyway.
+      nx[i] = h * gx;
+      ny[i] = h * gy;
       const sum = sumSq + gx * gx + gy * gy;
       /*
        * Only compression is resolved, never expansion — `lambda` is clamped at zero.
@@ -1053,8 +1140,8 @@ export class Fluid {
   }
 
   /** XSPH: drift towards the neighbours' average velocity. This is what makes it a body. */
-  private viscosity(): void {
-    const { count, x, y, vx, vy, nbrStart, nbrList, dxs, dys } = this;
+  private viscosity(dt: number): void {
+    const { count, x, y, vx, vy, nx, ny, nbrStart, nbrList, dxs, dys } = this;
     const h = this.radius;
     const poly = poly6Norm(h);
     const h2 = h * h;
@@ -1062,9 +1149,13 @@ export class Fluid {
     for (let i = 0; i < count; i += 1) {
       const xi = x[i] ?? 0;
       const yi = y[i] ?? 0;
+      const nix = nx[i] ?? 0;
+      const niy = ny[i] ?? 0;
       let sx = 0;
       let sy = 0;
       let weight = 0;
+      let cx = 0;
+      let cy = 0;
       const from = nbrStart[i] ?? 0;
       const to = nbrStart[i + 1] ?? 0;
       for (let k = from; k < to; k += 1) {
@@ -1077,14 +1168,160 @@ export class Fluid {
         sx += ((vx[j] ?? 0) - (vx[i] ?? 0)) * w;
         sy += ((vy[j] ?? 0) - (vy[i] ?? 0)) * w;
         weight += w;
+        // Surface tension: normals that disagree are a surface that is bent. See `TENSION_GAMMA`.
+        cx += nix - (nx[j] ?? 0);
+        cy += niy - (ny[j] ?? 0);
       }
-      dxs[i] = weight > 0 ? (sx / weight) * VISCOSITY : 0;
-      dys[i] = weight > 0 ? (sy / weight) * VISCOSITY : 0;
+
+      /*
+       * Two gates, and the second one is not optional.
+       *
+       * The first is curvature: a flat resting surface is left alone, a tight one is pulled round.
+       * The second is speed, for the reason the pressure tension needs one — a force that acts on
+       * water which has stopped is a force that stops it stopping. MEASURED: with curvature alone, a
+       * glass at 34% lifted hard sat at seven tenths of a pixel of movement a frame FOREVER, a
+       * hair above the stillness threshold, because the tension kept nudging a feature that kept
+       * being curved. Gated on speed the cycle cannot close: no movement, no tension, no movement.
+       */
+      const bend = Math.hypot(cx, cy);
+      const speed = Math.hypot(vx[i] ?? 0, vy[i] ?? 0);
+      const lit =
+        clamp((bend - CURVE_OFF) / (CURVE_ON - CURVE_OFF), 0, 1) *
+        clamp((speed - TENSION_OFF) / (TENSION_ON - TENSION_OFF), 0, 1);
+      const pull = -TENSION_GAMMA * lit * dt;
+
+      dxs[i] = (weight > 0 ? (sx / weight) * VISCOSITY : 0) + cx * pull;
+      dys[i] = (weight > 0 ? (sy / weight) * VISCOSITY : 0) + cy * pull;
     }
 
     for (let i = 0; i < count; i += 1) {
       vx[i] = (vx[i] ?? 0) + (dxs[i] ?? 0);
       vy[i] = (vy[i] ?? 0) + (dys[i] ?? 0);
+    }
+  }
+
+  /**
+   * What shape each particle should be DRAWN as: the shape of its own neighbourhood.
+   *
+   * Once per frame rather than once per substep, on the neighbour list the last substep left behind
+   * — a neighbourhood does not change meaningfully in a three-hundred-and-sixtieth of a second, and
+   * this is the only pass in the file that exists for the picture rather than for the physics.
+   *
+   * The covariance of the neighbours' offsets, its two principal axes, and a stretch along the long
+   * one of `sqrt(ratio)` against a squeeze across it of the same amount — which is what keeps the
+   * determinant at one and therefore keeps the water conserved. Particles with almost no neighbours
+   * keep the circle they start with.
+   */
+  private shapes(): void {
+    const { count, x, y, nbrStart, nbrList, shapeA, shapeB, shapeC } = this;
+    const h = this.radius;
+    const h2 = h * h;
+
+    for (let i = 0; i < count; i += 1) {
+      const xi = x[i] ?? 0;
+      const yi = y[i] ?? 0;
+      const from = nbrStart[i] ?? 0;
+      const to = nbrStart[i + 1] ?? 0;
+
+      let weight = 0;
+      let mx = 0;
+      let my = 0;
+      let taken = 0;
+      for (let k = from; k < to; k += 1) {
+        const j = nbrList[k] ?? 0;
+        const dx = (x[j] ?? 0) - xi;
+        const dy = (y[j] ?? 0) - yi;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= h2) continue;
+        const w = 1 - Math.sqrt(d2) / h;
+        mx += dx * w;
+        my += dy * w;
+        weight += w;
+        taken += 1;
+      }
+
+      if (taken < SHAPE_MIN_NEIGHBOURS || weight <= 0) {
+        shapeA[i] = 1;
+        shapeB[i] = 0;
+        shapeC[i] = 1;
+        continue;
+      }
+
+      mx /= weight;
+      my /= weight;
+      let cxx = 0;
+      let cxy = 0;
+      let cyy = 0;
+      for (let k = from; k < to; k += 1) {
+        const j = nbrList[k] ?? 0;
+        const dx = (x[j] ?? 0) - xi;
+        const dy = (y[j] ?? 0) - yi;
+        const d2 = dx * dx + dy * dy;
+        if (d2 >= h2) continue;
+        const w = 1 - Math.sqrt(d2) / h;
+        const ux = dx - mx;
+        const uy = dy - my;
+        cxx += w * ux * ux;
+        cxy += w * ux * uy;
+        cyy += w * uy * uy;
+      }
+      cxx /= weight;
+      cxy /= weight;
+      cyy /= weight;
+
+      // Principal axes of a symmetric two by two, in closed form.
+      const trace = cxx + cyy;
+      const gap = Math.sqrt(Math.max(0, trace * 0.5 * (trace * 0.5) - (cxx * cyy - cxy * cxy)));
+      const major = trace * 0.5 + gap;
+      const minor = trace * 0.5 - gap;
+      if (major <= 1e-12) {
+        shapeA[i] = 1;
+        shapeB[i] = 0;
+        shapeC[i] = 1;
+        continue;
+      }
+
+      let ex = cxy;
+      let ey = major - cxx;
+      const len = Math.hypot(ex, ey);
+      if (len < 1e-9) {
+        ex = 1;
+        ey = 0;
+      } else {
+        ex /= len;
+        ey /= len;
+      }
+
+      const ratio = clamp(Math.sqrt(major / Math.max(minor, 1e-12)), 1, SHAPE_RATIO);
+      const along = 1 / ratio;
+      const across = ratio;
+      shapeA[i] = ex * ex * along + ey * ey * across;
+      shapeB[i] = ex * ey * (along - across);
+      shapeC[i] = ey * ey * along + ex * ex * across;
+    }
+  }
+
+  /**
+   * The glass holds onto the water that is touching it.
+   *
+   * Free-slip walls are what made a falling body of water a rubber slab: with every particle feeling
+   * the same acceleration and the walls offering no grip, the body has no reason to deform at all
+   * and simply translates. Wetting is the asymmetry — the water against the glass goes where the
+   * glass goes. It is also dissipative, which helps rather than hurts the promise that it settles.
+   */
+  private adhere(dt: number): void {
+    const { count, x, y, vx, vy } = this;
+    const reach = this.spacing * ADHESION_REACH;
+    if (reach <= 0) return;
+
+    for (let i = 0; i < count; i += 1) {
+      const px = x[i] ?? 0;
+      const py = y[i] ?? 0;
+      const near = Math.min(px, this.wide - px, py);
+      if (near >= reach) continue;
+      const grip = Math.max(0, 1 - ADHESION * dt * (1 - near / reach));
+      vx[i] = (vx[i] ?? 0) * grip;
+      vy[i] = (vy[i] ?? 0) * grip;
     }
   }
 
@@ -1102,18 +1339,20 @@ export class Fluid {
     const soak = FILM_SOAK * dt;
 
     /*
-     * Only water that went HIGHER than it belongs leaves a mark.
+     * Wherever the water has touched the wall, the wall is wet.
      *
-     * The first version wetted a bin for any particle touching the wall, submerged ones included —
-     * so a glass at rest had a permanently soaked wall below its own waterline, invisible because the
-     * body is drawn over it, and the film never dried. Which mattered for a reason that has nothing
-     * to do with the picture: a wet wall counts as something still happening, so the glass never
-     * reported itself still and the whole board kept redrawing. The film is the record of a wave
-     * that climbed, so the waterline is where it starts.
+     * The first version only recorded water that had climbed ABOVE the resting line, because a
+     * submerged particle re-wetting its bin every frame meant no glass ever reported itself still.
+     * That fixed the stillness and threw away the most characteristic thing a dropped glass does:
+     * the body of water leaves the bottom of the glass and THE WALLS STAY WET. Without it the
+     * airborne slab has nothing between it and the floor, which is most of why it reads as rubber
+     * rather than as a liquid that was, a moment ago, touching something.
+     *
+     * So the deposit is honest and the two consequences are handled where they belong: stillness
+     * asks `filmAloft`, which only looks above the waterline, and the drawing asks the mesh whether
+     * there is already water in front of the film before it draws any.
      */
-    const climbed = this.levelValue + this.spacing;
     for (let i = 0; i < count; i += 1) {
-      if ((y[i] ?? 0) <= climbed) continue;
       const px = x[i] ?? 0;
       const bin = clampInt(Math.floor((y[i] ?? 0) * FILM_BINS), 0, FILM_BINS - 1);
       if (px < reach) filmLeft[bin] = Math.min(1, (filmLeft[bin] ?? 0) + soak);
@@ -1158,20 +1397,40 @@ export class Fluid {
     sx.set(x);
     sy.set(y);
 
-    if (this.lastMove < STILL_MOVE && this.pending <= 0 && this.filmPeak() <= 0.02) {
+    if (this.lastMove < STILL_MOVE && this.pending <= 0 && this.filmAloft() <= 0.02) {
       this.quiet += 1;
       if (this.quiet >= STILL_FRAMES) {
         this.vx.fill(0);
         this.vy.fill(0);
       }
     } else {
-      this.quiet = 0;
+      /*
+       * A bad frame costs two good ones; it does not cost all of them.
+       *
+       * The reading is the FURTHEST-travelled particle, so one twitch anywhere in four hundred
+       * resets it — and a full glass throws such a twitch every twenty or thirty frames while
+       * otherwise sitting at half the threshold. MEASURED: a shaken full glass reported itself still
+       * at 600 frames, moving at 750, still again at 1050, forever. Water that is actually moving
+       * fails every frame and reaches zero in four, so nothing that matters is forgiven.
+       */
+      this.quiet = Math.max(0, this.quiet - 2);
     }
   }
 
-  private filmPeak(): number {
+  /**
+   * The wettest bin ABOVE the waterline, which is the only film that is a thing still happening.
+   *
+   * Public because it is what "the glass has finished" means for the film, and a test that read the
+   * raw bins would be reading a wall that is wet under its own waterline and always will be.
+   *
+   * A glass at rest has soaked walls under its own surface and always will; counting those would
+   * mean no glass ever finished. What has to dry before a glass is done is the mark left by water
+   * that went higher than it belongs.
+   */
+  filmAloft(): number {
+    const from = clampInt(Math.ceil((this.levelValue + this.spacing) * FILM_BINS), 0, FILM_BINS);
     let peak = 0;
-    for (let k = 0; k < FILM_BINS; k += 1) {
+    for (let k = from; k < FILM_BINS; k += 1) {
       peak = Math.max(peak, this.filmLeft[k] ?? 0, this.filmRight[k] ?? 0);
     }
     return peak;

@@ -135,6 +135,26 @@ describe('the vertical case, which the shipped model cannot express at all', () 
     expect(lowest(fluid) - floorAtRest).toBeLessThan(0.02);
   });
 
+  /*
+   * And the wall remembers it. Water wets glass, so when the body leaves the bottom of the glass the
+   * walls it was touching stay wet — that streak under an airborne slab is most of what stops the
+   * slab reading as rubber. It is drawn, never counted as volume, exactly as the shipped renderer's
+   * meniscus is not volume.
+   */
+  it('leaves the walls wet under the water it left behind', () => {
+    const fluid = resting(0.62);
+    let wetBelow = 0;
+    play(fluid, 'drop', 120, () => {
+      const floor = lowest(fluid);
+      const bins = fluid.filmLeft.length;
+      // Bins entirely below the lowest particle: bare glass, and it should still be wet.
+      for (let k = 0; k < Math.floor(floor * bins) - 1; k += 1) {
+        wetBelow = Math.max(wetBelow, fluid.filmLeft[k] ?? 0, fluid.filmRight[k] ?? 0);
+      }
+    });
+    expect(wetBelow).toBeGreaterThan(0.3);
+  });
+
   it('answers a vertical gesture at all, which is the whole of the complaint', () => {
     const still = resting(0.62);
     frames(still, 60);
@@ -168,21 +188,18 @@ describe('it settles, because this is a calm product', () => {
     }
   }, 60_000);
 
-  it('dries the wall film, so a wetted glass is not something to redraw forever', () => {
+  /*
+   * The film below the waterline never dries and never should: a glass at rest has wet walls under
+   * its own surface. What has to finish is the mark left ABOVE it by water that climbed — and the
+   * drawing only puts a film where there is no water in front of it, so the rest is invisible.
+   */
+  it('dries the film left above the waterline, so a wetted glass is not redrawn forever', () => {
     const fluid = resting(0.62);
     play(fluid, 'shake', 60);
-    let wet = 0;
-    for (let k = 0; k < fluid.filmLeft.length; k += 1) {
-      wet = Math.max(wet, fluid.filmLeft[k] ?? 0, fluid.filmRight[k] ?? 0);
-    }
-    expect(wet).toBeGreaterThan(0.1);
+    expect(fluid.filmAloft()).toBeGreaterThan(0.1);
 
     frames(fluid, 400);
-    let later = 0;
-    for (let k = 0; k < fluid.filmLeft.length; k += 1) {
-      later = Math.max(later, fluid.filmLeft[k] ?? 0, fluid.filmRight[k] ?? 0);
-    }
-    expect(later).toBeLessThan(0.02);
+    expect(fluid.filmAloft()).toBeLessThan(0.02);
   });
 
   it('does not drift while nobody is touching it', () => {
@@ -194,6 +211,32 @@ describe('it settles, because this is a calm product', () => {
 });
 
 describe('the numbers the solver is built on', () => {
+  /*
+   * Each particle is drawn as an ellipse shaped like its own neighbourhood, so a sheet being pulled
+   * apart draws thin and a droplet on its own draws round. STRETCHING MAY NOT MAKE WATER: the
+   * quadratic form's determinant is one, so the ellipse covers exactly the area the circle did, and
+   * an anisotropic kernel that failed this would quietly inflate the glass every time it was shaken.
+   */
+  it('stretches the drawn shape without changing its area', () => {
+    for (const id of ['still', 'drop', 'lift', 'shake']) {
+      const fluid = resting(0.62);
+      let worst = 0;
+      let stretched = 0;
+      play(fluid, id, 200, () => {
+        for (let i = 0; i < fluid.count; i += 1) {
+          const a = fluid.shapeA[i] ?? 1;
+          const b = fluid.shapeB[i] ?? 0;
+          const c = fluid.shapeC[i] ?? 1;
+          worst = Math.max(worst, Math.abs(a * c - b * b - 1));
+          if (Math.abs(a - c) > 0.15 || Math.abs(b) > 0.05) stretched += 1;
+        }
+      });
+      expect(worst).toBeLessThan(1e-4);
+      // And it does stretch: a round splat everywhere would be the lava lamp this replaced.
+      if (id !== 'still') expect(stretched).toBeGreaterThan(0);
+    }
+  }, 30_000);
+
   it('spends its whole particle budget on any glass with water in it', () => {
     for (const level of [0.06, 0.2, 0.62, 1]) {
       const spacing = spacingFor(level, WIDE);

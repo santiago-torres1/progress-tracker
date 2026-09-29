@@ -66,7 +66,7 @@ export const MESH_ISO = 0.32;
  * 0.5 and 3.7 pixels too empty — which is a glass understating somebody's progress, every tile,
  * every frame.
  */
-export const MESH_LIFT = -0.07;
+export const MESH_LIFT = -0.21;
 
 /** Grid cells per splat radius. Below about 2 the contour is a staircase rather than a curve. */
 const CELLS_PER_RADIUS = 2.6;
@@ -74,6 +74,9 @@ const CELLS_PER_RADIUS = 2.6;
 /** No point resolving the contour finer than this; a screen has pixels. */
 const CELL_MIN_PX = 1.5;
 const CELL_MAX_PX = 5;
+
+/** How far past the round span an ellipse may reach, as a safety net on the loop bounds. */
+const SHAPE_SPAN = 2;
 
 /** Loops shorter than this are grid noise, not water. */
 const MIN_LOOP = 3;
@@ -206,12 +209,28 @@ export class Mesh {
       const ca = Math.round((px - originX) / cell);
       const cb = Math.round((py - originY) / cell);
 
-      for (let b = Math.max(0, cb - span); b <= Math.min(rows, cb + span); b += 1) {
+      /*
+       * The splat is an ELLIPSE, not a circle — the shape of the water around this particle, taken
+       * from the solver. Distance is measured through the quadratic form instead of through Pythagoras,
+       * and because its determinant is one the ellipse covers exactly the area the circle did.
+       *
+       * The bounding box comes out of the same form: the form's inverse is `[[c, -b], [-b, a]]`, so
+       * the ellipse reaches `h * sqrt(c)` sideways and `h * sqrt(a)` up and down. Reading the bounds
+       * off each particle rather than off the worst case is what keeps this from costing three times
+       * what the circle did.
+       */
+      const fa = fluid.shapeA[i] ?? 1;
+      const fb = fluid.shapeB[i] ?? 0;
+      const fc = fluid.shapeC[i] ?? 1;
+      const spanA = Math.min(span * SHAPE_SPAN, Math.ceil((radiusPx * Math.sqrt(fc)) / cell));
+      const spanB = Math.min(span * SHAPE_SPAN, Math.ceil((radiusPx * Math.sqrt(fa)) / cell));
+
+      for (let b = Math.max(0, cb - spanB); b <= Math.min(rows, cb + spanB); b += 1) {
         const dy = originY + b * cell - py;
         const row = b * (cols + 1);
-        for (let a = Math.max(0, ca - span); a <= Math.min(cols, ca + span); a += 1) {
+        for (let a = Math.max(0, ca - spanA); a <= Math.min(cols, ca + spanA); a += 1) {
           const dx = originX + a * cell - px;
-          const diff = h2 - (dx * dx + dy * dy);
+          const diff = h2 - (fa * dx * dx + 2 * fb * dx * dy + fc * dy * dy);
           if (diff <= 0) continue;
           field[row + a] = (field[row + a] ?? 0) + norm * diff * diff * diff;
         }
@@ -428,6 +447,44 @@ export class Mesh {
   }
 
   /**
+   * The parts of the outline that face upwards, as loose segments.
+   *
+   * The surface line in the shipped renderer is the one full-strength edge in the picture and it runs
+   * the whole length of the water, because in a height field the water has only one edge — the top.
+   * An outline has all of them, and stroking the lot at the same strength is what makes a body of
+   * water in mid-air read as a drawn SHAPE: its underside gets the same bright line as its surface,
+   * and nothing in a glass of water looks like that. The underside of real water is where you are
+   * looking through it, not at it.
+   *
+   * MEASURED, NOT DERIVED. The case table is written so that the water is on one consistent side of
+   * the direction of travel, and which side that turns out to be depends on a chain of sign
+   * conventions — screen y pointing down, the order the corners are numbered, the direction the
+   * table's rotations go — that is far easier to get wrong on paper than to look at. Drawn with the
+   * derivation's answer, every slab of water in mid-air came out with a bright line along its
+   * BOTTOM and a faint one along its top, which is precisely the wrong way round and instantly
+   * visible. `dx > 0` is the edge with water below it.
+   */
+  traceUpper(sink: PathSink): boolean {
+    const { px, py } = this;
+    let from = 0;
+    let any = false;
+    for (let l = 0; l < this.loops; l += 1) {
+      const to = this.loopEnd[l] ?? 0;
+      for (let k = from; k < to; k += 1) {
+        const nk = k + 1 === to ? from : k + 1;
+        const ax = px[k] ?? 0;
+        const bx = px[nk] ?? 0;
+        if (bx <= ax) continue;
+        sink.moveTo(ax, py[k] ?? 0);
+        sink.lineTo(bx, py[nk] ?? 0);
+        any = true;
+      }
+      from = to;
+    }
+    return any;
+  }
+
+  /**
    * The lit facets, as loose segments: the parts of the outline that face the window.
    *
    * The shipped renderer lights the flanks of the waves that descend to the right, because the room
@@ -452,9 +509,9 @@ export class Mesh {
         const by = py[nk] ?? 0;
         const dx = bx - ax;
         const dy = by - ay;
-        // Water on the left of the direction of travel, so `dx < 0` is an outline facing upwards.
-        if (dx >= 0) continue;
-        if (dy >= 0 || -dy < -dx * minSlope) continue;
+        // `dx > 0` is an outline with water below it: see `traceUpper`, where that was measured.
+        if (dx <= 0) continue;
+        if (dy >= 0 || -dy < dx * minSlope) continue;
         sink.moveTo(ax, ay);
         sink.lineTo(bx, by);
         any = true;
@@ -483,6 +540,29 @@ export class Mesh {
       }
     }
     return Infinity;
+  }
+
+  /**
+   * Is there water drawn at this point?
+   *
+   * What the wall film asks before it draws itself: a film behind the body is not a film, it is a
+   * dark stripe down the inside of the glass. Bilinear, because the answer is wanted at a bin edge
+   * rather than at a grid node.
+   */
+  filledAt(xPx: number, yPx: number): boolean {
+    const { field, cols, rows, cell, originX, originY } = this;
+    const a = Math.min(cols - 1, Math.max(0, Math.floor((xPx - originX) / cell)));
+    const b = Math.min(rows - 1, Math.max(0, Math.floor((yPx - originY) / cell)));
+    const tx = Math.min(1, Math.max(0, (xPx - originX) / cell - a));
+    const ty = Math.min(1, Math.max(0, (yPx - originY) / cell - b));
+    const row = b * (cols + 1);
+    const f00 = field[row + a] ?? 0;
+    const f10 = field[row + a + 1] ?? 0;
+    const f01 = field[row + cols + 1 + a] ?? 0;
+    const f11 = field[row + cols + 1 + a + 1] ?? 0;
+    const top = f00 + (f10 - f00) * tx;
+    const bottom = f01 + (f11 - f01) * tx;
+    return top + (bottom - top) * ty >= MESH_ISO;
   }
 
   /**
