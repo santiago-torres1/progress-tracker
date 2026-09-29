@@ -1,80 +1,554 @@
 /*
- * The front door's layout, as a starting point rather than a design pass.
+ * The front door.
  *
- * Structure only — a centred column, the app's own tokens, and nothing invented. `design-agent`
- * owns how this looks; what is here exists so the page is legible the moment it renders, in the
- * same way `GoalWater.css` holds the canvas's own box and leaves the vessel to `GoalTile.css`.
+ * ONE OBJECT IN A LIT ROOM, AND THE WORDS BESIDE IT. This is the only page in the app with no tile
+ * grid, no top bar and no column of sections, so it is the one place the "Deep glass" vocabulary can
+ * be spent at full size — and the only thing it is spent on is a single glass, a little over half
+ * full, standing on the floor of the room `index.css` already paints. Nothing else is decorated:
+ * there is no card, no panel, no rule, no illustration and no second colour. Whitespace and one
+ * vessel.
+ *
+ * WHY A GLASS AND NOT THE MARK AT SIZE. The product's image is a glass filling, and the mark is
+ * deliberately NOT that — `icons.tsx` says so: the mark never moves and never fills, because a logo
+ * that fills is a progress bar. So the mark stays the small lockup it is in the top bar, and the hero
+ * is a real vessel with a real waterline that really pours. It is the same recipe as `GoalTile.css`,
+ * scaled: the four stops down the liquid, the meniscus climbing both walls, the seven-gradient wall
+ * layer drawn last so the glass sits in front of the water, and the pool of colour the water throws
+ * onto the floor.
+ *
+ * WHY THE LIQUID IS THE ACCENT AND NOT AN AREA COLOUR. Colour means life area everywhere else, and a
+ * coloured element must always name its area in text. This page has no goals, so it has no areas —
+ * an area hue here would either name one at random or read as a status, which are the two things the
+ * rule forbids. What is left is the app's own green, which is already on this page as the button, so
+ * the page still carries exactly one hue. `--goal` is rebound to it (rather than a new name) so every
+ * formula below is the tile's, character for character, and so `GoalWater` would inherit the right
+ * colour if the live simulation is ever dropped in here.
+ *
+ * ONE NUMBER SIZES THE VESSEL. `--h` is the glass's height and every detail on it — the meniscus, the
+ * lip, the thickness of the base, the corner radii, how far the reflection slides — is derived from
+ * it, with a floor so the smallest phone still gets a readable surface line. That is what lets the
+ * same glass be 93px tall on a phone and 432px on a desktop without a second set of numbers, and it
+ * is why there is no breakpoint in the vessel itself: only `--h` changes.
+ *
+ * THE ONLY MOTION IS THE POUR. The copy does not fade in — this is a stranger's first paint and
+ * meaning must not wait for an animation — so the words are simply there, and then the glass fills,
+ * once, over `--mo-pour` after a `--mo-fast` beat. Under reduced motion `index.css` collapses both to
+ * nothing and the glass is a little over half full from the first frame, which is the whole fact the
+ * pour was there to state. The beat is deliberately the shortest one in the scale rather than
+ * `--mo-slow`: the pool of colour the water throws onto the floor is an outer `box-shadow` on the
+ * vessel and therefore cannot be scaled by an animation on the liquid, so it is briefly there before
+ * its cause is. 150ms of that is invisible; a third of a second would not be.
  */
 
-.welcome {
-  display: grid;
-  min-height: 100dvh;
-  place-items: center;
-  padding: var(--sp-6) var(--sp-4);
-}
+/* --- the room ------------------------------------------------------------- */
 
-.welcome__sheet {
+/*
+ * The pair, centred, with the glass in the window's light (the room's window is top-left — see
+ * `index.css`) and the copy beside it.
+ *
+ * The vertical centring is done with AUTO MARGINS rather than `justify-content: center`, and that is
+ * not a preference. On a short phone this page is taller than the viewport; centred flex content
+ * overflows equally in both directions and the top of it — the name and the headline — ends up
+ * outside the scrollable area, unreachable. An auto margin resolves to zero when there is no free
+ * space, so the page pins to the top and all of the overflow goes to the bottom, where it can be
+ * scrolled to.
+ *
+ * `padding-inline` centres the column instead of `align-items: center`, so the glass and the copy
+ * stay flush to the SAME left edge at every width. Centring them independently would put the glass
+ * above the middle of the text block on a tablet rather than above its first character.
+ */
+.welcome {
   display: flex;
   flex-direction: column;
-  gap: var(--sp-5);
   align-items: flex-start;
-  max-width: 34rem;
+  gap: var(--sp-5);
+  min-height: 100dvh;
+  padding-block: var(--sp-5);
+  padding-inline: max(var(--sp-4), calc((100% - var(--content-width)) / 2));
 }
 
+.welcome > :first-child {
+  margin-block-start: auto;
+}
+
+.welcome > :last-child {
+  margin-block-end: auto;
+}
+
+/* Two columns once there is room for a glass tall enough to be one: 34rem of copy, the gap, and up
+   to 18rem of vessel is 58rem, which clears 62rem less its padding with room to spare. Below this
+   the glass goes above the words instead, small enough that the one button on the page stays above
+   the fold on a 667px phone — see `--h`. */
+@media (min-width: 62rem) {
+  .welcome {
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: clamp(var(--sp-7), 7vw, calc(var(--sp-7) * 2));
+    padding: var(--sp-7);
+  }
+
+  /* Vertically centred, and overflow-safe for the same reason as above. */
+  .welcome > * {
+    margin-block: auto;
+  }
+}
+
+/* --- the words ------------------------------------------------------------ */
+
+/*
+ * Spacing is set per row rather than with one `gap`, because the five blocks are not five equal
+ * things: the name is a label on the page, the headline is the page, the three points are one group,
+ * and the note is small print. The steps say so — 2rem above the headline, 1.5rem above the group,
+ * 2rem above the button, 1.5rem above the note.
+ */
+.welcome__sheet {
+  display: grid;
+  width: 100%;
+  max-width: var(--content-width);
+}
+
+@media (min-width: 62rem) {
+  .welcome__sheet {
+    flex: 0 1 var(--content-width);
+  }
+}
+
+/* The same lockup as the top bar's, one step larger: one ink and one weight, no tint on either word.
+   `AppShell.css` sets out why — tinting "Full" would say the app is about reaching it, and tinting
+   "Half" would make half the lesser part. The hue on this page belongs to the water and the button. */
 .welcome__brand {
   display: flex;
   gap: var(--sp-2);
   align-items: center;
-  margin: 0;
   color: var(--text);
 }
 
+/* 22px against an 18px name: the vessel is 26 of the artwork's 32 units, so this draws an ~17.9px
+   glass against a ~12.6px cap height — the same 1.4 ratio the top bar arrived at, and the same 1px
+   downward nudge, because the mark's base sits on the baseline while its lip runs past the cap. */
 .welcome__mark {
+  flex: none;
   width: 1.375rem;
   height: 1.375rem;
+  transform: translateY(1px);
 }
 
 .welcome__name {
-  font-weight: 600;
+  font-size: var(--fs-lg);
+  font-weight: var(--fw-semibold);
   letter-spacing: -0.01em;
+  /* Load-bearing: without it the `f` and the `F` close up and the name reads as one word. */
   word-spacing: 0.04em;
 }
 
+/*
+ * The page's one headline, and therefore the one use of `--fs-2xl` anywhere on it. It is not allowed
+ * to grow past the top of the scale, so the presence comes from the measure and the tracking instead:
+ * 24ch breaks the sentence into three short lines that `text-wrap: balance` then evens out, which
+ * reads larger than the same words set wide.
+ *
+ * It steps down to `--fs-xl` on a narrow screen, which is what buys the button its place above the
+ * fold.
+ */
 .welcome__headline {
-  margin: 0;
-  font-size: var(--fs-2xl);
-  line-height: 1.15;
+  margin-block-start: var(--sp-6);
+  max-width: 24ch;
+  font-size: clamp(var(--fs-xl), 4.6vw, var(--fs-2xl));
+  line-height: 1.08;
+  letter-spacing: -0.025em;
   color: var(--text);
-  text-wrap: balance;
 }
 
 .welcome__points {
-  display: flex;
-  flex-direction: column;
+  display: grid;
   gap: var(--sp-3);
-  margin: 0;
+  margin-block-start: var(--sp-5);
   color: var(--muted);
 }
 
 .welcome__points p {
-  max-width: 44ch;
-  margin: 0;
+  max-width: 48ch;
+  text-wrap: pretty;
 }
 
+/*
+ * The first point is the thesis — "every goal is a glass" — and the two after it are the detail, so
+ * it is set as a lead: full-strength ink, one step up, a shorter measure. Three identical grey
+ * paragraphs under a 34px headline is a wall with no way into it; this gives the eye a path from the
+ * name to the headline to the claim to the button.
+ *
+ * It is positional (`:first-child`), not a class, because the markup is not this file's to change.
+ * Reordering the paragraphs therefore moves the emphasis — which is the right default, since the
+ * first thing said is the thing being led with, but it is worth knowing before they are reordered.
+ */
+.welcome__points p:first-child {
+  max-width: 42ch;
+  margin-block-end: var(--sp-2);
+  font-size: var(--fs-lg);
+  line-height: 1.35;
+  letter-spacing: -0.012em;
+  color: var(--text);
+}
+
+/*
+ * The only thing on this page that does anything, so it is the only filled shape on it. The press is
+ * the tiles' press — quick down, unhurried back up — and the lift on hover is the same one step of
+ * shadow the empty board's action takes, so the front door and the first thing behind it agree.
+ *
+ * 48px tall, 56px on a touch pointer: this is the whole product's conversion, on a phone, with a
+ * thumb.
+ */
 .welcome__start {
-  padding: var(--sp-3) var(--sp-5);
+  display: inline-flex;
+  align-items: center;
+  justify-self: start;
+  min-height: 3rem;
+  margin-block-start: var(--sp-6);
+  padding-inline: var(--sp-6);
   font: inherit;
-  font-weight: 600;
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
   color: var(--accent-contrast);
   cursor: pointer;
-  background: var(--accent);
+  background-color: var(--accent);
   border: 0;
-  border-radius: var(--r-pill, 999px);
+  border-radius: var(--r-full);
+  box-shadow: var(--sh-1);
+  -webkit-tap-highlight-color: transparent;
+  transition:
+    transform var(--mo) var(--ease-out),
+    box-shadow var(--mo) var(--ease-out);
 }
 
+/* One more step out from the accent fill than the global ring, so the 2px of background between the
+   pill and the ring is unmistakably a gap rather than a thicker edge. */
+.welcome__start:focus-visible {
+  outline-offset: 3px;
+}
+
+@media (hover: hover) {
+  .welcome__start:hover {
+    transform: translateY(-1px);
+    box-shadow: var(--sh-2);
+  }
+}
+
+.welcome__start:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: var(--sh-1);
+  transition-duration: var(--mo-fast);
+}
+
+@media (pointer: coarse) {
+  .welcome__start {
+    min-height: 3.5rem;
+  }
+}
+
+/* The small print, in the register `.footnote` sets for it — but kept at `--fs-sm` rather than
+   `--fs-xs`, because "90 days without a visit deletes it" is the one fact on this page a person
+   might need later, and it is the last thing they read before pressing the button. */
 .welcome__note {
-  max-width: 44ch;
-  margin: 0;
+  max-width: 52ch;
+  margin-block-start: var(--sp-5);
   font-size: var(--fs-sm);
   color: var(--muted);
+  text-wrap: pretty;
+}
+
+/* --- the glass ------------------------------------------------------------ */
+
+/*
+ * THE HERO. Requires the two elements described in this pass's report:
+ *
+ *   <div className="welcome__glass" aria-hidden="true">
+ *     <span className="welcome__level" />
+ *   </div>
+ *
+ * Without them the page above stands on its own and nothing below applies, which is why none of it
+ * reaches into `.welcome__sheet`.
+ *
+ * Three painted layers and one element, the same budget `GoalTile.css` keeps for a board of a
+ * hundred tiles even though this page has exactly one vessel:
+ *
+ *   ::before          the liquid — four stops down, two across, scaled from the base
+ *   .welcome__level   the surface — a full-height sheet slid down, carrying the meniscus and the
+ *                     sheet of light lying on the water
+ *   ::after           the glass — seven gradients, drawn LAST so the walls sit in front of the water
+ *
+ * The level is never a height: the body is scaled and the surface is translated, so the pour is two
+ * transforms and touches no layout.
+ */
+.welcome__glass {
+  /*
+   * A little over half full — 54%, which is where the brand mark's own waterline sits (its water
+   * starts at y=14 of a vessel running 2 to 28, so 14 of 26 units). The mark and the glass on the
+   * same page are filled to the same line, which is the sort of thing nobody notices and everybody
+   * would notice the absence of.
+   */
+  --p: 54;
+
+  /* The product's green, not a life area's — see the head of this file. Named `--goal` so every
+     formula below is the tile's unchanged. */
+  --goal: var(--accent);
+
+  /*
+   * The one number, and on a phone it is tied to viewport HEIGHT rather than width, because what the
+   * glass is competing with there is the fold. The narrowest, shortest screen worth building for is
+   * 375x667: the glass is 93px, the page runs to about 743px so it scrolls, and the button's bottom
+   * edge lands at about 636px — above the fold, with only the small print below it. A 390x844 phone
+   * has the whole page in view with room to spare. Those two numbers are the reason this is `14vh`
+   * and not a fixed size: a taller phone earns a taller glass, a short one is not asked to pay for
+   * it with the only button on the page.
+   */
+  --h: clamp(4.75rem, 14vh, 11rem);
+
+  /* Everything on the vessel, derived from --h with a floor. The floors are the tile's own numbers,
+     so the smallest glass here is detailed exactly like a small tile and the largest scales up from
+     it rather than inventing a second look. */
+  --men: max(5px, calc(var(--h) * 0.024)); /* the meniscus box */
+  --lip: max(10px, calc(var(--h) * 0.055)); /* light caught under the top lip */
+  --base-lit: max(3px, calc(var(--h) * 0.012)); /* where the base meets the walls */
+  --foot: max(16px, calc(var(--h) * 0.08)); /* the thickness of the base, seen through */
+  --wall: max(8px, calc(var(--h) * 0.03)); /* how far the near wall's specular falls off */
+  --wall-far: max(6px, calc(var(--h) * 0.022));
+  /* Open at the top, closed at the bottom: a tight radius at the lip and a generous one at the
+     base. That asymmetry is the cheapest thing that stops a tall rounded rectangle reading as a
+     very large tile — a tile's four corners are all --r-2xl. */
+  --lip-r: max(4px, calc(var(--h) * 0.016));
+  --base-r: max(10px, calc(var(--h) * 0.06));
+  /* How far the room's reflection has slid across the front wall. The button moves it. */
+  --sheen-x: 0px;
+
+  position: relative;
+  flex: none;
+  align-self: flex-start;
+  aspect-ratio: 2 / 3;
+  height: var(--h);
+  overflow: hidden;
+  pointer-events: none;
+  /* A vessel you can see the room through. The tiles are opaque because copy sits on them; nothing
+     sits on this one. */
+  background-color: color-mix(in srgb, var(--surface) 34%, transparent);
+  border-radius: var(--lip-r) var(--lip-r) var(--base-r) var(--base-r);
+  /* Standing on the floor: contact and lift, then the pool of its own colour the water throws down
+     through the base. Scaled by the level, so an empty glass would cast none. */
+  box-shadow:
+    var(--sh-glass),
+    0 calc(var(--h) * 0.08) calc(var(--h) * 0.16) calc(var(--h) * -0.08)
+      color-mix(in srgb, var(--goal) calc(var(--caustic-floor) * var(--p) / 100), transparent);
+}
+
+@media (min-width: 40rem) {
+  .welcome__glass {
+    --h: clamp(7rem, 20vh, 14rem);
+  }
+}
+
+/* At full size. Capped against BOTH axes: 30vw keeps the glass from crowding the copy on a wide
+   short window, 52vh keeps it inside a tall narrow one. */
+@media (min-width: 62rem) {
+  .welcome__glass {
+    --h: clamp(17rem, min(52vh, 30vw), 27rem);
+
+    /* `flex-start` is what stops the vessel being stretched to the column's width while the page is
+       a column; in a row it would pin it to the top instead, so it is undone here. */
+    align-self: center;
+  }
+}
+
+/*
+ * The liquid. Four stops down and two across, reading the same `--tint-*` tokens as the tile's CSS
+ * water and the canvas renderer: light is absorbed as it travels, so the water is deepest against
+ * the base and lightest in the film just under the surface, and fractionally deeper where you are
+ * looking through a wall as well as through the water.
+ *
+ * Both gradients are background layers on one box, and the level is a transform, not a height.
+ */
+.welcome__glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  transform-origin: bottom;
+  transform: scaleY(calc(var(--p) / 100));
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in srgb, var(--goal) 13%, transparent) 0,
+      transparent 9%,
+      transparent 91%,
+      color-mix(in srgb, var(--goal) 10%, transparent) 100%
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--goal) calc(var(--tint-top) * 0.72), var(--surface)) 0%,
+      color-mix(in srgb, var(--goal) var(--tint-top), var(--surface)) 14%,
+      color-mix(in srgb, var(--goal) var(--tint-bot), var(--surface)) 78%,
+      color-mix(in srgb, var(--goal) var(--tint-deep), var(--surface)) 100%
+    );
+  animation: welcome-pour var(--mo-pour) var(--ease-pour) var(--mo-fast) backwards;
+}
+
+/* The surface, as a full-height sheet whose top edge is the waterline. */
+.welcome__level {
+  position: absolute;
+  inset: 0;
+  transform: translateY(calc((100 - var(--p)) * 1%));
+  animation: welcome-pour-line var(--mo-pour) var(--ease-pour) var(--mo-fast) backwards;
+}
+
+/*
+ * The meniscus: one line, thinning as it climbs each wall, with the sheet of light lying on the water
+ * in the padding box above it. 2px at every size — a bigger vessel does not get a thicker surface, it
+ * gets a proportionally thinner-looking one, which is the truth about water.
+ *
+ * `top: calc(2px - var(--men))` rather than a fraction of the box, so the 2px border always lands in
+ * exactly the same place — the first two pixels BELOW the waterline, just inside the vessel — however
+ * tall the box above it grows. The box only ever grows upward, over the empty glass, which is where
+ * the light on the surface belongs.
+ */
+.welcome__level::before {
+  content: '';
+  position: absolute;
+  top: calc(2px - var(--men));
+  left: 0;
+  right: 0;
+  height: var(--men);
+  background-clip: padding-box;
+  background-repeat: no-repeat;
+  background-position: 50% 0;
+  background-size: 66% 100%;
+  background-image: linear-gradient(90deg, transparent, var(--glass-hi), transparent);
+  border-bottom: 2px solid var(--goal);
+  border-bottom-left-radius: calc(var(--men) * 3) var(--men);
+  border-bottom-right-radius: calc(var(--men) * 3) var(--men);
+}
+
+/* Light caught just under the surface. Clamped to the water, so it can never shade the empty glass
+   below a nearly-empty one. */
+.welcome__level::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: min(calc(var(--p) * 1%), max(6px, calc(var(--h) * 0.055)));
+  background-image: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--goal) 20%, transparent),
+    transparent
+  );
+}
+
+/*
+ * THE GLASS ITSELF: thickness. One layer, seven gradients, drawn last inside the vessel so it sits
+ * over the liquid — a wall you can see the water through is still in front of it. Back to front,
+ * which is bottom to top in this list:
+ *
+ *   caustic     the light that made it through, pooling against the base
+ *   base        --glass-under: the thickness you look through to the floor
+ *   base rim    the bright edge where the base meets the walls
+ *   lip         the light caught under the top lip, thickest where a mouth would go
+ *   far wall    catching less of the window
+ *   near wall   the specular, and the brightest line on the page
+ *   sheen       the room, reflected in the front wall — it slides when the button is hovered
+ *
+ * Every one of them is a light value from `--glass-*` and none is a hue: glass is colourless and the
+ * water is the only thing carrying colour, so no wall here can invent a seventh life area.
+ */
+.welcome__glass::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background-repeat: no-repeat;
+  background-image:
+    linear-gradient(118deg, transparent 14%, var(--glass-sheen) 30%, transparent 46%),
+    linear-gradient(
+      90deg,
+      var(--glass-hi) 0,
+      color-mix(in srgb, var(--glass-hi) 40%, transparent) 2px,
+      transparent var(--wall)
+    ),
+    linear-gradient(270deg, var(--glass-hi-soft) 0, transparent var(--wall-far)),
+    linear-gradient(to bottom, color-mix(in srgb, var(--glass-hi) 55%, transparent), transparent),
+    linear-gradient(to top, var(--glass-rim) 0, transparent var(--base-lit)),
+    linear-gradient(to top, var(--glass-under) 0, transparent var(--foot)),
+    radial-gradient(
+      72% 100% at 50% 124%,
+      color-mix(in srgb, var(--goal) calc(44% * var(--caustic) * var(--p) / 100), transparent),
+      transparent 62%
+    );
+  background-size:
+    100% 100%,
+    100% 100%,
+    100% 100%,
+    100% var(--lip),
+    100% 100%,
+    100% 100%,
+    100% 22%;
+  background-position:
+    var(--sheen-x) 0,
+    0 0,
+    0 0,
+    0 0,
+    0 0,
+    0 0,
+    0 100%;
+  /* The top lip, and the wall seen edge-on. No `border`: a glass has thickness, not an outline. */
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px var(--glass-edge);
+  transition: background-position var(--mo-slow) var(--ease-out);
+}
+
+/*
+ * Reaching for the button moves the light on the glass. It is the tile's own hover — the reflection
+ * of the room sliding across the front wall — borrowed for the one control on the page, so the
+ * object and the action are visibly the same thing. Nothing else responds, the water does not rise,
+ * and under reduced motion the reflection simply sits a few pixels further along, which is no
+ * information lost because it never carried any.
+ */
+.welcome:has(.welcome__start:is(:hover, :focus-visible)) .welcome__glass {
+  --sheen-x: calc(var(--h) * 0.04);
+}
+
+/* Forced colours replaces every gradient and shadow with a system pair, which would leave this as an
+   empty box with rounded corners. It is decoration and it is `aria-hidden`; it goes. */
+@media (forced-colors: active) {
+  .welcome__glass {
+    display: none;
+  }
+}
+
+/* --- the pour ------------------------------------------------------------- */
+
+/*
+ * The one moment this page asks to be watched, and the longest duration in the app: the glass arrives
+ * empty and fills to `--p` once. `backwards` holds it empty through the delay, so the words are
+ * already readable before anything moves.
+ *
+ * No `forwards`: the keyframes end on exactly the transform each element already declares, so when
+ * the animation is over the level is held by the rules above rather than by a filled animation —
+ * which is also what makes reduced motion correct for free.
+ */
+@keyframes welcome-pour {
+  from {
+    transform: scaleY(0);
+  }
+
+  to {
+    transform: scaleY(calc(var(--p) / 100));
+  }
+}
+
+@keyframes welcome-pour-line {
+  from {
+    transform: translateY(100%);
+  }
+
+  to {
+    transform: translateY(calc((100 - var(--p)) * 1%));
+  }
 }

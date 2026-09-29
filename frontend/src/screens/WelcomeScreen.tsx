@@ -27,6 +27,24 @@ export interface WelcomeScreenProps {
 export function WelcomeScreen({ onBegin }: WelcomeScreenProps) {
   return (
     <main className="welcome">
+      {/*
+       * The hero, and the only thing on this page that is decorated: one vessel, a little over
+       * half full, poured once on arrival.
+       *
+       * Three elements rather than one because the liquid, the surface and the walls have to paint
+       * in that order — the walls go last, so the glass sits in front of the water rather than
+       * behind it — and one element carries only two pseudo-elements. It is the same three-layer
+       * budget `GoalTile.css` keeps.
+       *
+       * Not `GoalWater`: the simulation pours when a level ARRIVES, and treats the first one as a
+       * fact rather than an event, so a canvas here would draw a dead-still surface for the price
+       * of a WebGL context. The CSS water pours because the level is a transform, and the pour is
+       * the part worth watching.
+       */}
+      <div className="welcome__glass" aria-hidden="true">
+        <span className="welcome__level" />
+      </div>
+
       <div className="welcome__sheet">
         <p className="welcome__brand">
           <MarkIcon className="welcome__mark" />
