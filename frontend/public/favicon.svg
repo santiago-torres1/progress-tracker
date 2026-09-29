@@ -1,21 +1,111 @@
 <!--
-  Half Full. A tumbler, and a copy of the same tumbler cut at the waterline — two paths, one ink,
-  two alphas, no hue at any size. The viewBox is 32 so that 32 → 16 is exactly ÷2: the lip (y=2),
-  the waterline (y=14) and the base (y=28) each land on a whole device pixel at 16px, which is why
-  the waterline needs no line of its own. The alpha step is a harder edge than any hairline.
+  Half Full. A colourless tumbler on a dark plate lit by six lights — one per life area, in the
+  order /api/areas returns them, clockwise from the left.
 
-  Never a ring, never a second horizontal (an etched line inside a glass means a habit's minimum
-  in this app), never an outline, never a hue. See the identity spec before changing a coordinate.
+  (Token names appear without their leading dashes throughout this comment: a double hyphen cannot
+  legally appear inside an XML comment, and a browser shows an error page instead of an icon.)
+
+  WHY THE MARK MAY CARRY COLOUR AT ALL. Colour means life area here, and it may never appear alone —
+  every coloured element in the interface also names its area in text. A mark can name nothing, so
+  the test is not "are there six hues" but "does any single coloured element silently claim one
+  area?". All six are present, so this is the set and not a member; and not one light sits behind
+  the glass, so the one object in the picture that IS a goal in this app stays colourless. That is
+  also why the accent green is nowhere near this file: it is #2f6f5c, four points from the health
+  area's #2e7d57, and a single green glass in a top bar would read as a health goal forty pixels
+  above a board where green means exactly that.
+
+  THE GEOMETRY, and every number in it is a measurement rather than a taste.
+
+  The glyph is the canonical 32-space tumbler, untouched, scaled by 11/13 about the vessel's own
+  centre and set down with translate(2.4615 2.3077). That puts the 26-unit vessel on 22 units — 11
+  device pixels at a 16px favicon — with the lip on y=4 and the base on y=26.
+
+    lip        y = 4.000   -> 16px row  2.000
+    waterline  y = 14.154  -> 16px row  7.077
+    base       y = 26.000  -> 16px row 13.000
+
+  The waterline is an alpha step and nothing else, so where it lands matters: rendered at 16px the
+  axis reads 16.0, 16.1, 16.0 for the empty glass and then 82.9 for the water, with no row in
+  between. One row carries the whole step. Inset the glyph to 0.72 instead and that row reads 55.6,
+  which is the smear this scale exists to avoid; leave it at 1.0 and the glass fills the plate with
+  nowhere for the six lights to stand.
+
+  The empty glass is 0.44, not the 0.16 that is right at 512: a thin alpha on a near-black plate is
+  simply not there at 16px. Measured at 16px, the same pixel with the glyph and without it differs
+  by 3.82:1. The approved 512 sketch used unchanged as a favicon measures 1.17:1 and its upper half
+  disappears.
+
+  There is no prefers-color-scheme block here and none is needed. The plate is the mark's own room,
+  so it reads on a light tab strip and a dark one without knowing which it is on — which also ends
+  the one case the outgoing monochrome mark could not survive, a light OS with a dark browser theme.
+
+  Never a ring (a half-filled circle is the system dark-mode glyph), never a second horizontal (an
+  etched line inside a glass means a habit's minimum in this app), never an outline, never a hue on
+  the glass or in the water, and never any motion.
+
+  The six values are the dark-room area colours, and the same six are the mark-area tokens in
+  src/styles/tokens.css, where MarkIcon reads them. A change to one is a change to both: a file the
+  browser loads as an icon has no stylesheet behind it.
 -->
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <style>
-    .glass { fill: #16201a; }
-    .empty { opacity: 0.34; }
-    @media (prefers-color-scheme: dark) {
-      .glass { fill: #e7ece9; }
-      .empty { opacity: 0.3; }
-    }
-  </style>
-  <path class="glass empty" d="M6 2H26L24.154 26Q24 28 22 28H10Q8 28 7.846 26Z" />
-  <path class="glass" d="M6.923 14H25.077L24.154 26Q24 28 22 28H10Q8 28 7.846 26Z" />
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" width="32" height="32">
+  <defs>
+    <linearGradient id="plate" gradientUnits="userSpaceOnUse" x1="14.16" y1="-1.49" x2="17.84" y2="33.49">
+      <stop offset="0" stop-color="#0d1411" />
+      <stop offset="1" stop-color="#070b0a" />
+    </linearGradient>
+
+    <radialGradient id="health">
+      <stop offset="0" stop-color="#5fc294" stop-opacity="0.82" />
+      <stop offset="0.28" stop-color="#5fc294" stop-opacity="0.344" />
+      <stop offset="0.62" stop-color="#5fc294" stop-opacity="0.093" />
+      <stop offset="1" stop-color="#5fc294" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="learning">
+      <stop offset="0" stop-color="#9a9df5" stop-opacity="0.82" />
+      <stop offset="0.28" stop-color="#9a9df5" stop-opacity="0.344" />
+      <stop offset="0.62" stop-color="#9a9df5" stop-opacity="0.093" />
+      <stop offset="1" stop-color="#9a9df5" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="money">
+      <stop offset="0" stop-color="#e0b45c" stop-opacity="0.82" />
+      <stop offset="0.28" stop-color="#e0b45c" stop-opacity="0.344" />
+      <stop offset="0.62" stop-color="#e0b45c" stop-opacity="0.093" />
+      <stop offset="1" stop-color="#e0b45c" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="relationships">
+      <stop offset="0" stop-color="#f093b4" stop-opacity="0.82" />
+      <stop offset="0.28" stop-color="#f093b4" stop-opacity="0.344" />
+      <stop offset="0.62" stop-color="#f093b4" stop-opacity="0.093" />
+      <stop offset="1" stop-color="#f093b4" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="work">
+      <stop offset="0" stop-color="#5cc3d1" stop-opacity="0.82" />
+      <stop offset="0.28" stop-color="#5cc3d1" stop-opacity="0.344" />
+      <stop offset="0.62" stop-color="#5cc3d1" stop-opacity="0.093" />
+      <stop offset="1" stop-color="#5cc3d1" stop-opacity="0" />
+    </radialGradient>
+    <radialGradient id="creative">
+      <stop offset="0" stop-color="#c79ae8" stop-opacity="0.82" />
+      <stop offset="0.28" stop-color="#c79ae8" stop-opacity="0.344" />
+      <stop offset="0.62" stop-color="#c79ae8" stop-opacity="0.093" />
+      <stop offset="1" stop-color="#c79ae8" stop-opacity="0" />
+    </radialGradient>
+
+    <clipPath id="tile"><rect width="32" height="32" rx="7" /></clipPath>
+  </defs>
+
+  <g clip-path="url(#tile)">
+    <rect width="32" height="32" fill="url(#plate)" />
+    <circle cx="4" cy="10.5" r="7.4" fill="url(#health)" />
+    <circle cx="11" cy="3" r="7.4" fill="url(#learning)" />
+    <circle cx="21" cy="3" r="7.4" fill="url(#money)" />
+    <circle cx="28" cy="10.5" r="7.4" fill="url(#relationships)" />
+    <circle cx="27.5" cy="24.5" r="7.4" fill="url(#work)" />
+    <circle cx="4.5" cy="24.5" r="7.4" fill="url(#creative)" />
+  </g>
+
+  <g transform="translate(2.4615 2.3077) scale(0.846154)">
+    <path fill="#e7ece9" opacity="0.44" d="M6 2H26L24.154 26Q24 28 22 28H10Q8 28 7.846 26Z" />
+    <path fill="#e7ece9" d="M6.923 14H25.077L24.154 26Q24 28 22 28H10Q8 28 7.846 26Z" />
+  </g>
 </svg>

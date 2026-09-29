@@ -90,6 +90,39 @@
   /* Matches the backend's fallback for a goal with no area. */
   --area-neutral: #64748b;
 
+  /* --- The mark's own room ----------------------------------
+     The brand mark is a colourless glass standing on a plate lit by six lights, one per life area.
+     These six do NOT flip with the theme, and that is the point: the plate is always the night, so
+     the mark carries its own room and reads the same on a pale top bar, a dark one, a light tab
+     strip and a dark tab strip. Using --area-* here would hand the mark the light-room values on a
+     light theme, and #2e7d57 on a #0d1411 plate is a black smudge.
+
+     The values are the dark-room area colours, and the same six appear in public/favicon.svg —
+     which a browser loads as an icon with no stylesheet behind it, so it cannot read a token. A
+     change to one is a change to both. The same duplication the water's --tint-* already has.
+
+     Only MarkIcon may use these. They are not area colours: nothing in the interface may name an
+     area with one, because the whole reason the mark is allowed to carry colour is that it shows
+     all six and lets none of them touch the glass. */
+  --mark-plate-top: #0d1411;
+  --mark-plate-bottom: #070b0a;
+  --mark-ink: #e7ece9;
+  --mark-area-health: #5fc294;
+  --mark-area-learning: #9a9df5;
+  --mark-area-money: #e0b45c;
+  --mark-area-relationships: #f093b4;
+  --mark-area-work: #5cc3d1;
+  --mark-area-creative: #c79ae8;
+  /* The empty upper glass: the same ink at 0.44, and the alpha is carried IN THE COLOUR rather than
+     by an `opacity` attribute so the component needs `var()` to work in exactly one kind of place —
+     a `fill` — instead of two.
+
+     0.44, not the 0.16 that is right at 512: a thin alpha on a near-black plate is not there at all
+     once the mark is 16px. Measured by rendering the same pixel with the glyph and without it, 0.44
+     holds 3.82:1 against the plate behind it; 0.38 holds 3.16:1; and the approved 512 sketch used
+     unchanged as a favicon holds 1.17:1, at which the upper half of the glass disappears. */
+  --mark-ink-empty: rgba(231, 236, 233, 0.44);
+
   /* How much of a goal's hue is mixed into a surface. Tokenised so dark mode can be more
      generous without any structural change.
 
