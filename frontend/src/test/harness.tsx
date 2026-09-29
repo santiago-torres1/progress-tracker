@@ -65,6 +65,17 @@ export function freshStore(initial: AuthSession | null = null): SessionStore {
   };
 }
 
+/**
+ * A store for somebody who has been here before: a session already in storage.
+ *
+ * The front door is shown to anybody `AuthStore.hasSession()` answers false for, so a test about
+ * anything other than the door has to arrive as a returning visitor — otherwise it is testing the
+ * welcome page with extra steps.
+ */
+export function returningStore(): SessionStore {
+  return freshStore(session());
+}
+
 export function testAuthStore(
   transport: AuthTransport,
   store: SessionStore = freshStore(),

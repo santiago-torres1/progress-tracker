@@ -1,0 +1,80 @@
+/*
+ * The front door's layout, as a starting point rather than a design pass.
+ *
+ * Structure only — a centred column, the app's own tokens, and nothing invented. `design-agent`
+ * owns how this looks; what is here exists so the page is legible the moment it renders, in the
+ * same way `GoalWater.css` holds the canvas's own box and leaves the vessel to `GoalTile.css`.
+ */
+
+.welcome {
+  display: grid;
+  min-height: 100dvh;
+  place-items: center;
+  padding: var(--sp-6) var(--sp-4);
+}
+
+.welcome__sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+  align-items: flex-start;
+  max-width: 34rem;
+}
+
+.welcome__brand {
+  display: flex;
+  gap: var(--sp-2);
+  align-items: center;
+  margin: 0;
+  color: var(--text);
+}
+
+.welcome__mark {
+  width: 1.375rem;
+  height: 1.375rem;
+}
+
+.welcome__name {
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  word-spacing: 0.04em;
+}
+
+.welcome__headline {
+  margin: 0;
+  font-size: var(--fs-2xl);
+  line-height: 1.15;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+.welcome__points {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+  margin: 0;
+  color: var(--muted);
+}
+
+.welcome__points p {
+  max-width: 44ch;
+  margin: 0;
+}
+
+.welcome__start {
+  padding: var(--sp-3) var(--sp-5);
+  font: inherit;
+  font-weight: 600;
+  color: var(--accent-contrast);
+  cursor: pointer;
+  background: var(--accent);
+  border: 0;
+  border-radius: var(--r-pill, 999px);
+}
+
+.welcome__note {
+  max-width: 44ch;
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}

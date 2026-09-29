@@ -1,3 +1,4 @@
+import { useState } from 'react';
 import { BrowserRouter, Route, Routes, useNavigate } from 'react-router-dom';
 import { AppShell, type ShellSession } from './components/AppShell';
 import { HealthPanel } from './components/HealthPanel';
@@ -10,14 +11,16 @@ import { CalendarScreen } from './screens/CalendarScreen';
 import { Dashboard } from './screens/Dashboard';
 import { NotFoundScreen } from './screens/NotFoundScreen';
 import { ProfileScreen } from './screens/ProfileScreen';
-import type { AuthStore } from './lib/auth';
+import { WelcomeScreen } from './screens/WelcomeScreen';
+import { createAuthStore, type AuthStore } from './lib/auth';
 import './App.css';
 
 export interface AppProps {
   /**
-   * The identity provider, injected by the tests. Left out — which is every real build — the gate
+   * The identity provider, injected by the tests. Left out — which is every real build — the app
    * makes its own from the Vite environment. It is the same seam `SessionGate` exposes, and it
-   * exists so a test never has to talk to Supabase.
+   * exists so a test never has to talk to Supabase. A test that wants to start past the front
+   * door hands in a store that already holds a session.
    */
   authStore?: AuthStore;
   /** The zone to report on a first run. Pinned by the tests so a machine's own zone cannot leak in. */
@@ -43,9 +46,34 @@ export function App(props: AppProps = {}) {
   );
 }
 
+/**
+ * The front door, and then the app.
+ *
+ * The identity is built HERE rather than inside the gate, because two things now need it and they
+ * need it in this order: the door asks whether there is a session to come back to, and the gate
+ * resumes or mints one. A visitor who has been here before never sees the door — their session is
+ * in storage, `hasSession()` says so, and the app boots exactly as it always did.
+ *
+ * `begun` is set once and never unset. Nothing signs anybody out, so there is no path back to the
+ * door inside a session, and a person who clears their storage gets the door again on their next
+ * visit — which is the truth about what they have.
+ */
 export function AppRoutes({ authStore, browserTimeZone }: AppProps = {}) {
+  const [store] = useState(() => authStore ?? createAuthStore());
+  const [begun, setBegun] = useState(() => store.hasSession());
+
+  if (!begun) {
+    return (
+      <WelcomeScreen
+        onBegin={() => {
+          setBegun(true);
+        }}
+      />
+    );
+  }
+
   return (
-    <SessionGate store={authStore} browserTimeZone={browserTimeZone}>
+    <SessionGate store={store} browserTimeZone={browserTimeZone}>
       <SignedInRoutes />
     </SessionGate>
   );
