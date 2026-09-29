@@ -76,6 +76,18 @@ const MAX_CATCH_UP_STEPS = 6;
 const MAX_DISPLACEMENT = 0.09;
 
 /**
+ * How deep the water has to be before it sloshes with its whole strength.
+ *
+ * A wave cannot be taller than the water it is made of. Below this, every disturbance is scaled
+ * down in proportion, and at a level of nothing the glass is inert — which is the whole of it: a
+ * goal at 0% used to rock like a full one when its tile was dragged, conjuring a surface out of an
+ * empty vessel. `MAX_DISPLACEMENT` is the right scale to measure that against, because it is the
+ * tallest wave this field will hold: at exactly that depth a full-strength trough reaches the floor
+ * and no further.
+ */
+const SHALLOW_LEVEL = MAX_DISPLACEMENT;
+
+/**
  * The tallest wave the app ever asks for, in glass units.
  *
  * Still small — the brief for this product is calm — but no longer so small that it reads as a
@@ -144,8 +156,9 @@ export class WaterField {
 
     // A rise heaves the middle and a fall drags at it, so the sign is carried through. The
     // magnitude is square-rooted: a tiny top-up should still register, a whole glass at once
-    // should not erupt.
-    const power = Math.sign(change) * Math.sqrt(Math.abs(change)) * IMPULSE;
+    // should not erupt. Scaled by what is in the glass AFTERWARDS — emptying one to nothing leaves
+    // nothing to rock.
+    const power = Math.sign(change) * Math.sqrt(Math.abs(change)) * IMPULSE * this.driveScale();
     this.splash(0.5, power, 0.45);
   }
 
@@ -205,7 +218,8 @@ export class WaterField {
    * higher modes — not the amplitude — that make a surface read as water.
    */
   tilt(movement: number): void {
-    const power = Math.min(MAX_DRAG, Math.max(-MAX_DRAG, movement * DRAG_IMPULSE));
+    const drive = movement * DRAG_IMPULSE * this.driveScale();
+    const power = Math.min(MAX_DRAG, Math.max(-MAX_DRAG, drive));
     if (power === 0) return;
 
     // Moving right heaps the water on the LEFT: the glass sets off and the water is left behind.
@@ -232,6 +246,45 @@ export class WaterField {
 
     for (let step = 0; step < steps; step += 1) this.step();
     return this.isMoving();
+  }
+
+  /**
+   * How much of a disturbance this much water can carry, 0–1.
+   *
+   * Two factors, and both are the same sentence: A WAVE IS NEVER TALLER THAN THE WATER IT IS MADE
+   * OF. Shallow water carries small waves and no water carries none — without the first factor a
+   * tile at 0% sloshed exactly as hard as a full one, so dragging an empty glass drew a surface in
+   * a vessel with nothing in it, water made out of a mouse movement.
+   *
+   * The second factor is what stops that coming back through the side door. Disturbances
+   * ACCUMULATE: each frame of a drag adds another, so six of them into a glass holding 3% still
+   * reached the full amplitude this field allows, and the surface dipped below the floor of its own
+   * glass. Fading the drive out as the existing swing approaches what this depth can hold caps it
+   * without clamping — and clamping is the one operation here that destroys water, which is the
+   * invariant the whole file is written around.
+   */
+  private driveScale(): number {
+    const allowed = Math.min(MAX_DISPLACEMENT, this.rest);
+    if (allowed <= 0) return 0;
+
+    /*
+     * The amplitude this glass is ALREADY GOING TO REACH, not the one it has reached.
+     *
+     * A shove is added to velocity, never to height, so at the instant the next shove arrives the
+     * surface is still flat and a height-only reading says there is all the room in the world. Six
+     * frames of a drag therefore stacked six full shoves into a glass holding 3% and the wave came
+     * out at the clamp — three times the depth of its own water. An undamped impulse `v` settles at
+     * roughly `v / sqrt(tension)`, so that is what the energy already in the field is worth.
+     */
+    const settles = 1 / Math.sqrt(this.tension);
+    let peak = 0;
+    for (let i = 0; i < this.columns; i += 1) {
+      const potential = Math.abs(this.height[i] ?? 0) + Math.abs(this.velocity[i] ?? 0) * settles;
+      if (potential > peak) peak = potential;
+    }
+
+    const headroom = Math.max(0, 1 - peak / allowed);
+    return Math.min(1, this.rest / SHALLOW_LEVEL) * headroom;
   }
 
   /** The surface, as displacements from the rest level. Do not write to it. */

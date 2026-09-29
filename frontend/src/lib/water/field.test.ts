@@ -225,3 +225,53 @@ describe('WaterField', () => {
     expect(a).not.toBe(b);
   });
 });
+
+describe('how much water there is decides how much it can move', () => {
+  it('leaves an empty glass alone, however hard its tile is dragged', () => {
+    // Reported from the board: a goal at 0% rocked exactly like a full one when it was picked up,
+    // which is a surface drawn in a vessel that has nothing in it — water made out of a mouse.
+    const field = new WaterField();
+    field.setLevel(0, false);
+
+    for (let i = 0; i < 8; i += 1) field.tilt(-14);
+    frames(field, 30);
+
+    expect(field.isMoving()).toBe(false);
+    expect(field.heightAt(0.5)).toBe(0);
+  });
+
+  it('gives a nearly empty glass a smaller wave than a full one, not the same wave', () => {
+    const shallow = new WaterField();
+    shallow.setLevel(0.03, false);
+    const full = new WaterField();
+    full.setLevel(1, false);
+
+    for (const field of [shallow, full]) {
+      for (let i = 0; i < 6; i += 1) field.tilt(-14);
+      frames(field, 12);
+    }
+
+    const swing = (field: WaterField): number => {
+      let peak = 0;
+      for (const h of field.surface()) peak = Math.max(peak, Math.abs(h));
+      return peak;
+    };
+
+    // The invariant, stated as the numbers: a wave is never taller than the water it is made of.
+    // Six frames of a hard drag used to put 0.09 — the field's ceiling — into both of these.
+    expect(swing(shallow)).toBeLessThanOrEqual(0.03);
+    expect(swing(shallow)).toBeLessThan(swing(full) / 2);
+    expect(swing(shallow)).toBeGreaterThan(0);
+  });
+
+  it('does not rock a glass that has just been emptied', () => {
+    const field = new WaterField();
+    field.setLevel(0.6, false);
+    field.still();
+
+    field.setLevel(0, true);
+    frames(field, 30);
+
+    expect(field.isMoving()).toBe(false);
+  });
+});
