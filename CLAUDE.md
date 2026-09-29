@@ -126,6 +126,12 @@ work to the specialist that owns it rather than doing everything in the main ses
 and updates only the test assertions that quote the exact words it changed. `marketing-agent`
 writes no code at all: it hands over geometry and reasons, and `design-agent` draws.
 
+**`design-agent` has Bash, and only to look at its own work** — headless Chrome and the output it
+produces, per "Screens, and looking at them" below. It spent four milestones designing blind,
+reporting claims that another session had to screenshot before anyone knew whether they were true;
+a pass that can measure its own waterline stops guessing. It still installs nothing, runs no `git`,
+starts no server, and edits through `Edit`/`Write` rather than through a shell.
+
 **Gotcha — new agent definitions load on the next turn.** A file added to `.claude/agents/`
 isn't callable via the Agent tool until the orchestrator's next turn (a user message or a
 background-task notification). Create or edit agent files, then let a turn pass before delegating.
