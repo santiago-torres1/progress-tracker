@@ -37,6 +37,18 @@ export type AuthState =
 export interface AuthStore {
   getState(): AuthState;
   subscribe(listener: () => void): () => void;
+  /**
+   * Is there a session in storage to come back to?
+   *
+   * Synchronous, and asked BEFORE `start()` — it is what lets the app show a front door to
+   * somebody who has never been here instead of minting them an account they did not ask for.
+   * A returning visitor never sees that page, because this answers true for them.
+   *
+   * False when storage is blocked or empty, which is the safe way round: the worst outcome is
+   * that somebody who does have goals is offered the door once, presses the button, and resumes
+   * the session that was there all along — `start()` restores before it ever mints.
+   */
+  hasSession(): boolean;
   /** Starts (or resumes) sign-in. Safe to call more than once; the second call is a no-op. */
   start(): void;
   /** After a failure, try again — from a button a person pressed, never on a timer. */
@@ -108,6 +120,14 @@ export function createAuthStore(options: AuthStoreOptions = {}): AuthStore {
   const transport = options.transport === undefined ? defaultTransport() : options.transport;
   const store = options.store ?? defaultStore();
   const now = options.now ?? Date.now;
+
+  function hasStoredSession(): boolean {
+    try {
+      return store.read() !== null;
+    } catch {
+      return false;
+    }
+  }
 
   function setTimer(run: () => void, ms: number): ReturnType<typeof setTimeout> {
     return options.setTimer === undefined ? setTimeout(run, ms) : options.setTimer(run, ms);
@@ -305,6 +325,7 @@ export function createAuthStore(options: AuthStoreOptions = {}): AuthStore {
 
   return {
     getState: () => state,
+    hasSession: hasStoredSession,
     subscribe(listener) {
       listeners.add(listener);
       return () => {

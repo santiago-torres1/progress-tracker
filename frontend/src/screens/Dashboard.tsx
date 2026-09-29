@@ -292,7 +292,7 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
     }
     setSavedRecurrence(null);
     recurrences.reload();
-    setRecurrenceMessage('These days will not repeat any more. Everything already done stays.');
+    setRecurrenceMessage('These days stop repeating from today. Everything already done stays.');
     timeline.reload();
   }
 
@@ -317,7 +317,7 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
     if (templates.state.kind === 'loading') {
       return (
         <section className="dashboard" aria-label={SECTION_LABEL}>
-          <StatusNote state="loading" title="Fetching some starting points…" />
+          <StatusNote state="loading" title="Looking out some starting points…" />
         </section>
       );
     }
@@ -506,7 +506,7 @@ export function Dashboard({ now, onOpenArchive }: DashboardProps) {
         <StatusNote
           state="failure"
           variant="line"
-          title="Today’s plan is not loading just now."
+          title="Today’s plan is not arriving just now."
           body={failureCopy(timeline.state).body}
           onRetry={timeline.reload}
         />

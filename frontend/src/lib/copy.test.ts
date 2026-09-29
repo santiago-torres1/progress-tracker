@@ -15,35 +15,37 @@ function filled(fraction: number | null): GoalSummary {
 describe('dashboardHeadline', () => {
   it('says how full the glasses are, on the real numbers', () => {
     // 0.5, 0, 0.6, 0.75 and one null: the average of the four that have a denominator is 0.4625.
-    expect(dashboardHeadline(BOARD).title).toBe('Your glass is half full.');
+    expect(dashboardHeadline(BOARD).title).toBe('Level with the middle of the glass.');
   });
 
   it('counts the goals and the areas they cover', () => {
-    expect(dashboardHeadline(BOARD).detail).toBe('5 goals across 5 areas.');
+    expect(dashboardHeadline(BOARD).detail).toBe('5 goals across 5 areas of your life.');
   });
 
   it('leaves a null fraction out of the average instead of reading it as zero', () => {
     const half = dashboardHeadline([filled(0.5), filled(null)]).title;
     const quarter = dashboardHeadline([filled(0.5), filled(0)]).title;
 
-    expect(half).toBe('Your glass is half full.');
+    expect(half).toBe('Level with the middle of the glass.');
     expect(quarter).not.toBe(half);
   });
 
   it('has something calm to say when nothing has a denominator yet', () => {
     expect(dashboardHeadline([filled(null), filled(null)]).title).toBe(
-      'Everything here is under way.',
+      'Nothing here counts down. It only fills.',
     );
   });
 
   it('does not call an empty glass a failure', () => {
-    expect(dashboardHeadline([filled(0)]).title).toBe('Your glass is waiting for its first pour.');
+    expect(dashboardHeadline([filled(0)]).title).toBe(
+      'Empty so far. Every full glass starts here.',
+    );
   });
 
   it('reaches full without overshooting', () => {
-    expect(dashboardHeadline([filled(1)]).title).toBe('Your glass is full.');
-    expect(dashboardHeadline([filled(1.4)]).title).toBe('Your glass is full.');
-    expect(dashboardHeadline([filled(0.9)]).title).toBe('Your glass is nearly full.');
+    expect(dashboardHeadline([filled(1)]).title).toBe('Filled to the top.');
+    expect(dashboardHeadline([filled(1.4)]).title).toBe('Filled to the top.');
+    expect(dashboardHeadline([filled(0.9)]).title).toBe('Close to the brim.');
   });
 
   it('never grades: no headline mentions being behind or missing anything', () => {
@@ -58,8 +60,8 @@ describe('dashboardHeadline', () => {
 
   it('describes an empty board as room', () => {
     expect(dashboardHeadline([])).toEqual({
-      title: 'Nothing here yet. That is just room.',
-      detail: 'No goals on the board.',
+      title: 'Every board starts empty.',
+      detail: 'Nothing on the board yet.',
     });
   });
 });
@@ -84,7 +86,7 @@ describe('weekCopy', () => {
   it('celebrates a week where everything is done', () => {
     const done = week.filter((entry) => entry.status === 'completed');
     expect(weekCopy('14 Sep – 20 Sep 2026', done).headline).toBe(
-      'Every glass on this week is filled.',
+      'Every glass this week is filled.',
     );
   });
 });
@@ -93,7 +95,7 @@ describe('failureCopy', () => {
   it('says "not configured" for a demo with no data source, not "broken"', () => {
     const copy = failureCopy({ kind: 'unavailable', reason: 'missing_env', missing: ['X'] });
 
-    expect(copy.title).toBe('This demo is not connected to any data yet.');
+    expect(copy.title).toBe('Nothing is connected to this page yet.');
     expect(copy.body).toContain('running fine');
   });
 

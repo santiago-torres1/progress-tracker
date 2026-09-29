@@ -62,7 +62,7 @@ export function CalendarDay({
   if (total === 0) {
     countDetail = 'The day is yours';
   } else if (remaining === 0) {
-    countDetail = 'All done';
+    countDetail = 'All of it done';
   } else if (done === 0) {
     countDetail = `${remaining} to come`;
   } else {

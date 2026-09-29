@@ -45,7 +45,7 @@ export function ArchiveScreen({ onBack }: ArchiveScreenProps) {
       </header>
 
       {shelf.state.kind === 'loading' && (
-        <StatusNote state="loading" title="Looking on the shelf…" />
+        <StatusNote state="loading" title="Having a look on the shelf…" />
       )}
 
       {shelf.state.kind !== 'loading' && shelf.state.kind !== 'ok' && (
@@ -59,15 +59,16 @@ export function ArchiveScreen({ onBack }: ArchiveScreenProps) {
 
       {shelf.state.kind === 'ok' && shelf.state.data.goals.length === 0 && (
         <p className="archive__empty">
-          Nothing on the shelf yet. When a goal is done you can put it here, and it keeps whatever
-          it had in it.
+          Nothing on the shelf yet. A goal you have finished comes here with its water still in it,
+          and stays exactly as you left it.
         </p>
       )}
 
       {shelf.state.kind === 'ok' && shelf.state.data.goals.length > 0 && (
         <>
           <p className="archive__body">
-            Goals you have finished or put away. They are not ranked and nothing here is counted.
+            Goals you have finished, and goals you put away. They keep their water, they are not
+            ranked, and none of this is a score.
           </p>
           <GoalCanvas goals={shelf.state.data.goals} />
         </>

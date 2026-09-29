@@ -179,20 +179,26 @@ export function CloseIcon({ className }: IconProps) {
   );
 }
 
-/** The brand mark: the favicon's ring, as a component so the top bar can carry it. */
+/**
+ * The brand mark: the favicon's glass, as a component so the top bar can carry it.
+ *
+ * Two paths on a 32 box — a tumbler, and the same tumbler cut at the waterline — filled, never
+ * stroked. The waterline has no line of its own: it is the alpha step from 0.26 to 1, which is a
+ * harder edge than any hairline and costs nothing at this size. `currentColor` is the whole theme
+ * story, so there is one artwork and no `<style>` block.
+ *
+ * It is NOT the nav's `GlassIcon`, and the difference is technique rather than shape: this is solid
+ * two-tone, that is a 1.4px outline on a 16 box. Making either look like the other collapses the
+ * separation between the product's mark and a section of it. Also: never a ring (a half-filled
+ * circle is the system dark-mode glyph), never a second horizontal (an etched line inside a glass
+ * means a habit's minimum here), never a hue, and never any motion — the water is the thing that
+ * moves and a logo that fills is a progress bar.
+ */
 export function MarkIcon({ className }: IconProps) {
   return (
-    <svg
-      className={className}
-      viewBox="0 0 16 16"
-      aria-hidden="true"
-      fill="none"
-      stroke="currentColor"
-      strokeWidth={2}
-      strokeLinecap="round"
-    >
-      <circle cx="8" cy="8" r="5.5" opacity="0.3" />
-      <path d="M8 2.5a5.5 5.5 0 0 1 5.5 5.5" />
+    <svg className={className} viewBox="0 0 32 32" aria-hidden="true" fill="currentColor">
+      <path opacity="0.26" d="M6 2H26L24.154 26Q24 28 22 28H10Q8 28 7.846 26Z" />
+      <path d="M6.923 14H25.077L24.154 26Q24 28 22 28H10Q8 28 7.846 26Z" />
     </svg>
   );
 }

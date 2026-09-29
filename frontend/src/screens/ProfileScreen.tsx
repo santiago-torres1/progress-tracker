@@ -183,8 +183,8 @@ function ProfileFacts({
         <h2 className="profile__headline">This browser.</h2>
         <p className="profile__detail">
           {profile.isAnonymous
-            ? 'You are signed in anonymously. There is no name here because nobody asked you for one.'
-            : 'Your account, and the two settings that decide when your days begin and end.'}
+            ? 'No name, no email, nothing to remember. Nobody asked you for any of it, and this page is all the app knows.'
+            : 'Your account, and the two settings that decide where your days begin and end.'}
         </p>
       </header>
 
@@ -272,7 +272,7 @@ function ProfileFacts({
             <dd className="rows__value">
               {profile.expiresAt === null
                 ? 'Kept for as long as you want it'
-                : 'Ends 90 days after your last visit'}
+                : 'Deleted 90 days after your last visit'}
             </dd>
           </div>
         </dl>

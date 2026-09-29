@@ -4,7 +4,13 @@ import { beforeEach, describe, expect, it } from 'vitest';
 import { AppRoutes } from './App';
 import { NAV_SECTIONS } from './lib/navigation';
 import { goalById, jsonResponse, sessionPayload, stubFetch } from './test/fixtures';
-import { TEST_ZONE, forgetBrowserMemory, testAuthStore, workingTransport } from './test/harness';
+import {
+  TEST_ZONE,
+  forgetBrowserMemory,
+  returningStore,
+  testAuthStore,
+  workingTransport,
+} from './test/harness';
 
 /*
  * The app as a whole: which URL renders which screen, and what the frame says about where you are.
@@ -12,12 +18,19 @@ import { TEST_ZONE, forgetBrowserMemory, testAuthStore, workingTransport } from 
  * `AppRoutes` rather than `App` because a test has to start at a URL, which is what `MemoryRouter`
  * is for. Nothing else differs — `App` is the same tree with a browser history under it.
  *
+ * Every test here arrives as a RETURNING visitor, with a session already in storage, because that
+ * is who sees a route at all: somebody with nothing stored meets the front door first, and the
+ * last describe in this file is about them.
+ *
  * Nothing here fixes the clock, so every assertion below holds on any day.
  */
 function renderAt(path: string) {
   return render(
     <MemoryRouter initialEntries={[path]}>
-      <AppRoutes authStore={testAuthStore(workingTransport())} browserTimeZone={TEST_ZONE} />
+      <AppRoutes
+        authStore={testAuthStore(workingTransport(), returningStore())}
+        browserTimeZone={TEST_ZONE}
+      />
     </MemoryRouter>,
   );
 }
@@ -151,5 +164,56 @@ describe('the route table', () => {
     expect(SECTIONS.map((section) => section.path)).toEqual(
       NAV_SECTIONS.map((section) => section.path),
     );
+  });
+});
+
+describe('the front door', () => {
+  beforeEach(() => {
+    forgetBrowserMemory();
+  });
+
+  function arrive(store = testAuthStore(workingTransport())) {
+    return render(
+      <MemoryRouter initialEntries={['/']}>
+        <AppRoutes authStore={store} browserTimeZone={TEST_ZONE} />
+      </MemoryRouter>,
+    );
+  }
+
+  it('meets somebody who has never been here, and does not sign them in', async () => {
+    stubFetch();
+    const transport = workingTransport();
+    arrive(testAuthStore(transport));
+
+    expect(
+      await screen.findByRole('heading', { name: /no way to tell you that you failed/i }),
+    ).toBeInTheDocument();
+    expect(screen.queryByRole('region', { name: 'Your goals' })).not.toBeInTheDocument();
+
+    /*
+     * The whole reason this page exists. Every visit used to mint a real account before anybody
+     * had said they wanted one — a link opened and closed, a preview fetch, a bot — and each of
+     * those rows counts against the project's sign-in ceiling and has to be swept later.
+     */
+    expect(transport.signIns).not.toHaveBeenCalled();
+  });
+
+  it('signs somebody in when they ask for a board, and lands them on it', async () => {
+    stubFetch();
+    const transport = workingTransport();
+    arrive(testAuthStore(transport));
+
+    fireEvent.click(await screen.findByRole('button', { name: /start a board/i }));
+
+    expect(await screen.findByRole('region', { name: 'Your goals' })).toBeInTheDocument();
+    expect(transport.signIns).toHaveBeenCalledTimes(1);
+  });
+
+  it('never shows the door to somebody who already has a board', async () => {
+    stubFetch();
+    arrive(testAuthStore(workingTransport(), returningStore()));
+
+    expect(await screen.findByRole('region', { name: 'Your goals' })).toBeInTheDocument();
+    expect(screen.queryByRole('heading', { name: /no way to tell you/i })).not.toBeInTheDocument();
   });
 });

@@ -35,16 +35,23 @@ function averageFill(goals: readonly GoalSummary[]): number | null {
   return fractions.reduce((total, fraction) => total + fraction, 0) / fractions.length;
 }
 
-/** "Your glass is half full." — the mockup's line, said only when the numbers actually say it. */
+/**
+ * Where the water sits, said in words, at every level between empty and full.
+ *
+ * The app is called Half Full, so the one sentence this must never produce is "your glass is half
+ * full": inside the interface that is an advertisement rather than a reading. Each line describes
+ * the water and nothing else — no line is a verdict, and none of them can be reached by doing
+ * badly, because there is no doing badly here.
+ */
 function fillTitle(average: number | null): string {
-  if (average === null) return 'Everything here is under way.';
-  if (average === 0) return 'Your glass is waiting for its first pour.';
-  if (average < 0.25) return 'Your glass has started to fill.';
-  if (average < 0.45) return 'Your glass is filling.';
-  if (average < 0.55) return 'Your glass is half full.';
-  if (average < 0.85) return 'Your glass is more than half full.';
-  if (average < 1) return 'Your glass is nearly full.';
-  return 'Your glass is full.';
+  if (average === null) return 'Nothing here counts down. It only fills.';
+  if (average === 0) return 'Empty so far. Every full glass starts here.';
+  if (average < 0.25) return 'There is water in the glass.';
+  if (average < 0.45) return 'The water is climbing.';
+  if (average < 0.55) return 'Level with the middle of the glass.';
+  if (average < 0.85) return 'Past the middle, and still rising.';
+  if (average < 1) return 'Close to the brim.';
+  return 'Filled to the top.';
 }
 
 function goalsDetail(goals: readonly GoalSummary[]): string {
@@ -55,7 +62,7 @@ function goalsDetail(goals: readonly GoalSummary[]): string {
   if (areas.size === 0) {
     return `${count} ${goalWord} on the board.`;
   }
-  return `${count} ${goalWord} across ${areas.size} ${plural(areas.size, 'area', 'areas')}.`;
+  return `${count} ${goalWord} across ${areas.size} ${plural(areas.size, 'area', 'areas')} of your life.`;
 }
 
 /**
@@ -66,7 +73,7 @@ function goalsDetail(goals: readonly GoalSummary[]): string {
  */
 export function dashboardHeadline(goals: readonly GoalSummary[]): Headline {
   if (goals.length === 0) {
-    return { title: 'Nothing here yet. That is just room.', detail: 'No goals on the board.' };
+    return { title: 'Every board starts empty.', detail: 'Nothing on the board yet.' };
   }
   return { title: fillTitle(averageFill(goals)), detail: goalsDetail(goals) };
 }
@@ -88,7 +95,7 @@ export function weekCopy(periodLabel: string, entries: readonly CalendarEntry[])
 
   const things = plural(total, 'thing', 'things');
   const summary = `${periodLabel} · ${total} ${things} planned, ${done} already done`;
-  const headline = done === total ? 'Every glass on this week is filled.' : undefined;
+  const headline = done === total ? 'Every glass this week is filled.' : undefined;
   return { headline, summary };
 }
 
@@ -98,8 +105,8 @@ export interface StatusCopy {
 }
 
 const SLOW: StatusCopy = {
-  title: 'The data is taking its time.',
-  body: 'The server did not answer quickly enough. It usually settles on its own.',
+  title: 'The server is taking its time.',
+  body: 'It did not answer quickly enough. That usually sorts itself out in a moment.',
 };
 
 /** The API's own 503, which always names a short reason. */
@@ -108,15 +115,15 @@ function unavailableCopy(reason: UnavailableReason): StatusCopy {
     case 'missing_env':
     case 'invalid_config':
       return {
-        title: 'This demo is not connected to any data yet.',
-        body: 'The app itself is running fine — it just has nowhere to read from at the moment.',
+        title: 'Nothing is connected to this page yet.',
+        body: 'The app itself is running fine — it has nowhere to read from at the moment.',
       };
     case 'timeout':
       return SLOW;
     case 'upstream_error':
       return {
         title: 'Nothing to show just now.',
-        body: 'The server could not reach its database. It should come back by itself.',
+        body: 'The server could not reach its own database. That usually comes back on its own.',
       };
   }
 }
@@ -134,12 +141,12 @@ function failedCopy(reason: ApiFailureReason): StatusCopy {
     case 'http':
       return {
         title: 'The server answered in a way this page did not expect.',
-        body: 'Nothing is wrong on your side. It is worth another look in a moment.',
+        body: 'Nothing at your end did that. Another look in a moment usually works.',
       };
     case 'malformed':
       return {
         title: 'This page could not read the answer it was given.',
-        body: 'The response did not match what this version of the app expects.',
+        body: 'The answer did not match what this version of the app knows how to read. Ours to fix.',
       };
   }
 }
@@ -156,23 +163,23 @@ function cappedCopy(limit: string | null): StatusCopy {
     case 'goals_per_user':
       return {
         title: 'That is a full board.',
-        body: 'You have as many goals as this alpha holds. Finish one and it makes room again.',
+        body: 'This alpha holds this many goals at once. Finish one or put it on the shelf, and the room comes back.',
       };
     case 'recurrences_per_goal':
       return {
-        title: 'This goal has all the repeat rules it can hold.',
-        body: 'Change one of the rules it already has, and it will cover the new days too.',
+        title: 'This goal holds all the repeat rules it can.',
+        body: 'Edit one of the rules it already has and it will cover the new days too.',
       };
     case 'progress_entries_per_goal':
     case 'calendar_entries_per_goal':
       return {
-        title: 'This goal has a long history behind it.',
-        body: 'It has as many entries as one goal holds in this alpha. Everything already logged stays.',
+        title: 'That is a long history for one goal.',
+        body: 'It holds as many entries as one goal can in this alpha. Everything already logged stays exactly where it is.',
       };
     default:
       return {
         title: 'That is as far as this alpha goes.',
-        body: 'You have reached one of its built-in limits. Nothing you have already made is affected.',
+        body: 'A limit built into this version, not a judgement about anything. Nothing you have already made is touched.',
       };
   }
 }
@@ -193,7 +200,7 @@ export function conflictCopy(
       };
     case 'duplicate':
       return {
-        title: 'There is already a note on that day.',
+        title: 'That day already has a number on it.',
         body: 'Open the day and change the number that is there, rather than adding a second one.',
       };
     /*
@@ -203,12 +210,12 @@ export function conflictCopy(
     case 'entry_completed':
       return {
         title: 'That day is already done.',
-        body: 'Take the tick back first, and then the day can come off the calendar.',
+        body: 'It is the record of something you did, so it stays. Take the tick back and the day comes off like any other.',
       };
     case null:
       return {
         title: 'That did not fit with what is already saved.',
-        body: 'Nothing has changed. It is worth another look at the values before saving again.',
+        body: 'Nothing has changed, and nothing is lost. The values are worth one more look before saving.',
       };
   }
 }
@@ -226,24 +233,25 @@ export function failureCopy(failure: ApiFailure): StatusCopy {
     case 'unauthenticated':
       return {
         title: 'This session needs picking up again.',
-        body: 'Your goals are safe. The app just has to say hello to the server once more.',
+        body: 'Every goal is where you left it. The app only has to say hello to the server once more.',
       };
     case 'throttled':
       return {
         title: 'That is a lot of changes in a short while.',
-        body: 'Everything saved so far is saved. Give it a few seconds and carry on.',
+        body: 'Everything saved so far is saved. A few seconds and the next one will go through.',
       };
     case 'missing':
       return {
-        title: 'That is not here any more.',
-        body: 'It may have been removed already. The rest of the board is untouched.',
+        title: 'That one is already gone.',
+        body: 'It is not on the board any more. Everything else is exactly where it was.',
       };
     case 'conflict':
       return conflictCopy(failure.error, failure.reason, failure.limit);
     case 'rejected':
       return {
         title: 'This page asked for something the server could not read.',
-        body: failure.message ?? 'That is a fault in the app, not in anything you did.',
+        body:
+          failure.message ?? 'That is the app’s doing, not yours. Nothing was saved either way.',
       };
     case 'failed':
       return failedCopy(failure.reason);
@@ -262,17 +270,17 @@ export function signInFailureCopy(reason: AuthFailureReason): StatusCopy {
     case 'not_configured':
       return {
         title: 'This build has nowhere to keep your goals yet.',
-        body: 'It was put together without its database settings. Nothing is wrong at your end.',
+        body: 'It went out without its database settings. That is ours to fix, and nothing at your end caused it.',
       };
     case 'disabled':
       return {
         title: 'New visitors are not being let in just now.',
-        body: 'Anonymous accounts are turned off on this project at the moment. That is a setting here, not anything to do with you.',
+        body: 'Anonymous accounts are switched off on this project at the moment. That is a setting here, not anything to do with you.',
       };
     case 'rate_limited':
       return {
         title: 'A lot of people have arrived at once.',
-        body: 'New accounts are being handed out slowly from this network. Trying again shortly usually works.',
+        body: 'New accounts are being handed out slowly from this network. A minute or two and there will be one for you.',
       };
     case 'network':
       return {
@@ -282,7 +290,7 @@ export function signInFailureCopy(reason: AuthFailureReason): StatusCopy {
     case 'upstream':
       return {
         title: 'The sign-in service answered in a way this page did not expect.',
-        body: 'Nothing is wrong on your side. It is worth another go in a moment.',
+        body: 'Nothing at your end did that. Another go in a moment usually works.',
       };
   }
 }
@@ -305,7 +313,7 @@ export function expiryNote(expiresAt: string | null): string | null {
     year: 'numeric',
   }).format(when);
 
-  return `Your goals live in this browser for 90 days from your last visit — until ${date} if you stopped now. Each visit moves that forward.`;
+  return `Your board lives in this browser. 90 days without a visit and it is deleted — ${date}, if today were the last time. Every visit pushes that date back.`;
 }
 
 /**
@@ -325,8 +333,8 @@ export function occurrenceSummary(change: OccurrenceChange): string {
   }
   if (created === 0) {
     const were = plural(removed, 'session was', 'sessions were');
-    return `Saved. ${removed} upcoming ${were} taken off your calendar. Anything already done stays.`;
+    return `Saved. ${removed} upcoming ${were} taken off your calendar. Days you have already lived are untouched.`;
   }
   const were = plural(removed, 'session was', 'sessions were');
-  return `Saved. ${removed} upcoming ${were} replaced with ${created}. Anything already done stays.`;
+  return `Saved. ${removed} upcoming ${were} replaced with ${created}. Days you have already lived are untouched.`;
 }

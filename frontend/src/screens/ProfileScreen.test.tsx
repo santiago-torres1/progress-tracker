@@ -121,8 +121,8 @@ describe('ProfileScreen', () => {
       stubFetch();
       renderSignedIn(<ProfileScreen />);
 
-      expect(await screen.findByText(/Ends 90 days after your last visit/)).toBeInTheDocument();
-      expect(screen.getByText(/90 days from your last visit/)).toBeInTheDocument();
+      expect(await screen.findByText(/Deleted 90 days after your last visit/)).toBeInTheDocument();
+      expect(screen.getByText(/90 days without a visit/)).toBeInTheDocument();
 
       const page = screen.getByRole('region', { name: 'Profile' });
       expect(page.textContent).not.toMatch(/sign up|create an account|log in|password|export/i);

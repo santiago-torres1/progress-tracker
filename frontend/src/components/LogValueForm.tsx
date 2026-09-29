@@ -50,7 +50,7 @@ export function LogValueForm({ goal, todayIso, busy, onSubmit, onCancel }: LogVa
       <p className="log-value__standing">
         Currently {formatNumber(goal.measured.currentValue)}
         {unit}, heading for {formatNumber(goal.measured.targetValue)}
-        {unit}.
+        {unit}. A number that went the other way still belongs here.
       </p>
 
       <div className="log-value__row">

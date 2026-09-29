@@ -2,9 +2,11 @@
  * The dashboard's layout, and nothing else: every part of this screen is a component with its
  * own file. What is decided here is the order they stand in and the air between them.
  *
- * The headline is the loudest type in the app on purpose — "Your glass is half full." is the one
- * sentence this product exists to say. Above it the shell sets the section's name as an eyebrow
- * (`.content__heading`), which is what lets this line take --fs-2xl without two headings competing.
+ * The headline is the loudest type in the app on purpose: it is the one sentence the screen exists
+ * to say, and `dashboardHeadline()` in `lib/copy.ts` writes it from how full the glasses actually
+ * are, one rung of seven. Do not quote the string here — it is copy and it moves. Above it the shell
+ * sets the section's name as an eyebrow (`.content__heading`), which is what lets this line take
+ * --fs-2xl without two headings competing.
  */
 
 .dashboard {

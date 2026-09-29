@@ -31,7 +31,8 @@ export interface Glass {
 
 interface Entry {
   glass: Glass;
-  lastLeft: number | null;
+  /** The tile's horizontal CENTRE last frame — see the note in `tick`. */
+  lastCentre: number | null;
 }
 
 const entries = new Set<Entry>();
@@ -87,11 +88,22 @@ function tick(now: number): void {
   const work: { glass: Glass; onScreen: boolean }[] = [];
   for (const entry of entries) {
     const box = entry.glass.element.getBoundingClientRect();
-    if (entry.lastLeft !== null) {
-      const dx = box.left - entry.lastLeft;
+
+    /*
+     * The CENTRE, not the left edge.
+     *
+     * A picked-up tile is styled `translateY(-2px) scale(1.015)`, and a rect includes transforms —
+     * so measuring the left edge meant lifting a tile moved it several pixels in the water's eyes
+     * and shoved the liquid without anybody dragging anything. Dropping it shoved the other way.
+     * A scale about the centre leaves the centre where it is, and a vertical nudge never touched
+     * x at all, so this reads the drag and ignores the decoration.
+     */
+    const centre = box.left + box.width / 2;
+    if (entry.lastCentre !== null) {
+      const dx = centre - entry.lastCentre;
       if (dx !== 0) entry.glass.moved(dx);
     }
-    entry.lastLeft = box.left;
+    entry.lastCentre = centre;
     // Judged from the box we already have. A tile nobody can see needs no waves, and asking
     // for a second rectangle to find that out would cost more than the drawing does.
     const onScreen =
@@ -125,7 +137,7 @@ export function wake(): void {
 }
 
 export function join(glass: Glass): () => void {
-  const entry: Entry = { glass, lastLeft: null };
+  const entry: Entry = { glass, lastCentre: null };
   entries.add(entry);
   byGlass.set(glass, entry);
   listen();

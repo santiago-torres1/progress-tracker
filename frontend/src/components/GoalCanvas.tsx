@@ -44,8 +44,8 @@ export function GoalCanvas({
     <>
       {arrange !== undefined && (
         <p className="goal-canvas__hint" id={ARRANGE_HINT_ID}>
-          Pick a tile up with Space, move it with the arrow keys, resize it with + and −, and drop
-          it with Space. Escape puts it back.
+          Drag a tile anywhere. Or pick one up with Space: arrows move it, + and − resize it, Space
+          sets it down, Escape puts it back.
         </p>
       )}
 

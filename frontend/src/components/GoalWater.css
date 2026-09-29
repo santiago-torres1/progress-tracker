@@ -29,7 +29,16 @@
  * only added once the canvas has measured itself and joined the loop.
  */
 .goal-tile:has(> .goal-tile__glass > .goal-tile__water--live) .goal-tile__body,
-.goal-tile:has(> .goal-tile__glass > .goal-tile__water--live) .goal-tile__line,
-.goal-tile:has(> .goal-tile__glass > .goal-tile__water--live) .goal-tile__was {
+.goal-tile:has(> .goal-tile__glass > .goal-tile__water--live) .goal-tile__line {
   display: none;
 }
+
+/*
+ * `.goal-tile__was` is NOT in that list, and was, wrongly, until now.
+ *
+ * It looks like water because it sits in the glass, but it is a mark on the WALL — the same pair
+ * of etches as the habit minimum, at the level a measured goal has come down from. Hiding it with
+ * the water meant every tile the canvas drives lost that mark while the foot underneath still
+ * said "a little lower than it was on September 3", referring to a line that was no longer there.
+ * The minimum, built identically, was never hidden.
+ */
