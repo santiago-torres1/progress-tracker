@@ -1,0 +1,124 @@
+/* Bench chrome only. The vessel is a stand-in for a tile, not the real thing. */
+
+.lab {
+  max-width: 76rem;
+  margin: 0 auto;
+  padding: var(--sp-5) var(--sp-4);
+}
+
+.lab h1 {
+  margin: 0 0 var(--sp-2);
+}
+
+.lab__note {
+  max-width: 44rem;
+  margin: 0 0 var(--sp-4);
+  color: var(--muted);
+  font-size: var(--fs-sm);
+}
+
+.lab__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  align-items: center;
+  margin-bottom: var(--sp-5);
+}
+
+.lab__controls button {
+  padding: var(--sp-1) var(--sp-3);
+  font: inherit;
+  font-size: var(--fs-sm);
+  color: var(--text);
+  background-color: var(--surface-2);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-full);
+  cursor: pointer;
+}
+
+.lab__controls button.is-on {
+  color: var(--surface);
+  background-color: var(--text);
+  border-color: var(--text);
+}
+
+.lab__stats {
+  margin-left: auto;
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.lab__row + .lab__row {
+  margin-top: var(--sp-5);
+}
+
+.lab__row h2 {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.lab__cells {
+  display: flex;
+  gap: var(--sp-4);
+}
+
+.lab__cell {
+  flex: 1;
+  margin: 0;
+}
+
+/* The frame stays put while the vessel inside it moves, so a yanked glass does not reflow the page
+   and the movement is visible against something. */
+/* The frame stays put and is the size of the gesture, so a yanked vessel stays inside the picture
+   and the movement is visible against something that did not move. */
+.lab__frame {
+  position: relative;
+  height: 17rem;
+  overflow: hidden;
+  background-color: var(--surface-2);
+  border: 1px dashed var(--border);
+  border-radius: var(--r-sm);
+}
+
+.lab__vessel {
+  position: absolute;
+  inset: 4rem;
+  overflow: hidden;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm) var(--r-sm) var(--r-xl) var(--r-xl);
+  box-shadow: var(--sh-1), var(--sh-rim);
+}
+
+.lab__canvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.lab__cell figcaption {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+/* The filmstrip: the same glass at seven moments, so a sequence fits in one screenshot. */
+.lab__cells--strip {
+  gap: var(--sp-2);
+}
+
+/* Tall enough that a vessel yanked the full travel in either direction is still entirely inside its
+   frame: the first strip cut the bottom off a dropped glass, which is exactly where the gap is. */
+.lab__cells--strip .lab__frame {
+  height: 14rem;
+}
+
+.lab__cells--strip .lab__vessel {
+  inset: 3.75rem 0.9rem;
+}
