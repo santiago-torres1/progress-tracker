@@ -9,6 +9,52 @@ Release sections are generated from Conventional Commit messages by `npm run rel
 (git-cliff, configured in `cliff.toml`) and may be edited by hand before the release pull request
 is merged. See the [Release Process](README.md#release-process) section of the README.
 
+## [0.4.1-alpha] - 2026-09-29
+
+The product introduces itself: it has a name, a front door, a mark, and text written by somebody
+with a voice. Covers the `0.4.0` milestone as well — that one shipped to `main` without a release
+section, so both are recorded here.
+
+### Added
+
+- **The app is called `Half Full`.** The name is in the top bar, the tab, the favicon and the
+  words. The repository, the packages and every storage key deliberately stay `progress-tracker`:
+  renaming the repository breaks the OIDC trust policy's subject claim, and renaming a storage key
+  signs every existing visitor out of a board they could never reach again.
+- **A front door.** A first visit used to land on an empty board that said "add a goal", having
+  never said what a goal is here. There is now a page that states what the app does and stops.
+  **It also stops minting accounts for people who never arrived**: until now the first request of
+  every visit created a real account — a link opened and closed, a preview fetch, a bot — and the
+  account is now created by somebody pressing a button. A returning visitor never sees the page.
+- **A mark with all six life areas in it.** A colourless glass on a dark plate lit by six lights,
+  one per area, none of them touching the glass — so all six are present as the set, and no
+  element claims an area.
+- **Light on the water.** A glint on each wave flank, absorption down both walls, light focused on
+  the base, and a fourth gradient stop for the film just under the surface — mirrored into the CSS
+  water so the reduced-motion liquid matches.
+- **A replacement water model, in a bench nothing renders yet.** `frontend/lab.html` is a
+  dev-only page, absent from the production build, where a particle fluid runs beside the shipped
+  one: it comes apart into droplets, answers a vertical gesture, and wets the walls it touches.
+
+### Changed
+
+- **Every word the interface says.** The board's headline no longer says the product's name back
+  to the reader; caps, limits and the ninety days are stated as plain facts; and the habit minimum
+  — the kindest mechanic in the product — is spoken in three more places, never as a target being
+  missed.
+
+### Fixed
+
+- **A wave is never taller than the water it is made of.** A goal at 0% rocked exactly like a full
+  one when its tile was dragged, which is a surface drawn in a vessel with nothing in it. Every
+  disturbance is now scaled by how much water is actually there, and an empty glass is inert.
+- **The waterline no longer strikes through a goal's own title**, and the two renderers no longer
+  draw two different liquids — which is what had been reported as the water looking glitchy.
+- **`My full glasses` keeps its mark.** A measured goal's "was" line is a wall etch, not water,
+  and it was being hidden behind the live water while the sentence under it still referred to it.
+- The browser chrome no longer disagrees with the page it frames: the two `theme-color` metas were
+  colours this app does not use.
+
 ## [0.3.1-alpha] - 2026-09-24
 
 Four things reported from the live app, and the first two turned out to be one.
