@@ -52,10 +52,14 @@
 /*
  * THE LOCKUP: the glass, then "Half Full". Mark left, words right, on one baseline.
  *
- * ONE INK FOR ALL OF IT, and it is --text rather than --accent. Not a preference: --accent #2f6f5c
- * and --area-health #2e7d57 are four points apart, so an accent-coloured glass 40px above a board
- * where colour means a life area and nothing else is readable as a health goal. The mark inherits
- * through `currentColor`, which is why the colour lives here and not in the SVG.
+ * THE WORDS ARE ONE INK AND IT IS --text, NOT --accent. Not a preference: --accent #2f6f5c and
+ * --area-health #2e7d57 are four points apart, so accent-coloured brand furniture 40px above a
+ * board where colour means a life area and nothing else is readable as a health goal.
+ *
+ * The mark is the one thing here that is allowed colour, and it does not take it from this rule.
+ * It carries all six areas at once as lights in its own room, none of them touching the glass, so
+ * nothing in it claims a single area — see MarkIcon. It also stops inheriting `currentColor`: the
+ * plate is always the night on both themes, which is why its values are --mark-* tokens.
  */
 .brand {
   display: flex;
@@ -67,30 +71,26 @@
 }
 
 /*
- * 18px, down from 20px: the vessel is 26 of 32 units, so an 18px box draws a 14.6px glass against a
- * ~10.5px cap height — the 1.39 ratio the outgoing ring mark had at 1.31, where 20px gives 16.25px
- * and looms over the name.
+ * 20px, up from 18px, and the reason is that the mark is now a plate rather than a bare glyph. The
+ * vessel is 22 of 32 units inside it, so a 20px tile draws a 13.75px glass where the outgoing 18px
+ * bare mark drew 14.6px. Holding the tile at 18px would have shrunk the glass to 12.4px against an
+ * 11px cap height, and the lockup read mark-light; 20px puts the glass back where it was and the
+ * tile at 1.82 x the cap height, which is what a plated mark beside 15px semibold wants.
  *
- * THE NUDGE GOES DOWN, NOT UP, and the sign is worth the arithmetic because it was specified the
- * other way. The goal is the vessel's centre on the centre of the CAP BAND. Two things put it above
- * that band, not below:
- *
- * 1. The vessel is y=2..28 of a 32 box, so its own centre is 1/32 of the box ABOVE the box's —
- *    0.56px at 18px — and `align-items: center` centres the box, not the glass.
- * 2. A line box hangs more space above the caps than below the baseline, because the ascent carries
- *    accent room the cap height does not use. At 15px/1.5 the cap band's centre sits BELOW the line
- *    box's by 0.96px in Segoe UI, 0.02px in SF Pro, -0.21px in Roboto.
- *
- * So the correction is +1.52px (Segoe UI), +0.58px (SF Pro), +0.35px (Roboto) downwards. 1px is the
- * integral value inside that spread — fractional would resample the glyph for a tenth of a pixel —
- * and it is the right side of centre on all three. -1px put the glass 2.5px high on Windows, which
- * is 17% of its own height.
+ * THE NUDGE IS SMALLER THAN IT WAS, and only because the plate changed what is being aligned. A
+ * bare glyph's vessel sits 1/32 of its box above the box's own centre, so it needed that offset
+ * cancelling as well; a tile's optical centre IS its box. What is left is only the difference
+ * between the centre of the cap band and the centre of the line box, measured at this exact setting
+ * (15px / 600 / 1.5 / -0.01em): cap height 11.00px, ascent 16.00, descent 4.00, so the line box is
+ * 22.50px with its baseline at 17.25 and the cap band's centre at 11.75 — 0.50px below the line
+ * box's 11.25. Fractional, and kept fractional: the tile's top already lands on (22.5 - 20) / 2 =
+ * 1.25px, so there is no whole-pixel grid here to protect.
  */
 .brand__mark {
   flex: none;
-  width: 1.125rem;
-  height: 1.125rem;
-  transform: translateY(1px);
+  width: 1.25rem;
+  height: 1.25rem;
+  transform: translateY(0.5px);
 }
 
 /*

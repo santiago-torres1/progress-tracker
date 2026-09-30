@@ -124,14 +124,19 @@
   color: var(--text);
 }
 
-/* 22px against an 18px name: the vessel is 26 of the artwork's 32 units, so this draws an ~17.9px
-   glass against a ~12.6px cap height — the same 1.4 ratio the top bar arrived at, and the same 1px
-   downward nudge, because the mark's base sits on the baseline while its lip runs past the cap. */
+/* 24px against an 18px name, which is the top bar's 20-against-15 at this step of the scale: the
+   tile lands at 1.82 x the cap height in both places, and the vessel inside it (22 of the
+   artwork's 32 units) draws a 16.5px glass here against a 13.2px cap.
+
+   The nudge is the top bar's, scaled. Font metrics are proportional to font-size and the line
+   height is the same --lh-body, so the 0.50px measured at 15px is 0.60px at 18px: cap 13.20,
+   ascent 19.20, descent 4.80, line box 27.00, baseline at 20.70, cap-band centre 14.10 against the
+   line box's 13.50. See .brand__mark for why a plated mark needs less of a nudge than a bare one. */
 .welcome__mark {
   flex: none;
-  width: 1.375rem;
-  height: 1.375rem;
-  transform: translateY(1px);
+  width: 1.5rem;
+  height: 1.5rem;
+  transform: translateY(0.6px);
 }
 
 .welcome__name {
