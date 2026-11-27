@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16" width="16" height="16" role="img" aria-label="Half Full">
+<title>Half Full</title>
+<path id="hf-water" d="M5 8 H11 V11.5 Q11 13 9.5 13 H6.5 Q5 13 5 11.5 Z" fill="#5aa9b5"/>
+<path id="hf-glass" fill-rule="evenodd" d="M4 2 H12 V11.5 Q12 14 9.5 14 H6.5 Q4 14 4 11.5 Z M5 3 V11.5 Q5 13 6.5 13 H9.5 Q11 13 11 11.5 V3 Z" fill="#e7ece9"/>
+</svg>

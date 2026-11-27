@@ -58,3 +58,6 @@ infra/**/backend.hcl
 
 # Agent worktrees (isolated checkouts created inside the repo)
 .claude/worktrees/
+
+# Scratch drop folder for files brought in by hand (design exports, downloads)
+tmp/
