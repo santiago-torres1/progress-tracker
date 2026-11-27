@@ -37,7 +37,7 @@
  *    inflation lands under the floor where the vessel clips it away. See `mesh.test.ts`.
  */
 
-import type { PathSink } from '../lib/water/renderer';
+import type { PathSink } from '../lib/water/path';
 import type { Fluid } from './fluid';
 
 /** Splat radius as a multiple of particle spacing. See the note above: a lone particle must draw. */

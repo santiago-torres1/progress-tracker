@@ -34,3 +34,22 @@
   border: 1px dashed var(--border-strong);
   border-radius: var(--r-lg);
 }
+
+/* `?phone=1`: a 390px phone with the shell's own 16px gutters, so a board inside is 358px wide. The
+   outline is a shadow rather than a border so it takes none of those 390. */
+.gal--phone {
+  padding-inline: var(--sp-2);
+}
+
+.gal--phone .gal__stage {
+  width: 390px;
+  border: 0;
+  border-radius: 1.75rem;
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+/* The shell brings its own 16px gutters; the stage adding a second pair made its board 326px. */
+.gal--phone .gal__stage:has(> .shell) {
+  padding: 0;
+  overflow: hidden;
+}

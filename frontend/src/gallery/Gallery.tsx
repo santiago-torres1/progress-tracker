@@ -15,8 +15,12 @@ import { AppShell } from '../components/AppShell';
 import { CalendarWeek } from '../components/CalendarWeek';
 import { GoalAction } from '../components/GoalAction';
 import { GoalCanvas } from '../components/GoalCanvas';
+import { GoalDetail } from '../components/GoalDetail';
 import { ProfileView } from '../screens/ProfileScreen';
+import { WelcomeScreen } from '../screens/WelcomeScreen';
+import { BoardMeasure } from './BoardMeasure';
 import { GALLERY_NOW, GOALS, PROFILE, WEEK } from './fixtures';
+import { GlassLevels, GlassStudy } from './GlassStudy';
 import type { Arrange, ArrangeHandleProps } from '../lib/useArrange';
 import type { GoalSummary } from '../types/api';
 import './gallery.css';
@@ -41,6 +45,9 @@ function stillArrange(heldId: string | null): Arrange {
     registerCell: () => () => undefined,
   };
 }
+
+/** The measured goal that has come down from where it was: the detail case opens this one. */
+const SAVE = GOALS.find((goal) => goal.id === 'g-save');
 
 /** As much of the session as the frame reads. */
 const SHELL_SESSION = {
@@ -107,8 +114,13 @@ function board(heldId: string | null, undoable: ReadonlySet<string>) {
 }
 
 export function Gallery() {
+  // `?phone=1`: every stage is a 390px phone with the shell's 16px gutters, so a board inside is
+  // 358px. Not the window — headless Chrome on Windows never lays out narrower than 500px, so a 390
+  // window is a 500 page cropped. The shelves' columns follow the board's width (auto-fill), so this
+  // is a 390 phone's board; only the phone media query (a 12px gap instead of 16) does not fire.
+  const phone = new URLSearchParams(window.location.search).get('phone') === '1';
   return (
-    <div className="gal">
+    <div className={phone ? 'gal gal--phone' : 'gal'}>
       <h1 className="gal__title">Component gallery</h1>
 
       <Case
@@ -142,6 +154,38 @@ export function Gallery() {
             <p className="footnote">The page renders here.</p>
           </AppShell>,
         )}
+      </Case>
+
+      <Case
+        title="Detail · a goal opened"
+        note="Put something aside, opened: its own glass at the top of the panel, with the “was” etch and the line that explains it."
+      >
+        {SAVE !== undefined && (
+          <GoalDetail
+            goal={SAVE}
+            areas={[]}
+            entries={[]}
+            todayIso="2026-09-23"
+            busy={false}
+            notice={null}
+            recurrenceMessage={null}
+            existingRecurrenceId={null}
+            onEdit={() => Promise.resolve(true)}
+            onArchive={() => undefined}
+            onComplete={() => undefined}
+            onDelete={() => undefined}
+            onSaveRecurrence={() => undefined}
+            onRemoveRecurrence={() => undefined}
+            onClose={() => undefined}
+          />
+        )}
+      </Case>
+
+      <Case
+        title="Welcome · the front door"
+        note="The page a new visitor sees. Its glass is its own (WelcomeScreen.css), not a goal tile."
+      >
+        <WelcomeScreen onBegin={() => undefined} />
       </Case>
 
       <Case
@@ -184,6 +228,37 @@ export function Gallery() {
           onSelectEntry={() => undefined}
         />
       </Case>
+
+      {/* The glass study: tiles become glasses. Not production — see GlassStudy.tsx. */}
+      <Case
+        title="Glass study · A"
+        note="A card with the glass standing at one side and the words beside it. Read regularly is picked up, Move your body was just ticked, Guitar's Done has focus."
+      >
+        <GlassStudy variant="A" />
+      </Case>
+
+      <Case
+        title="Glass study · B"
+        note="The glass is the tile: it stands on a shelf and its words hang under it like a label. Same board, same states."
+      >
+        <GlassStudy variant="B" />
+      </Case>
+
+      <Case
+        title="Glass study · C"
+        note="B's shelf with A's arrangement: the glass and its words side by side, and no card. Same board, same states."
+      >
+        <GlassStudy variant="C" />
+      </Case>
+
+      <Case
+        title="Glass study · levels"
+        note="The liquid alone, every size at 0, 4, 34, 62 and 100%. The medium row carries a habit minimum at 25%; the large row a measured goal's “was” etch 8 points above the water."
+      >
+        <GlassLevels />
+      </Case>
+
+      {new URLSearchParams(window.location.search).get('measure') === '1' && <BoardMeasure />}
     </div>
   );
 }

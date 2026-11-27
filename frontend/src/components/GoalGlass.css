@@ -1,0 +1,195 @@
+/*
+ * The glass. Every colour is a token and none of the glass is a hue: the walls, rim, base and room
+ * are --vessel-* and --glass-*, and the only thing in here that carries the area's colour is the
+ * liquid (and the light it throws on the table, and a minimum the water has passed).
+ *
+ * The three layers are stacked by tree order — back SVG, liquid slot, front SVG — all positioned,
+ * none with a z-index, so the glass's front is always over whatever is in the slot.
+ */
+
+.goal-glass {
+  /* The liquid's depth: resting, or one step deeper at the brim. */
+  --lq-top: var(--liquid-top);
+  --lq-mid: var(--liquid-mid);
+  --lq-deep: var(--liquid-deep);
+  /* A met minimum sets in the area's colour — but on water this rich the plain hue sinks into the
+     liquid it is etched over. Mixed towards --text it goes darker than the water in light and
+     lighter than it in dark: one formula for both rooms. Declared here because --goal is only in
+     scope inside a [data-area] element, which the glass always is. */
+  --etch-kept: color-mix(in srgb, var(--goal) 58%, var(--text));
+
+  position: relative;
+  display: block;
+  flex: none;
+  pointer-events: none;
+  transition: transform var(--mo-slow) var(--ease-out);
+}
+
+/* A full glass goes one step deeper, and holds still. */
+.goal-glass--full {
+  --lq-top: var(--liquid-top-full);
+  --lq-mid: var(--liquid-mid-full);
+  --lq-deep: var(--liquid-deep-full);
+}
+
+.goal-glass__back,
+.goal-glass__front {
+  position: absolute;
+  inset: 0;
+  display: block;
+  overflow: visible;
+}
+
+/*
+ * THE SLOT. Exactly the vessel's inside — its box, with the floor's corner radius on its bottom
+ * corners — positioned and sized inline from the same token geometry the SVG draws with. Whatever
+ * draws live water mounts here, between the glass's back and its front.
+ */
+.goal-glass__liquid {
+  position: absolute;
+  display: block;
+}
+
+/*
+ * The still liquid steps aside once the live one is running, or two surfaces at slightly different
+ * levels make the glass look doubled. It comes back on its own for anyone who asked for less motion
+ * and wherever the canvas never started, because GoalWater only adds `--live` once it has measured
+ * itself and joined the loop.
+ */
+.goal-glass:has(.goal-tile__water--live) .goal-glass__still {
+  display: none;
+}
+
+/* --- the liquid, at rest ------------------------------------------------------------------------
+   liquidPaint.ts's recipe: the film under the surface at 0.6 of the top stop, the body deepening to
+   the floor, absorption at the walls (WALL_ALPHA_ROUND 0.2, the far wall 0.8 of it), the top surface
+   mixed BAND_MIX 0.35 towards white at 0.6, and the front edge at EDGE_ALPHA 0.9, 1.25px. */
+
+.goal-glass__stop-film {
+  stop-color: color-mix(in srgb, var(--goal) calc(var(--lq-top) * 0.6), transparent);
+}
+
+.goal-glass__stop-top {
+  stop-color: color-mix(in srgb, var(--goal) var(--lq-top), transparent);
+}
+
+.goal-glass__stop-mid {
+  stop-color: color-mix(in srgb, var(--goal) var(--lq-mid), transparent);
+}
+
+.goal-glass__stop-deep {
+  stop-color: color-mix(in srgb, var(--goal) var(--lq-deep), transparent);
+}
+
+.goal-glass__stop-wall-near {
+  stop-color: color-mix(in srgb, var(--goal) 20%, transparent);
+}
+
+.goal-glass__stop-wall-far {
+  stop-color: color-mix(in srgb, var(--goal) 16%, transparent);
+}
+
+/* Fading to the same hue at zero, not to transparent black, so no gradient greys on its way out. */
+.goal-glass__stop-clear {
+  stop-color: rgb(from var(--goal) r g b / 0);
+}
+
+.goal-glass__band {
+  fill: color-mix(in srgb, var(--goal) 65%, white);
+  fill-opacity: 0.6;
+}
+
+.goal-glass__edge {
+  fill: none;
+  stroke: var(--goal);
+  stroke-opacity: 0.9;
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+}
+
+/* --- the table ---------------------------------------------------------------------------------- */
+
+.goal-glass__stop-contact {
+  stop-color: var(--vessel-contact);
+}
+
+.goal-glass__stop-contact-clear {
+  stop-color: rgb(from var(--vessel-contact) r g b / 0);
+}
+
+/* The light that got through the water, scaled by how much water it got through. */
+.goal-glass__stop-pool {
+  stop-color: color-mix(
+    in srgb,
+    var(--goal) calc(var(--caustic) * var(--fill, 0) * 50%),
+    transparent
+  );
+}
+
+/* --- the glass ---------------------------------------------------------------------------------- */
+
+.goal-glass__room {
+  fill: var(--vessel-fill);
+}
+
+.goal-glass__rim-far {
+  fill: none;
+  stroke: var(--vessel-ink);
+  stroke-opacity: 0.55;
+  stroke-width: 1;
+}
+
+.goal-glass__streak {
+  fill: var(--glass-hi-soft);
+}
+
+.goal-glass__base {
+  fill: var(--vessel-base);
+}
+
+.goal-glass__floor {
+  fill: none;
+  stroke: var(--vessel-ink);
+  stroke-opacity: 0.45;
+  stroke-width: 1;
+}
+
+.goal-glass__wall,
+.goal-glass__rim {
+  fill: none;
+  stroke: var(--vessel-ink);
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+}
+
+/* Etches: the groove and the light caught on its lower edge — the pair reads on water and on
+   empty glass alike (tokens.css, --etch-*). */
+.goal-glass__groove {
+  fill: var(--etch-ink);
+}
+
+.goal-glass__catch {
+  fill: var(--etch-lit);
+}
+
+/* Where a measured goal used to be: the same pair at a whisper. */
+.goal-glass__etch--was {
+  opacity: 0.55;
+}
+
+.goal-glass__etch--kept rect {
+  fill: var(--etch-kept);
+}
+
+/* Forced colours: the system draws the glass in its own ink, and the liquid is the level. */
+@media (forced-colors: active) {
+  .goal-glass__wall,
+  .goal-glass__rim,
+  .goal-glass__floor {
+    stroke: CanvasText;
+  }
+
+  .goal-glass__edge {
+    stroke: Highlight;
+  }
+}

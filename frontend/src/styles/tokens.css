@@ -235,6 +235,54 @@
      vessel is at rest, and the next place will want the same two numbers. */
   --sh-set: 0 1px 2px rgba(20, 38, 30, 0.07), 0 2px 6px -2px rgba(20, 38, 30, 0.06);
 
+  /* --- A goal as a standing glass (layout B, chosen 2026-11-25) ---------------
+     The board's tiles are glasses: `components/GoalGlass.tsx` draws the glass and the still
+     liquid from these, and the live liquid (`lib/water/liquidPaint.ts`, via `readLiquidTints` and
+     `readVessel`) reads the same numbers. A change here is a change to the jsdom fallbacks too:
+     `VESSEL_FALLBACK` in `lib/water/vessel.ts` and `LIQUID_STOPS` in `lib/water/liquidPaint.ts`.
+
+     The liquid. Nothing reads ON this water any more, so it is no longer capped by the contrast of
+     copy over it, and these were the bench's glass row exactly: alpha of
+     the area colour at the surface, mid-depth and floor. One set for both themes, as on the bench —
+     the dark hues are the light end of each pair, so the same alpha reads as the same depth. */
+  --liquid-top: 30%;
+  --liquid-mid: 50%;
+  --liquid-deep: 64%;
+  --liquid-top-full: 34%;
+  --liquid-mid-full: 54%;
+  --liquid-deep-full: 68%;
+
+  /* The vessel, unitless CSS px (they feed SVG arithmetic as well as layout). Large is the bench's
+     8 cm drinking glass, unchanged; medium and small are the same glass at 5/6 and 2/3, so the three
+     sizes are one shape and importance is how big it is. Taper is floor width over rim width;
+     floor-r is the base corner radius as a fraction of the rim width (14/96 on the bench); foot is
+     the thickness of the glass under the liquid, as a fraction of the vessel's height — outside the
+     liquid's vessel, so the water's own geometry is the bench's. */
+  --vessel-sm-w: 64;
+  --vessel-sm-h: 100;
+  --vessel-md-w: 80;
+  --vessel-md-h: 125;
+  --vessel-lg-w: 96;
+  --vessel-lg-h: 150;
+  --vessel-taper: 0.86;
+  --vessel-floor-r: 0.146;
+  --vessel-foot: 0.06;
+
+  /* The glass itself, hue-free like the rest of the material. The bench draws its walls in
+     --glass-rim, which is white at 0.85 and disappears entirely against a light room, so an empty
+     glass there is not a glass at all. --vessel-ink is a wall seen edge-on that reads in both rooms;
+     --vessel-fill is the room seen through the empty part; --vessel-base is the thick bottom.
+
+     --vessel-ink holds 3:1 against all three stops of the room (measured, gallery `?measure=1`):
+     an empty glass is drawn by its walls alone, and it should be findable without its words. At
+     0.36 it was 2.10–2.14:1 here and 2.25–2.33:1 in dark. */
+  --vessel-ink: rgba(22, 40, 32, 0.52);
+  --vessel-fill: rgba(255, 255, 255, 0.3);
+  --vessel-base: rgba(255, 255, 255, 0.62);
+  --vessel-contact: rgba(20, 38, 30, 0.24);
+  /* The shelf a row of glasses stands on: a line, not a surface. */
+  --shelf: rgba(22, 40, 32, 0.12);
+
   /* The drawer's veil. Not themed towards the room: a scrim is a shadow cast over the page, so it
      is the same near-black in both themes and only its strength changes — a dark room needs a
      little more of it before the page behind reads as "not this". */
@@ -317,6 +365,12 @@
       0 1px 2px rgba(0, 0, 0, 0.5), 0 4px 10px -2px rgba(0, 0, 0, 0.45),
       0 22px 34px -16px rgba(0, 0, 0, 0.66), 0 40px 62px -32px rgba(0, 0, 0, 0.74);
     --sh-set: 0 1px 2px rgba(0, 0, 0, 0.45), 0 3px 8px -2px rgba(0, 0, 0, 0.4);
+
+    --vessel-ink: rgba(255, 255, 255, 0.34);
+    --vessel-fill: rgba(255, 255, 255, 0.03);
+    --vessel-base: rgba(255, 255, 255, 0.08);
+    --vessel-contact: rgba(0, 0, 0, 0.6);
+    --shelf: rgba(255, 255, 255, 0.08);
 
     --scrim: rgba(4, 9, 7, 0.62);
   }

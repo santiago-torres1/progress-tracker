@@ -96,16 +96,18 @@
 /* --- the glass, and what the person wrote about it ------------------------ */
 
 /*
- * On the board a tile is as tall as its cell; here there is no grid to give it one, so the panel
- * lends it enough height for the water to be worth looking at. It is the plain, non-interactive
- * tile — no tick on it, because the tick is on the board and this is not a second place to press.
+ * The goal's own glass, picked up off the shelf: the plain, non-interactive tile — no tick on it,
+ * because the tick is on the board and this is not a second place to press. It stands at the start
+ * of the panel at its own size and label width (the board's column minimum), so a large goal is a
+ * large glass here too and its label wraps exactly as it does on the shelf.
  */
 .goal-detail__glass {
+  display: flex;
   margin-top: var(--sp-4);
 }
 
 .goal-detail__glass .goal-tile {
-  min-height: 9rem;
+  width: 11rem;
 }
 
 .goal-detail__body {
