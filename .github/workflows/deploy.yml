@@ -1,8 +1,9 @@
 # Continuous deployment: every push to main (in practice, every merged pull request) is deployed.
 #
 #   ci        -> the full CI workflow (ci.yml) must pass first
-#   backend   -> build + push the Lambda image, point the function at it, set its environment,
-#                smoke-test GET /health
+#   backend   -> build + push the Lambda image (tagged with the commit SHA, and on a release merge
+#                also v<version>), point the function at it, set its environment, smoke-test
+#                GET /health
 #   frontend  -> build the SPA against the Function URL, with the public Supabase URL + anon
 #                key the browser signs in with, upload to S3, invalidate CloudFront
 #
@@ -10,7 +11,8 @@
 # keys. Every `aws` call below maps to an action that role grants; adding a call means adding its
 # IAM action there (and to CLAUDE.md's Deploy contract) in the same pull request.
 #
-# The role trusts only sub = repo:santiago-torres1/progress-tracker:ref:refs/heads/main. So:
+# The role trusts exactly one sub claim, GitHub's immutable form for this repository's main branch:
+# repo:OWNER@OWNER_ID/NAME@REPO_ID:ref:refs/heads/main (see infra/main/github_oidc.tf). So:
 #   - no job here may set `environment:` (that changes the sub claim and the role can't be assumed);
 #   - every job is guarded to refs/heads/main (workflow_dispatch can target any branch).
 #
@@ -52,13 +54,65 @@ jobs:
       id-token: write # request the OIDC token that is exchanged for the deploy role
     env:
       LAMBDA_FUNCTION_NAME: ${{ secrets.LAMBDA_FUNCTION_NAME }}
-    # No job outputs on purpose. AWS_REGION is a secret and the Function URL contains the region,
-    # so the runner would drop a function_url output ("Skip output ... since it may contain
-    # secret"). The frontend job looks the URL up itself with the same granted API call.
+    # One job output, for the deploy summary: the v<version> tag pushed on a release merge (empty
+    # on every other deploy). It is a version string and can hold no secret. Nothing else crosses
+    # jobs, on purpose: AWS_REGION is a secret and the Function URL contains the region, so the
+    # runner would drop a function_url output ("Skip output ... since it may contain secret"). The
+    # frontend job looks the URL up itself with the same granted API call.
+    outputs:
+      release_tag: ${{ steps.release.outputs.tag }}
     steps:
       - uses: actions/checkout@v7
         with:
           persist-credentials: false
+          # HEAD and HEAD^: the release check below compares backend/package.json across them.
+          fetch-depth: 2
+
+      # Is this commit a release? A release merge is the pull request `npm run release:prepare`
+      # produced, and it is what changes backend/package.json's version (the version GET /health
+      # reports). main takes squash merges only, so HEAD^ is the previous commit on main. The
+      # answer comes from git alone, before any credentials exist in the job, and depends on
+      # nothing but the commit: a re-run, or a workflow_dispatch while this commit is still main's
+      # head, pushes the same tags again. The repository is MUTABLE, so that is an overwrite.
+      # The tag is v<version>, the form release.yml requires of git tags (e.g. v0.5.0-alpha).
+      - name: Detect release merge
+        id: release
+        run: |
+          version="$(jq -r '.version // empty' backend/package.json)"
+
+          # The parent is read from the raw commit object, which names it even when the clone is
+          # too shallow to contain it. That tells the repository's first commit (no parent: not a
+          # release) apart from a checkout that lost fetch-depth: 2 (a parent that is named but
+          # absent), which would otherwise quietly stop every release from being tagged. Only the
+          # header is read: it ends at the first empty line, and the message follows it.
+          parent="$(git cat-file commit HEAD | sed -n '/^$/q; s/^parent //p' | head -n 1)"
+          if [[ -z "${parent}" ]]; then
+            echo "HEAD has no parent (the repository's first commit): not a release."
+            exit 0
+          fi
+          if ! git cat-file -e "${parent}^{commit}" 2> /dev/null; then
+            echo "::error title=Previous commit not fetched::HEAD^ is not in the checkout, so a release merge cannot be told apart from any other. The checkout step needs fetch-depth: 2."
+            exit 1
+          fi
+
+          previous="$(git show "${parent}:backend/package.json" 2> /dev/null \
+            | jq -r '.version // empty' 2> /dev/null || true)"
+          if [[ -z "${version}" || -z "${previous}" || "${version}" == "${previous}" ]]; then
+            echo "backend/package.json version ${previous:-none} -> ${version:-none}: not a release. The image is tagged with the commit SHA only."
+            exit 0
+          fi
+
+          # The same pattern release.yml checks git tags against. It also keeps the image tag
+          # valid: SemVer build metadata would add a '+', which no image tag may contain.
+          semver='^v(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)\.(0|[1-9][0-9]*)(-(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(\.(0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?$'
+          tag="v${version}"
+          if [[ ! "${tag}" =~ ${semver} ]]; then
+            echo "::warning title=No release image tag::backend/package.json changed version ${previous} -> ${version}, but ${tag} is not v<SemVer>, so it is not a tag release.yml would accept. The image is tagged with the commit SHA only."
+            exit 0
+          fi
+
+          echo "Release merge (${previous} -> ${version}): the image is also tagged ${tag}."
+          echo "tag=${tag}" >> "${GITHUB_OUTPUT}"
 
       - name: Configure AWS credentials (OIDC)
         uses: aws-actions/configure-aws-credentials@v6
@@ -88,8 +142,15 @@ jobs:
 
       # docker buildx build --platform linux/amd64 --provenance=false --build-arg GIT_SHA=<sha>
       # --push. --provenance=false matters: Lambda rejects OCI image indexes with attestations.
-      # The build summary is off because it lists build inputs (including the tag, which contains
+      # The build summary is off because it lists build inputs (including the tags, which contain
       # the account ID) in the world-readable job summary.
+      #
+      # One build, one push, and on a release merge two tags on the same image. On every other
+      # deploy the second line of `tags` evaluates to an empty string and build-push-action drops
+      # it: its list parser (Util.getList in @docker/actions-toolkit) skips empty lines and filters
+      # out empty entries, so buildx gets the SHA tag alone. The line must stay truly empty. A line
+      # of spaces would pass that filter, be trimmed to "" only afterwards, and reach buildx as
+      # `--tag ""`. Lambda is always pointed at the SHA tag, below; the version tag is for rollback.
       - name: Build and push Lambda image
         uses: docker/build-push-action@v7
         env:
@@ -102,7 +163,9 @@ jobs:
           provenance: false
           sbom: false
           push: true
-          tags: ${{ secrets.ECR_REPOSITORY_URI }}:${{ github.sha }}
+          tags: |
+            ${{ secrets.ECR_REPOSITORY_URI }}:${{ github.sha }}
+            ${{ steps.release.outputs.tag && format('{0}:{1}', secrets.ECR_REPOSITORY_URI, steps.release.outputs.tag) || '' }}
           build-args: GIT_SHA=${{ github.sha }}
           cache-from: type=gha,scope=backend-lambda-image
           cache-to: type=gha,scope=backend-lambda-image,mode=max
@@ -417,12 +480,14 @@ jobs:
           echo "id=${invalidation_id}" >> "${GITHUB_OUTPUT}"
 
       # World-readable: no secrets, no bucket name or distribution ID (both are secrets; the bucket
-      # name also contains the account ID).
+      # name also contains the account ID). The release image is named by its tag alone, never by
+      # the registry URI in front of it, which contains the account ID too.
       - name: Summary
         env:
           FUNCTION_URL: ${{ steps.api.outputs.function_url }}
           INVALIDATION_ID: ${{ steps.invalidate.outputs.id }}
           STALE_COUNT: ${{ steps.upload.outputs.stale_count }}
+          RELEASE_TAG: ${{ needs.backend.outputs.release_tag }}
         run: |
           version="$(jq -r .version backend/package.json)"
           commit_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/commit/${GITHUB_SHA}"
@@ -432,6 +497,9 @@ jobs:
             echo "| | |"
             echo "| --- | --- |"
             echo "| Version | \`${version}\` |"
+            if [[ -n "${RELEASE_TAG}" ]]; then
+              echo "| Release image tag | \`${RELEASE_TAG}\` |"
+            fi
             echo "| Commit | [\`${GITHUB_SHA:0:7}\`](${commit_url}) |"
             echo "| Function URL | ${FUNCTION_URL} |"
             echo "| CloudFront invalidation | \`${INVALIDATION_ID}\` |"

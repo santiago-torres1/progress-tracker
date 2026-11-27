@@ -356,7 +356,9 @@ On push to `main`, after the reusable CI workflow passes:
 
 1. Assume `AWS_ROLE_ARN` via OIDC. Derive account ID with `aws sts get-caller-identity`.
 2. `docker buildx build --platform linux/amd64 --provenance=false` the backend with
-   `--build-arg GIT_SHA=<sha>`, push `ECR_REPOSITORY_URI:<sha>`.
+   `--build-arg GIT_SHA=<sha>`, push `ECR_REPOSITORY_URI:<sha>`. **On a release merge** — the
+   commit changed `backend/package.json`'s version from `HEAD^` — the same push also tags
+   `:v<version>`, the form `release.yml` requires of git tags. Lambda is always pointed at the SHA.
    (`--provenance=false` matters: Lambda rejects OCI image indexes with attestations.)
 3. `aws lambda update-function-code --image-uri …:<sha>` → `aws lambda wait function-updated`.
 4. `aws lambda update-function-configuration` to set `SUPABASE_*` from GitHub secrets → wait.
@@ -400,6 +402,30 @@ Constraints that break deploys if ignored (learned while writing `infra/main`):
 - `infra/main` needs AWS provider `~> 6.28` (auto-creates both public Function URL permissions).
 - Adding an AWS call to `deploy.yml` means adding its IAM action to `infra/main/github_oidc.tf`
   and to the list above, in the same PR.
+- The backend job's checkout needs `fetch-depth: 2`: the release check compares
+  `backend/package.json` with `HEAD^`. At depth 1 the deploy fails on purpose rather than quietly
+  stop tagging releases.
+- **Nothing but `deploy.yml` may push a tag starting with `v` to the backend repository.** ECR's
+  lifecycle policy (`infra/main/ecr.tf`) keeps the newest 100 such images as releases and every
+  other image only while it is among the newest 10. The repository stays `MUTABLE` so a re-run of
+  a release deploy can push its tags again.
+
+**Rolling back to a release** (a human with admin credentials, not the deploy role):
+
+```bash
+REPO_URL="$(terraform -chdir=infra/main output -raw ecr_repository_url)"
+FN="$(terraform -chdir=infra/main output -raw lambda_function_name)"
+aws lambda update-function-code --function-name "$FN" --image-uri "$REPO_URL:v0.5.0-alpha" \
+  --query LastUpdateStatus --output text      # the full response includes env var values
+aws lambda wait function-updated --function-name "$FN"
+```
+
+`GET /health` then reports that release's version and commit, and the next merge to `main` rolls
+forward again — hold merges, or revert on `main`, to stay back. Only the backend moves: the
+Lambda's environment, the Function URL's CORS, the frontend in S3 and every applied migration stay
+as they are. Images released before version tagging existed carry only their SHA; one can be given
+its version tag by re-putting its manifest (`aws ecr batch-get-image` → `aws ecr put-image
+--image-tag v<version> --image-digest <its digest>`).
 
 **GitHub secrets (exact names):** `AWS_REGION`, `AWS_ROLE_ARN`, `ECR_REPOSITORY_URI`,
 `LAMBDA_FUNCTION_NAME`, `S3_FRONTEND_BUCKET`, `CLOUDFRONT_DISTRIBUTION_ID`, `SUPABASE_URL`,
