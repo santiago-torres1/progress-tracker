@@ -148,6 +148,107 @@ export const GOALS: readonly GoalSummary[] = [
   },
 ];
 
+/*
+ * The glass study's board: the six above plus four more, so that one board carries every fill level
+ * the study is asked to show — 0% (Read regularly, Ship a project), 4% (Reach a weight), 34% (Learn
+ * a language, and Move your body at a third), 62% (Put something aside), 100% (Call home, Practise
+ * a craft) — at every size and in every kind. The four titles are templates from
+ * `docs/goal-catalogue.md`, so no word here is new.
+ *
+ * Interleaved by size rather than grouped, because the Meadow is unsorted and a study that grouped
+ * them would be showing a layout nobody will ever see.
+ */
+const STUDY_EXTRA: readonly GoalSummary[] = [
+  {
+    ...BASE,
+    id: 'g-weight',
+    title: 'Reach a weight',
+    size: 'small',
+    area: area('health'),
+    kind: 'measured',
+    progress: { basis: 'measured_value', fraction: 0.04 },
+    measured: {
+      unit: 'kg',
+      startValue: 84,
+      targetValue: 74,
+      currentValue: 83.6,
+      lastMeasuredOn: '2026-09-16',
+      previousValue: null,
+      previousMeasuredOn: null,
+    },
+  },
+  {
+    ...BASE,
+    id: 'g-language',
+    title: 'Learn a language',
+    size: 'large',
+    area: area('learning'),
+    kind: 'scheduled',
+    progress: { basis: 'session_target', fraction: 0.34 },
+    scheduled: { targetSessions: 50, plannedCount: 50, completedCount: 17, dueCount: 20 },
+  },
+  {
+    ...BASE,
+    id: 'g-ship',
+    title: 'Ship a project',
+    size: 'large',
+    area: area('work'),
+    kind: 'measured',
+    progress: { basis: 'measured_value', fraction: 0 },
+    measured: {
+      unit: 'milestones',
+      startValue: 0,
+      targetValue: 6,
+      currentValue: 0,
+      lastMeasuredOn: null,
+      previousValue: null,
+      previousMeasuredOn: null,
+    },
+  },
+  {
+    ...BASE,
+    id: 'g-craft',
+    title: 'Practise a craft',
+    size: 'medium',
+    area: area('creative'),
+    kind: 'habit',
+    progress: { basis: 'period_completion', fraction: 1 },
+    habit: {
+      period: 'week',
+      periodStart: '2026-09-14',
+      periodEnd: '2026-09-20',
+      completedCount: 2,
+      targetCount: 2,
+      minimumCount: 1,
+      minimumFraction: 1,
+      minimumMet: true,
+    },
+  },
+];
+
+function byId(goals: readonly GoalSummary[], id: string): GoalSummary {
+  const found = goals.find((goal) => goal.id === id);
+  if (found === undefined) throw new Error(`gallery fixtures have no ${id}`);
+  return found;
+}
+
+const STUDY_ORDER = [
+  'g-save',
+  'g-move',
+  'g-call',
+  'g-read',
+  'g-language',
+  'g-guitar',
+  'g-course',
+  'g-weight',
+  'g-ship',
+  'g-craft',
+];
+
+export const STUDY_GOALS: readonly GoalSummary[] = STUDY_ORDER.map((id) =>
+  byId([...GOALS, ...STUDY_EXTRA], id),
+);
+
 function entry(
   id: string,
   date: string,

@@ -1,0 +1,593 @@
+/*
+ * The glass study. Gallery only — nothing here is imported by the app.
+ *
+ * Every colour and every liquid depth is a token: the SVG glass reads --liquid-* through the stop
+ * classes below and --vessel-* through GlassStudy.tsx. Layout responds to the FRAME, not the window
+ * (container queries), so a 390px phone frame and a 960px desktop frame can sit on one page and each
+ * lay out exactly as it would on that device.
+ */
+
+/* --- the page -------------------------------------------------------------------------------- */
+
+.gs {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-6);
+}
+
+.gs__frame {
+  container-type: inline-size;
+}
+
+.gs__frame--desktop {
+  width: 60rem;
+  max-width: 100%;
+}
+
+/* A phone: 390 wide, with the app's own 16px gutters, so the board inside is 358. */
+.gs__frame--phone {
+  width: 390px;
+  padding: var(--sp-5) var(--sp-4) var(--sp-6);
+  border-radius: 2rem;
+  box-shadow: 0 0 0 1px var(--border-strong);
+}
+
+.gs__frame-label {
+  margin-bottom: var(--sp-4);
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.gs-measure {
+  margin-top: var(--sp-4);
+  font-size: 10px;
+  white-space: pre-wrap;
+}
+
+/* --- the glass ------------------------------------------------------------------------------- */
+
+.gs-glass {
+  --lq-top: var(--liquid-top);
+  --lq-mid: var(--liquid-mid);
+  --lq-deep: var(--liquid-deep);
+
+  /* positioned so it paints over the shelf line that runs behind it */
+  position: relative;
+  display: block;
+  flex: none;
+  overflow: visible;
+  transition: transform var(--mo-slow) var(--ease-out);
+}
+
+/* A full glass goes one step deeper, and holds still. */
+.gs-glass--full {
+  --lq-top: var(--liquid-top-full);
+  --lq-mid: var(--liquid-mid-full);
+  --lq-deep: var(--liquid-deep-full);
+}
+
+/* The body, four stops down — sloshPaint's: the film just under the surface at 0.6 of the top. */
+.gs-stop-film {
+  stop-color: color-mix(in srgb, var(--goal) calc(var(--lq-top) * 0.6), transparent);
+}
+
+.gs-stop-top {
+  stop-color: color-mix(in srgb, var(--goal) var(--lq-top), transparent);
+}
+
+.gs-stop-mid {
+  stop-color: color-mix(in srgb, var(--goal) var(--lq-mid), transparent);
+}
+
+.gs-stop-deep {
+  stop-color: color-mix(in srgb, var(--goal) var(--lq-deep), transparent);
+}
+
+/* Fading to the same hue at zero, not to transparent black, so no gradient greys on its way out. */
+.gs-stop-clear {
+  stop-color: rgb(from var(--goal) r g b / 0);
+}
+
+.gs-stop-contact {
+  stop-color: var(--vessel-contact);
+}
+
+.gs-stop-contact-clear {
+  stop-color: rgb(from var(--vessel-contact) r g b / 0);
+}
+
+/* The light that got through the water, on the table: scaled by how full the glass is. */
+.gs-stop-pool {
+  stop-color: color-mix(
+    in srgb,
+    var(--goal) calc(var(--caustic) * var(--fill, 0) * 50%),
+    transparent
+  );
+}
+
+.gs-glass__room {
+  fill: var(--vessel-fill);
+}
+
+.gs-glass__rim-back {
+  fill: none;
+  stroke: var(--vessel-ink);
+  stroke-opacity: 0.55;
+  stroke-width: 1;
+}
+
+/* The top surface seen from slightly above: sloshPaint's BAND_MIX 0.35 towards white, at 0.6. */
+.gs-glass__band {
+  fill: color-mix(in srgb, var(--goal) 65%, white);
+  fill-opacity: 0.6;
+}
+
+/* The front edge: the one full-strength line, so where the water is is never in doubt. */
+.gs-glass__edge {
+  fill: none;
+  stroke: var(--goal);
+  stroke-opacity: 0.9;
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+}
+
+.gs-glass__streak {
+  fill: var(--glass-hi-soft);
+}
+
+.gs-glass__base {
+  fill: var(--vessel-base);
+}
+
+.gs-glass__floor {
+  fill: none;
+  stroke: var(--vessel-ink);
+  stroke-opacity: 0.45;
+  stroke-width: 1;
+}
+
+.gs-glass__wall,
+.gs-glass__rim {
+  fill: none;
+  stroke: var(--vessel-ink);
+  stroke-width: 1.25;
+  stroke-linejoin: round;
+}
+
+/* Etches: the groove and the light on its lower edge, exactly as the tile draws them. */
+.gs-etch__ink {
+  fill: var(--etch-ink);
+}
+
+.gs-etch__lit {
+  fill: var(--etch-lit);
+}
+
+.gs-etch--was {
+  opacity: 0.55;
+}
+
+/*
+ * A minimum that has been met sets in the area's colour — but on water this rich, the plain hue
+ * vanishes into the liquid it sits on. Mixed towards --text it goes darker than the water in light
+ * and lighter than it in dark, one formula for both rooms. Declared where --goal is in scope.
+ */
+.gs-tile,
+.gs-levels__cell {
+  --etch-kept: color-mix(in srgb, var(--goal) 58%, var(--text));
+}
+
+.gs-etch--kept rect {
+  fill: var(--etch-kept);
+}
+
+/* --- what every variant shares --------------------------------------------------------------- */
+
+.gs-board {
+  position: relative;
+}
+
+.gs-tile {
+  position: relative;
+  min-width: 0;
+  /* no orphaned "is 1" on a line of its own */
+  text-wrap: pretty;
+}
+
+/* Inline text, not a flex row: as flex items the dot and the two names wrapped as three units, and
+   the dot ended up alone on a line above the name it belongs to. */
+.gs-meta {
+  font-size: var(--fs-xs);
+  line-height: var(--lh-body);
+  color: var(--muted);
+}
+
+.gs-dot {
+  display: inline-block;
+  width: 0.5rem;
+  height: 0.5rem;
+  margin-right: 0.375rem;
+  vertical-align: 0.0625rem;
+  border-radius: 50%;
+  background-color: var(--goal);
+  background-image: radial-gradient(100% 100% at 32% 24%, var(--glass-hi), transparent 62%);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--goal) 22%, transparent);
+}
+
+/* The kind, said after the area as words rather than in a pill: a pill beside "Creativity &
+   Hobbies" took a line of its own on every label narrower than 185px. The dot between them is
+   punctuation, and silent. It trails the area rather than leading the kind, so a label that wraps
+   ends its first line on it instead of starting the second with it. */
+.gs-area::after {
+  content: '·' / '';
+  margin-left: var(--sp-1);
+}
+
+/* An area is a name, and "Money / & Finances" is two halves of one. The longest of the six,
+   "Creativity & Hobbies", is about 115px at --fs-xs, inside every label measure in this study. */
+.gs-area,
+.gs-kind {
+  white-space: nowrap;
+}
+
+.gs-title {
+  font-size: var(--fs-md);
+  font-weight: var(--fw-semibold);
+  line-height: var(--lh-tight);
+  letter-spacing: -0.012em;
+  color: var(--text);
+  text-wrap: balance;
+}
+
+.gs-val {
+  font-size: var(--fs-sm);
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.gs-foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0 var(--sp-2);
+  font-size: var(--fs-sm);
+  color: var(--muted);
+}
+
+.gs-pct {
+  font-weight: var(--fw-semibold);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+
+/* The tick is part of the sentence, so it wraps with the first word rather than floating beside a
+   block of three lines. */
+.gs-kept-mark {
+  display: inline-block;
+  width: 0.8125rem;
+  height: 0.8125rem;
+  margin-right: var(--sp-1);
+  vertical-align: -0.125rem;
+  color: var(--goal);
+}
+
+/* The whole goal is one target that opens it; the controls sit above it. */
+.gs-open {
+  position: absolute;
+  inset: 0;
+  padding: 0;
+  background: none;
+  border: 0;
+  border-radius: inherit;
+  cursor: pointer;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.gs-actions {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+/* GoalAction's own buttons, at 32px: the tile's are 28, and nothing else on these layouts competes
+   for the room. 44 under a finger. */
+.gs-actions .goal-tile__action {
+  min-width: 2rem;
+  height: 2rem;
+}
+
+.gs-actions .goal-tile__tick {
+  padding-inline: var(--sp-2) var(--sp-3);
+}
+
+.gs-actions .goal-tile__log {
+  padding-inline: var(--sp-3);
+}
+
+@media (pointer: coarse) {
+  .gs-actions .goal-tile__action {
+    min-width: 2.75rem;
+    height: 2.75rem;
+  }
+}
+
+/* Picked up: the glass lifts off whatever it stands on, and the goal takes the accent ring. */
+.gs-tile--held .gs-glass {
+  transform: translateY(-6px);
+}
+
+/* --- A: a card, the glass beside the words --------------------------------------------------- */
+
+/*
+ * Three even columns, and a row as tall as its tallest card. Cards sized by importance and
+ * bottom-aligned were tried first: a ragged skyline of tops, rows ending short wherever a card hit
+ * its cap, and the words column of a small card down to 150px. Here every card is the same width
+ * and the glass alone says how much the goal matters — standing at the foot of its card, so a row's
+ * glasses still share one floor.
+ */
+.gs-board--a {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: var(--sp-4);
+}
+
+/*
+ * The glass gets a slot as wide as the LARGE glass (its SVG: vessel plus 12px either side), and a
+ * smaller one stands in the middle of it. With `auto` the words began wherever each glass ended, and
+ * a phone's list had a different left edge on every row.
+ */
+.gs-board--a,
+.gs-board--c {
+  --slot: calc((var(--vessel-lg-w) + 24) * 1px);
+}
+
+.gs-a__glass,
+.gs-c__glass {
+  display: flex;
+  justify-content: center;
+}
+
+.gs-a {
+  display: grid;
+  grid-template-columns: var(--slot) minmax(0, 1fr);
+  column-gap: var(--sp-2);
+  padding: var(--sp-4) var(--sp-4) var(--sp-3) var(--sp-1);
+  background-color: color-mix(in srgb, var(--surface) 92%, transparent);
+  border-radius: var(--r-2xl);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px var(--glass-edge),
+    var(--sh-1),
+    0 0 0 0 transparent;
+  transition:
+    transform var(--mo-slow) var(--ease-out),
+    box-shadow var(--mo-slow) var(--ease-out);
+}
+
+.gs-a__glass {
+  align-self: end;
+  margin-bottom: -0.25rem;
+}
+
+.gs-a__words {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  min-width: 0;
+}
+
+.gs-a .gs-title {
+  margin-top: var(--sp-2);
+}
+
+/* 24px lines. At 18px the system font's content area is ~1.33em, so at --lh-tight (22.5px) and at
+   22px each line's glyphs overflow its own box by a pixel — measured as a 46px scroll box in a 45px
+   one, and as 23 in 22. Nothing hid it here; inside anything that clips, it would be the descenders. */
+.gs-a.gs-tile--lg .gs-title,
+.gs-c.gs-tile--lg .gs-title {
+  font-size: var(--fs-lg);
+  line-height: 1.5rem;
+  letter-spacing: -0.02em;
+}
+
+.gs-a .gs-foot {
+  margin-top: var(--sp-1);
+}
+
+.gs-a .gs-actions {
+  margin-top: auto;
+  padding-top: var(--sp-3);
+}
+
+.gs-a.gs-tile--held {
+  transform: translateY(-2px);
+  box-shadow:
+    inset 0 1px 0 var(--glass-rim),
+    inset 0 0 0 1px var(--glass-edge),
+    var(--sh-2),
+    0 0 0 2px var(--accent);
+}
+
+.gs-a.gs-tile--held .gs-glass {
+  transform: none;
+}
+
+/* --- B: the glass is the tile ---------------------------------------------------------------- */
+
+.gs-board--b {
+  --gap-x: var(--sp-4);
+  /* Every shelf is as tall as the tallest glass, so every row's table is at the same height and the
+     small glasses stand with air above them — a shelving unit, not a skyline. The SVG of the large
+     glass is its vessel plus its foot, plus 5px for the rim and 7 for the shadow. */
+  --stand: calc((var(--vessel-lg-h) * (1 + var(--vessel-foot)) + 12) * 1px);
+
+  display: grid;
+  /* Five to a 960 board, at 179px each. Six fit at 146px, and at 146 every value line broke
+     mid-phrase and a ticked glass's three controls took two rows. */
+  grid-template-columns: repeat(auto-fill, minmax(9.5rem, 1fr));
+  align-items: start;
+  gap: var(--sp-6) var(--gap-x);
+}
+
+.gs-b {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-bottom: var(--sp-2);
+  text-align: center;
+  /* centred lines read as a label only if they are even */
+  text-wrap: balance;
+  border-radius: var(--r-xl);
+  transition: box-shadow var(--mo-slow) var(--ease-out);
+}
+
+.gs-b__stand {
+  position: relative;
+  display: flex;
+  align-self: stretch;
+  align-items: flex-end;
+  justify-content: center;
+  height: var(--stand);
+}
+
+/* The shelf: half a gap past each side, so neighbours join into one line under the row. Drawn at
+   the foot of the glass (the SVG keeps 7px below it for the shadow). */
+.gs-b__stand::before,
+.gs-c::before {
+  content: '';
+  position: absolute;
+  right: calc(var(--gap-x) / -2);
+  bottom: 7px;
+  left: calc(var(--gap-x) / -2);
+  height: 1px;
+  background-color: var(--shelf);
+}
+
+.gs-b__label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.1875rem;
+  max-width: 100%;
+  margin-top: var(--sp-2);
+}
+
+.gs-b .gs-title {
+  font-size: var(--fs-sm);
+}
+
+.gs-b.gs-tile--lg .gs-title {
+  font-size: var(--fs-md);
+}
+
+.gs-b .gs-meta,
+.gs-b .gs-foot {
+  justify-content: center;
+}
+
+.gs-b .gs-val,
+.gs-b .gs-foot {
+  font-size: var(--fs-xs);
+}
+
+.gs-b .gs-actions {
+  justify-content: center;
+  margin-top: var(--sp-2);
+}
+
+.gs-b.gs-tile--held {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* Two to a phone, at 173px: the same measure as the desktop label. Three fit at 111px, and every
+   label ran to six or eight lines with the area's dot on a line of its own. */
+@container (max-width: 30rem) {
+  .gs-board--b {
+    --gap-x: var(--sp-3);
+
+    grid-template-columns: repeat(auto-fill, minmax(10rem, 1fr));
+    row-gap: var(--sp-5);
+  }
+}
+
+/* --- C: on the shelf, the words beside the glass --------------------------------------------- */
+
+.gs-board--c {
+  --gap-x: var(--sp-5);
+
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  /* everything in a row stands on the same shelf */
+  align-items: end;
+  gap: var(--sp-6) var(--gap-x);
+}
+
+.gs-c {
+  display: grid;
+  grid-template-columns: var(--slot) minmax(0, 1fr);
+  align-items: end;
+  column-gap: var(--sp-1);
+  border-radius: var(--r-xl);
+  transition: box-shadow var(--mo-slow) var(--ease-out);
+}
+
+.gs-c__words {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.125rem;
+  min-width: 0;
+  /* the words stand on the shelf too: their last line sits just above it */
+  padding-bottom: calc(7px + var(--sp-2));
+}
+
+.gs-c .gs-foot {
+  margin-top: var(--sp-1);
+}
+
+.gs-c .gs-actions {
+  margin-top: var(--sp-2);
+}
+
+.gs-c.gs-tile--held {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+
+/* --- the levels ------------------------------------------------------------------------------ */
+
+.gs-levels {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-5);
+}
+
+.gs-levels__row {
+  position: relative;
+  display: flex;
+  align-items: flex-end;
+  gap: var(--sp-5);
+}
+
+.gs-levels__size {
+  width: 4rem;
+  align-self: center;
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+.gs-levels__cell {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-1);
+  margin: 0;
+}
+
+.gs-levels__cell figcaption {
+  font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}

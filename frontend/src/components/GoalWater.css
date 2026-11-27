@@ -1,44 +1,26 @@
 /*
- * The canvas the liquid is drawn into. Orchestrator-owned, not part of the design pass — the
- * vessel around it (walls, rim, shadow, the copy) is `GoalTile.css` and belongs to design-agent.
+ * The live liquid's canvas. It fills `GoalGlass`'s liquid slot — exactly the vessel's inside — and
+ * the painter clips to the glass's shape itself, so nothing here clips.
  *
- * `color` is set from `--goal` for one reason: canvas cannot read a custom property, so the
- * renderer asks for the element's computed `color` and gets the area's hue through it.
+ * `color` is set from `--goal` for one reason: canvas cannot read a custom property, so the painter
+ * asks for the element's computed `color` and gets the area's hue through it.
+ *
+ * The hand-off between the still liquid and this one is `GoalGlass.css`'s: the still liquid steps
+ * aside while this host carries `goal-tile__water--live`, which `GoalWater` adds only once a frame
+ * has been painted.
  */
 
 .goal-tile__water {
   position: absolute;
   inset: 0;
-  z-index: 0;
   display: block;
   color: var(--goal);
   pointer-events: none;
 }
 
-/* Created in JS, never by React — see the note in GoalWater.tsx about lost contexts. */
+/* Created in JS, never by React — see GoalWater.tsx. */
 .goal-tile__water-surface {
   display: block;
   width: 100%;
   height: 100%;
 }
-
-/*
- * When the simulation is actually running, the CSS water underneath must go — otherwise two
- * surfaces sit at slightly different levels and the glass looks doubled. It comes back by itself
- * for anyone who asked for less motion, or if the canvas never started, because this class is
- * only added once the canvas has measured itself and joined the loop.
- */
-.goal-tile:has(> .goal-tile__glass > .goal-tile__water--live) .goal-tile__body,
-.goal-tile:has(> .goal-tile__glass > .goal-tile__water--live) .goal-tile__line {
-  display: none;
-}
-
-/*
- * `.goal-tile__was` is NOT in that list, and was, wrongly, until now.
- *
- * It looks like water because it sits in the glass, but it is a mark on the WALL — the same pair
- * of etches as the habit minimum, at the level a measured goal has come down from. Hiding it with
- * the water meant every tile the canvas drives lost that mark while the foot underneath still
- * said "a little lower than it was on September 3", referring to a line that was no longer there.
- * The minimum, built identically, was never hidden.
- */

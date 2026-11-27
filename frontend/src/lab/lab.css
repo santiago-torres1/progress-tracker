@@ -1,7 +1,7 @@
 /* Bench chrome only. The vessel is a stand-in for a tile, not the real thing. */
 
 .lab {
-  max-width: 76rem;
+  max-width: 120rem;
   margin: 0 auto;
   padding: var(--sp-5) var(--sp-4);
 }
@@ -42,6 +42,15 @@
   border-color: var(--text);
 }
 
+.lab__strength {
+  display: inline-flex;
+  gap: var(--sp-2);
+  align-items: center;
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
 .lab__stats {
   margin-left: auto;
   font-size: var(--fs-xs);
@@ -72,27 +81,43 @@
   margin: 0;
 }
 
-/* The frame stays put while the vessel inside it moves, so a yanked glass does not reflow the page
-   and the movement is visible against something. */
-/* The frame stays put and is the size of the gesture, so a yanked vessel stays inside the picture
-   and the movement is visible against something that did not move. */
+/* The frame stays put and is large enough for the gesture's travel, so a yanked vessel stays inside
+   the picture and the movement is visible against something that did not move. */
 .lab__frame {
   position: relative;
-  height: 17rem;
+  height: 19rem;
   overflow: hidden;
   background-color: var(--surface-2);
   border: 1px dashed var(--border);
   border-radius: var(--r-sm);
 }
 
+/* Fixed sizes, not fractions of the cell: the model's physical scale is 0.4 mm per CSS px, so a
+   vessel that changed size with the window would change its own slosh frequency. Centred with
+   margins rather than a transform, because the transform is the gesture. */
 .lab__vessel {
   position: absolute;
-  inset: 4rem;
+  top: 50%;
+  left: 50%;
   overflow: hidden;
+}
+
+.lab__vessel--tile {
+  width: 200px;
+  height: 90px;
+  margin: -45px 0 0 -100px;
   background-color: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--r-sm) var(--r-sm) var(--r-xl) var(--r-xl);
+  border-radius: var(--r-sm) var(--r-sm) 18px 18px;
   box-shadow: var(--sh-1), var(--sh-rim);
+}
+
+/* The glass draws its own walls: a tapered, round vessel is not a box CSS can draw honestly. */
+.lab__vessel--glass {
+  width: 96px;
+  height: 150px;
+  margin: -75px 0 0 -48px;
+  border-radius: 0 0 14px 14px;
 }
 
 .lab__canvas {
@@ -105,20 +130,59 @@
 .lab__cell figcaption {
   margin-top: var(--sp-2);
   font-size: var(--fs-xs);
+  font-variant-numeric: tabular-nums;
   color: var(--muted);
 }
 
-/* The filmstrip: the same glass at seven moments, so a sequence fits in one screenshot. */
+/* The filmstrip: the same glass at several moments, so a sequence fits in one screenshot. The
+   vessel does not travel here — the water is shown relative to its own glass, and the caption says
+   where the glass had got to. */
 .lab__cells--strip {
   gap: var(--sp-2);
 }
 
-/* Tall enough that a vessel yanked the full travel in either direction is still entirely inside its
-   frame: the first strip cut the bottom off a dropped glass, which is exactly where the gap is. */
-.lab__cells--strip .lab__frame {
-  height: 14rem;
+.lab__cells--strip .lab__cell {
+  flex: 0 0 auto;
 }
 
-.lab__cells--strip .lab__vessel {
-  inset: 3.75rem 0.9rem;
+/* A caption never widens its frame: the strip's width is the frames', so it fits under 2000 px. */
+.lab__cells--strip figcaption {
+  width: 0;
+  min-width: 100%;
+}
+
+.lab__cells--strip .lab__frame {
+  width: 212px;
+  height: 104px;
+}
+
+/* The glass rows are narrower, so eight frames of them sit well inside 2000 px. */
+.lab__row:has(.lab__vessel--glass) .lab__cells--strip .lab__frame {
+  width: 150px;
+  height: 166px;
+}
+
+/* The hundred-tile bench: real board sizes, packed. */
+.lab-bench {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.lab-bench__tile {
+  position: relative;
+  overflow: hidden;
+  background-color: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-sm) var(--r-sm) 18px 18px;
+}
+
+.lab-bench__result {
+  font-size: var(--fs-xs);
+  color: var(--muted);
+}
+
+/* The real board in the bench: the shelf at the width the gallery shows it. */
+.lab-board {
+  max-width: 60rem;
 }

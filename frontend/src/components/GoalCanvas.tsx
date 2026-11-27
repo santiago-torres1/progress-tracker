@@ -19,7 +19,10 @@ export interface GoalCanvasProps {
   arrange?: Arrange;
 }
 
-/** Placement only. How a tile looks at each size is GoalTile's business. */
+/**
+ * Hooks for the cell at each size. The shelf grid places every size in one column — size is how big
+ * the glass is, and that is GoalTile's business — so nothing in GoalCanvas.css reads these today.
+ */
 const CELL_CLASS: Record<GoalSize, string> = {
   small: 'goal-canvas__cell--sm',
   medium: 'goal-canvas__cell--md',

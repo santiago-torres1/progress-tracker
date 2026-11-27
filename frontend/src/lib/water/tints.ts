@@ -1,37 +1,31 @@
 /*
- * The theme's own water depths, read from the tokens.
+ * The liquid's depths, read from the theme's tokens.
  *
- * `--tint-top` / `-bot` / `-deep` are what the CSS water in `GoalTile.css` is built from, and they
- * differ between light and dark. The canvas cannot read a custom property while it draws, so they
- * are resolved here — once per measure — and handed to the renderer as numbers.
- *
- * This lives apart from the component that uses it so that the water bench reads them the same way
- * the board does. The canvas and the CSS drawing different liquids is not a hypothetical: it
- * shipped, and it was reported as the water looking glitchy.
+ * The canvas cannot read a custom property while it draws, so `--liquid-*` is resolved here — once
+ * per measure — and handed to the painter as numbers. `GoalGlass`'s still liquid reads the same
+ * tokens in CSS, so the still glass and the live one are one recipe in two places, as they must be:
+ * the canvas and the CSS drawing different liquids shipped once, and was reported as the water
+ * looking glitchy. (`--tint-*`, the first liquid's depths, are no longer read here; `EntryBar`,
+ * `CalendarMonth` and the Welcome hero still use them in CSS.)
  */
 
 export type WaterTints = readonly [number, number, number];
 
 /**
- * The three depths for one theme, as fractions, or undefined if the page has no opinion.
- *
- * Undefined is the ordinary answer in jsdom, where nothing is painted anyway — the renderer then
- * falls back to its own constants rather than drawing with `NaN`.
+ * The glass's own liquid: `--liquid-top` / `-mid` / `-deep` and their `-full` versions, which
+ * replaced the bench's `RICH` when tiles became glasses. Nothing reads ON this water, so it is not
+ * held faint for the copy's contrast the way `--tint-*` is. Undefined where the page has no opinion
+ * (jsdom); `liquidStops` in `liquidPaint.ts` falls back to the tokens' own values.
  */
-export function readTints(styles: CSSStyleDeclaration, suffix: string): WaterTints | undefined {
-  const read = (name: string): number => Number.parseFloat(styles.getPropertyValue(name)) / 100;
-  const stops = [
-    read(`--tint-top${suffix}`),
-    read(`--tint-bot${suffix}`),
-    read(`--tint-deep${suffix}`),
-  ] as const;
-  return stops.every((stop) => Number.isFinite(stop)) ? stops : undefined;
-}
-
-/** Both sets — resting and at the brim — for whatever theme is in force where this element is. */
-export function readWaterTints(styles: CSSStyleDeclaration): {
+export function readLiquidTints(styles: CSSStyleDeclaration): {
   resting?: WaterTints;
   full?: WaterTints;
 } {
-  return { resting: readTints(styles, ''), full: readTints(styles, '-full') };
+  const read = (suffix: string): WaterTints | undefined => {
+    const get = (name: string): number =>
+      Number.parseFloat(styles.getPropertyValue(`--liquid-${name}${suffix}`)) / 100;
+    const stops = [get('top'), get('mid'), get('deep')] as const;
+    return stops.every((stop) => Number.isFinite(stop)) ? stops : undefined;
+  };
+  return { resting: read(''), full: read('-full') };
 }

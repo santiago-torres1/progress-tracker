@@ -104,28 +104,12 @@
 }
 
 /*
- * A GLASS SET DOWN. This rule used to be `box-shadow: var(--sh-rim)`, which was right when a tile
- * was a bordered card and a drop shadow was the only thing to remove. It is not right now: the tile's
- * whole box-shadow is the vessel standing on a table — contact, lift, and the pool of its own colour
- * the water throws onto the floor — so replacing the list with one inset highlight did not settle the
- * glass onto a shelf, it flattened it into a rectangle and turned the light inside it off.
- *
- * What "at rest" actually means here: keep the contact, drop the lift, keep a pool but a tight one —
- * light still passes through the water, it simply has nowhere to travel before it reaches the shelf.
- * So --sh-set (the first two layers of --sh-glass) plus the same caustic at a fifth of its reach. The
- * rim, the walls and the base are untouched: they live on `.goal-tile__glass::after`, where the water
- * cannot cover them, and a shelved glass is still glass.
- *
- * The list keeps the empty last slot GoalTile.css leaves for the "held" ring, even though nothing on
- * this screen can be picked up — one shape for a tile's shadow, whichever screen it is standing on.
+ * A GLASS SET DOWN — and since the tile became a glass, that is simply what a glass is. There used
+ * to be a box-shadow here taking the lift out of a card's shadow; a glass on the board already
+ * stands on a shelf with only its contact shadow and the light it throws on the table (GoalGlass),
+ * so the shelf of full glasses needs nothing of its own. A box-shadow here now would draw a
+ * rectangle around the glass and its label.
  */
-.archive .goal-tile {
-  box-shadow:
-    var(--sh-set),
-    0 5px 10px -10px
-      color-mix(in srgb, var(--goal) calc(var(--caustic-floor) * var(--p, 0) / 100), transparent),
-    0 0 0 0 transparent;
-}
 
 /* Nothing here yet is room, in the same dashed frame the empty board and every status note use. */
 .archive__empty {

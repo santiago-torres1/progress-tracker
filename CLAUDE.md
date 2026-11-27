@@ -39,14 +39,23 @@ persistent frame (top bar, collapsible column, drawer on a phone), a profile pag
 glass" visual pass, and a real liquid in the glasses. **`0.3.1-alpha`** followed it: deletable
 days, one repeat rule saved once, and water that moves like water.
 
-**Current milestone: `0.4.0` — the product introduces itself.** A name and a mark, every word in
-the interface rewritten by somebody with a voice, more words than there were, a front door for
-people who have never seen it, and the liquid finished as a material.
+**`0.4.0` / `0.4.1-alpha` — the product introduces itself — is done, live and tagged
+(`v0.4.1-alpha`).** A name and a mark, every word rewritten by somebody with a voice, a front door
+for people who have never seen it, and light in the water.
+
+**Current work, for the next minor release: the tiles become glasses, and the water is replaced**
+(branch `feat/glass-water`). Every goal is a glass standing on a shelf with its words underneath;
+nothing is written on the water any more. The water is a new model — a modal slosh that breaks
+into droplets on violent moments — chosen on the bench as an 8 cm drinking glass at strength 0.5.
 
 **Product rules that the code must not quietly break:**
 
 - The design is **"Meadow"**: an unsorted canvas of goal tiles, where tile **size is how important
   the goal is** to the person. A goal is **a glass that fills** — "your glass is half full".
+- **A tile is a glass standing on a shelf, and no text ever sits on the water.** The words hang
+  under the glass like a label. Text over liquid forced the liquid to stay a faint tint so the
+  copy stayed readable, ran waterlines through titles and clipped small tiles — all three shipped.
+  Size is the glass's size: small 64×100, medium 80×125, large 96×150 (`--vessel-*`).
 - **No failure states, ever.** A measured goal that moves backwards just makes the glass quietly
   lower. No red, no "behind" badge, no streak-guilt.
 - **Habits have a target and a minimum.** Target 4 runs a week, minimum 1: while the minimum is
@@ -114,13 +123,14 @@ CLAUDE.md  README.md  CHANGELOG.md  cliff.toml
 The main interactive session is the **orchestrator**; the human approves. Delegate scoped
 work to the specialist that owns it rather than doing everything in the main session.
 
-| Agent               | Owns                                                                                   | Must not touch                              |
-| ------------------- | -------------------------------------------------------------------------------------- | ------------------------------------------- |
-| `design-agent`      | CSS, design tokens, layout, component appearance                                       | Terraform, workflows, backend, logic        |
-| `features-agent`    | Business logic: tasks/projects, reminders, calendar UX, client state, product routes   | Infra, Supabase schema/client, styling      |
-| `integration-agent` | Backend runtime shell, Supabase schema/client, external APIs, Terraform, CI/CD, deploy | Styling, business logic                     |
-| `copy-agent`        | Every word the interface says, including `aria-label`, `alt` and visually-hidden text  | Logic, layout, styling, config              |
-| `marketing-agent`   | The name, the mark's geometry, positioning, store framing — how it introduces itself   | Anything under `frontend/`, in-product copy |
+| Agent               | Owns                                                                                   | Must not touch                                 |
+| ------------------- | -------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `design-agent`      | CSS, design tokens, layout, component appearance                                       | Terraform, workflows, backend, logic           |
+| `features-agent`    | Business logic: tasks/projects, reminders, calendar UX, client state, product routes   | Infra, Supabase schema/client, styling         |
+| `integration-agent` | Backend runtime shell, Supabase schema/client, external APIs, Terraform, CI/CD, deploy | Styling, business logic                        |
+| `copy-agent`        | Every word the interface says, including `aria-label`, `alt` and visually-hidden text  | Logic, layout, styling, config                 |
+| `marketing-agent`   | The name, the mark's geometry, positioning, store framing — how it introduces itself   | Anything under `frontend/`, in-product copy    |
+| `water-agent`       | The liquid: `lib/water/**`, `GoalWater.*`, the bench (`lab.html`, `src/lab/**`)        | The glass itself (`GoalGlass.*`), layout, copy |
 
 `copy-agent` changes string literals and nothing else — not logic, not JSX, not a class name —
 and updates only the test assertions that quote the exact words it changed. `marketing-agent`
@@ -256,8 +266,10 @@ needing it merges — the same rule `infra/` follows, and for the same reason: `
 touches Supabase, so a missing table or view is invisible to every deploy check and the first
 person to find out is a visitor.
 
-Shapes live in `backend/src/types/api.ts` and are the contract the frontend imports. Successful
-responses carry `Cache-Control: public, max-age=60`; errors carry `no-store`. `backend/src/types/database.ts`
+Shapes live in `backend/src/types/api.ts` and are the contract the frontend imports. Reads carry
+`Cache-Control: private, no-store`, writes and errors `no-store` — **never `public`**: every `/api`
+response is one person's data, and a shared cache in front of it (CloudFront, say) would hand it to
+the next caller. `backend/src/types/database.ts`
 is hand-written and must be replaced by `supabase gen types typescript` once the project is linked.
 
 **Backend env vars** (see `backend/.env.example`): `PORT`, `SUPABASE_URL`,
@@ -289,8 +301,9 @@ already rewrites **403 and 404** to `/index.html` with a 200 (`infra/main/fronte
 answers 403 rather than 404 without `s3:ListBucket`, which is why both are there.
 
 **The gallery is how the app is looked at.** `frontend/gallery.html` renders the real components
-from fixtures with no session and no API behind them, and `frontend/water.html` is a bench for the
-liquid. Neither is in the production build's inputs. They exist because **jsdom has no layout**:
+from fixtures with no session and no API behind them; `frontend/lab.html` is the water bench and
+`frontend/water.html` four real glasses with move, pour and drain controls. None is in the
+production build's inputs. They exist because **jsdom has no layout**:
 every test can pass while a pill overflows its column, a control collapses to a circle, or a rule
 is drawn through a title. Three such defects shipped in `0.2.0-alpha`.
 
@@ -300,51 +313,78 @@ Screenshotting them needs no install — from WSL, drive the Windows Chrome that
 CHROME="/mnt/c/Program Files/Google/Chrome/Application/chrome.exe"
 "$CHROME" --headless=new --disable-gpu --hide-scrollbars --force-device-scale-factor=2 \
   --virtual-time-budget=4000 --window-size=660,460 \
-  --screenshot='C:\Users\Santi\AppData\Local\Temp\pt-shots\out.png' \
+  --screenshot='C:\Users\<you>\AppData\Local\Temp\pt-shots\out.png' \
   "http://localhost:5173/gallery.html?only=shell"
 ```
 
-The file lands at `/mnt/c/Users/Santi/AppData/Local/Temp/pt-shots/out.png`; read it and LOOK at it.
-`?only=` narrows the page to the cases whose title matches, which is not a convenience: a window
-tall enough for the whole gallery comes back blank. `--dump-dom` with a `<pre>` that measures
-elements is how to get numbers rather than impressions — that is what found all three defects.
+`<you>` is the Windows user, which is not the WSL one — `cmd.exe /c "echo %TEMP%"` prints the
+folder. The file lands at `/mnt/c/Users/<you>/AppData/Local/Temp/pt-shots/out.png`; read it and
+LOOK at it. Wrap every call in `timeout 60`: a page that never goes idle (the lab's particle row,
+once) holds headless Chrome forever. `?only=` narrows the page to the cases whose title matches,
+which is not a convenience: a window tall enough for the whole gallery comes back blank.
+`--dump-dom` with a `<pre>` that measures elements is how to get numbers rather than impressions —
+that is what found all three defects; the gallery's `?measure=1` adds one for every board.
 
-**The water.** A goal's glass holds a simulated liquid (`frontend/src/lib/water/`): a
-one-dimensional height field of springs, one shared animation loop for the whole board that stops
-when nothing is moving, and two renderers behind one interface — Pixi for the eight tiles the
-pool lends a WebGL context to, canvas 2D for the rest, because a browser keeps only about sixteen
-contexts and a board can hold a hundred goals.
+Headless Chrome here never lays out narrower than 500px, so a 390px window is a cropped 500px page.
+The gallery's `?phone=1` puts every case in a real 390px stage instead. `--force-prefers-reduced-motion`
+shows the still liquid that reduced-motion readers see.
 
-**`renderer.ts` owns every coordinate and both renderers own none.** Each shape — the vessel, the
-body, the band under the surface, the two wall strips, the glint, the light on the floor — is
-traced by one shared function into a `PathSink`, the four path methods canvas and Pixi agree on. A
-renderer decides only how to put a shape on a screen: canvas clips to the vessel, Pixi masks to
-the same one, and each supplies its own fills and blend modes. This is not tidiness. The two drew
-different liquids once — Pixi a flat 22%, canvas a three-stop gradient — and which tiles got which
-depended on the order they mounted, so a board came out with some glasses deep and some flat. It
-was reported as the water looking glitchy, and it was.
+**The glass and the water are two owners and one picture.** `components/GoalGlass.tsx` draws the
+glass as two SVG layers — the back (shadow, the room seen through it, the far rim, the still
+liquid) and the front (etches, base, walls, near rim, highlight) — with `.goal-glass__liquid`
+between them: a box exactly the vessel's inside, where `GoalWater` mounts its canvas. The walls
+are in front of the water because a full glass's water reaches the rim.
 
-`water.html` draws both renderers, one row above the other, from the same field. A divergence is
-now something a screenshot shows rather than something a visitor finds.
+**The water** (`frontend/src/lib/water/`) is a modal slosh, not a height field of springs:
+`slosh.ts` sums standing waves whose frequencies come from the glass's width and depth, so a
+shallow glass rocks slower, and every wave integrates to zero across the width, so **water is
+moved, never made** by construction. Violent moments — the surface falling faster than gravity, a
+crest past the Stokes limit, fast run-up at a wall — throw droplets (`spray.ts`, 40 a glass, 300 a
+board) whose volume leaves the body and lands back in it. Each glass is an 8 cm drinking glass at
+strength 0.5 (`createGlass` in `vessel.ts`), chosen on the bench over the 3.8 cm one, which rocked
+at 5 Hz and read as jelly. `liquidPaint.ts` paints the liquid only, in canvas 2D only: Pixi is
+gone, because canvas cost the same per glass and a 2D context has no browser-wide cap. One shared
+loop drives the board and stops when nothing moves; a glass off screen still gets time, so it
+settles instead of keeping the loop awake.
 
-The CSS water (`.goal-tile__body`, `.goal-tile__line`) is **not dead code and must keep working on
-its own**: it is what shows for anyone who asked for less motion, for a browser that gives no
-context, and in jsdom, where the test setup returns null from `getContext` so that path is
-exercised on every run. The canvas hides it only once it is live. Every number describing the
-liquid's depth therefore exists twice — as `--tint-*` in `tokens.css` and as what the canvas reads
-from them — and a change to one is a change to both.
+**The approved pour is pinned.** The owner liked the pour as built; `sloshPour.test.ts` holds its
+surface to 1e-4 px at three scales. A change that moves it needs the owner's eyes, not a new golden.
+
+**The driver measures layout, never transforms.** `driver.ts` reads each glass's position from
+the `offsetLeft`/`offsetTop` chain, so a pick-up lift, hover, press or page scroll never reaches
+the water. A keyboard move is a layout jump, which differenced is an infinite acceleration, so the
+position is chased by `Carry`, a critically damped follower: the water feels a hand carrying the
+glass there. Anything decorative on a tile must stay a transform; a layout change reads as motion.
+
+The still liquid (`.goal-glass__still`) is **not dead code and must keep working on its own**: it
+is what shows for anyone who asked for less motion, for a browser that gives no context, and in
+jsdom, where the test setup returns null from `getContext` so that path runs on every test. It
+traces its surface with the painter's own exported functions, so the two cannot draw different
+water; `GoalWater` adds `--live`, which hides it, only after a frame has actually been painted.
+Its fill alphas live in `GoalGlass.css`, which cannot import a number, so `stillRecipe.test.ts`
+reads that stylesheet and pins each one to the painter's constant. The liquid's numbers exist in
+three places — `--liquid-*` / `--vessel-*` in `tokens.css`, and the jsdom fallbacks
+`LIQUID_STOPS` (`liquidPaint.ts`) and `VESSEL_FALLBACK` (`vessel.ts`) — and a change to one is a
+change to all three. `--tint-*` is the old water's and is still read by `EntryBar`, `CalendarMonth`
+and the front door's hero glass.
+
+**The bench.** `lab.html` drives the model with scripted gestures (pour, drag, flick, shake, yank,
+lift); `?strip=<gesture>` freezes a gesture at several moments in one picture, `?t=` freezes one
+moment, `?board=1` steps the real board frame by frame, and `?bench=100` reports the cost of a
+hundred glasses. The particle-fluid experiment in `src/lab/` was not adopted; its tests take ~2
+minutes and are excluded from `npm test` (`LAB_PARTICLES=1 npm test` runs them).
 
 Three things that cost an afternoon and will do so again:
 
 - Anything that takes a resource to check whether that resource is available **is taking it**. A
   WebGL capability probe disabled the GPU path for the whole board on a software renderer.
-- A canvas that has lost a WebGL context can never be given another, and React reuses DOM nodes
-  across an effect's cleanup — which StrictMode does on every mount in development. The canvas is
-  created in the effect, not rendered, for that reason.
+- React reuses DOM nodes across an effect's cleanup — which StrictMode does on every mount in
+  development — so a canvas that must start fresh is created in the effect, not rendered.
+  `GoalWater` still does this.
 - **A threshold nobody measured is a guess, and a guess drawn at 13% alpha looks exactly like a
   bug.** The light on the waves and the light on the floor are both driven by properties of the
-  surface — its slope and its curvature — and both constants arrived as estimates. This field's
-  peak slope is 0.04 after a pour and 0.36–0.50 during a drag; its peak curvature is twenty times
+  surface — its slope and its curvature — and both constants arrived as estimates. The old spring
+  field's peak slope is 0.04 after a pour and 0.36–0.50 during a drag; its peak curvature is twenty times
   smaller after a pour than the number chosen for it. Drawn, that came out as an even band of
   light that never moved: crest and trough read identical to the byte when the pixels were probed.
   Anything keyed to the simulation's own numbers gets calibrated against the simulation, and the

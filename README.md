@@ -1,24 +1,40 @@
-# progress-tracker
+# Half Full
 
-> A personal, minimalist life tracker — ongoing tasks and projects, a built-in calendar with
-> Google/Apple Calendar sync, and encouraging reminders.
->
-> **Status: `0.1.0-alpha` — infrastructure only.** The pipeline is real; the product isn't built yet.
+> A personal, minimalist life tracker. Every goal is a glass that fills: tick a habit, log a
+> measurement or finish a session, and the water rises. Nothing ever tells you that you are behind.
 
-## Overview
+The product is called **Half Full**; the repository, the npm packages and every storage key stay
+`progress-tracker` (renaming the repository would break the deploy role's OIDC trust policy, and
+renaming a storage key would sign every visitor out). [`CLAUDE.md`](CLAUDE.md) is the detailed
+project context — product rules, contracts and the lessons behind them — and wins over this file
+wherever the two disagree.
 
-This repository currently contains the _plumbing_ for the app, not the app itself:
+## Status
 
-- A React + Vite + TypeScript frontend with one page — an **Alpha infra status** panel that calls the
-  backend's `/health` endpoint and shows pass/fail, the API version, commit, and server time.
-- An Express + TypeScript backend that runs as a normal server locally and as a container image on
-  AWS Lambda in production, from the same `app` object.
-- Terraform for all AWS infrastructure, with remote state.
-- GitHub Actions for CI, continuous deployment on every merge to `main`, and tagged releases with a
-  generated changelog.
+**`0.4.1-alpha` is live.** Merging to `main` deploys automatically, and the deploy fails unless the
+live `GET /health` reports the commit that was pushed.
 
-The goal of this milestone: **a trivial change merged to `main` is live at a real URL within minutes,
-with a version number and a changelog entry.**
+What a visitor can do today:
+
+- **Start without signing up.** A front door explains the app; pressing its button creates an
+  anonymous account (a real Supabase user, no password). Its goals live for **90 days from the last
+  visit**. There is no sign-in, permanent account or export yet.
+- **Build a board.** Add goals from a catalogue of six per life area, or write your own. Goals are
+  `habit` (a target and a gentler minimum per period), `measured` (a value toward a target) or
+  `scheduled` (sessions). Six fixed life areas; colour always means area and is always named in text.
+- **Fill the glasses.** Tick a goal done, log a value, undo either in one tap. A goal's size on the
+  board is how important it is, and the board can be rearranged by drag or entirely by keyboard.
+- **Plan days.** Repeat rules put goals on a calendar; a single day can be taken off it. Editing a
+  rule never rewrites days already lived.
+- **Four pages:** the board, the calendar, "My full glasses" (finished goals — a shelf, not a trophy
+  cabinet) and a profile with plain facts, time zone and week start.
+
+**In progress on `feat/glass-water`, for the next minor release:** every tile becomes a glass
+standing on a shelf with its words underneath — nothing is written on the water any more — and the
+water is replaced by a sloshing model that breaks into droplets on violent moments, pours when a
+goal is ticked and settles to stillness.
+
+Not built yet: Google/Apple Calendar sync, reminders and notifications, permanent accounts.
 
 ## Architecture
 
@@ -26,7 +42,7 @@ with a version number and a changelog entry.**
 flowchart LR
   subgraph GitHub
     pr[Pull request] -->|ci.yml| ci[lint · typecheck · test · build<br/>docker build · terraform validate]
-    main[push to main] -->|deploy.yml| deploy[Deploy job]
+    main[push to main] -->|deploy.yml| deploy[Deploy jobs]
     tag[tag v*] -->|release.yml| rel[GitHub Release + CHANGELOG]
   end
 
@@ -38,63 +54,59 @@ flowchart LR
 
   subgraph AWS
     ecr -. image .-> lambda[Lambda container<br/>Express + serverless-http]
-    furl[Lambda Function URL] --> lambda
+    furl[Lambda Function URL<br/>CORS: CloudFront origin only] --> lambda
     cf[CloudFront] -->|Origin Access Control| s3[(S3 frontend bucket<br/>private)]
   end
 
   browser[Browser] -->|HTTPS| cf
-  browser -->|fetch /health| furl
-  lambda -->|supabase-js| supabase[(Supabase<br/>Postgres + Auth)]
+  browser -->|anonymous sign-in| sbauth[Supabase Auth]
+  browser -->|/api with Bearer token| furl
+  lambda -->|as the caller: RLS applies| supabase[(Supabase<br/>Postgres)]
 ```
 
-| Piece          | Where               | Notes                                                                                  |
-| -------------- | ------------------- | -------------------------------------------------------------------------------------- |
-| Frontend       | `frontend/`         | Static build → private S3 bucket, served only through CloudFront (OAC).                |
-| Backend        | `backend/`          | `src/app.ts` is shared; `src/server.ts` runs it locally, `src/lambda.ts` on Lambda.    |
-| API endpoint   | Lambda Function URL | Public (`auth NONE`) for the alpha only; CORS restricted to the CloudFront origin.     |
-| Remote state   | `infra/bootstrap/`  | S3 state bucket + DynamoDB lock table. Applied once, with local state.                 |
-| Infrastructure | `infra/main/`       | ECR, Lambda, Function URL, S3 + CloudFront, GitHub OIDC provider + deploy role.        |
-| CI/CD auth     | GitHub OIDC → IAM   | No long-lived AWS keys exist anywhere. The role trusts only `main` of this repository. |
+| Piece          | Where                 | Notes                                                                                                                                                                      |
+| -------------- | --------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Frontend       | `frontend/`           | React + Vite + TypeScript. Static build → private S3 bucket, served only through CloudFront (OAC).                                                                         |
+| Backend        | `backend/`            | Express + TypeScript. `src/app.ts` is shared; `src/server.ts` runs it locally, `src/lambda.ts` on Lambda.                                                                  |
+| Database, auth | Supabase, `supabase/` | Postgres with row-level security, anonymous auth. Schema notes and how migrations are applied: [`supabase/README.md`](supabase/README.md).                                 |
+| API endpoint   | Lambda Function URL   | Every `/api` route needs the caller's Supabase token and runs **as that user**, so RLS — not route code — keeps one account's goals from another. `/health*` is anonymous. |
+| Remote state   | `infra/bootstrap/`    | S3 state bucket + DynamoDB lock table. Applied once, with local state.                                                                                                     |
+| Infrastructure | `infra/main/`         | ECR, Lambda, Function URL, S3 + CloudFront, GitHub OIDC provider + deploy role.                                                                                            |
+| CI/CD auth     | GitHub OIDC → IAM     | No long-lived AWS keys exist anywhere. The role trusts only `main` of this repository.                                                                                     |
+
+Limits that protect an open API live in the database (caps on goals, entries and text length;
+a shared per-session request counter), so a forgotten check in a route cannot bypass them.
 
 ## Local development
 
-**Prerequisites:** Node.js 22 (`nvm use` reads `.nvmrc`), npm 10+. Docker is optional (only needed
-to test the Lambda image locally).
+**Prerequisites:** Node.js 22 (`nvm use` reads `.nvmrc`), npm 10+. Docker only to test the Lambda
+image locally.
 
 ```bash
-npm run setup                               # installs root, frontend/, and backend/ dependencies
-cp backend/.env.example backend/.env        # optional — fill in Supabase values to test /health/db
-npm run dev                                 # backend on :3001 + frontend on :5173, one terminal
+npm run setup                                # installs root, frontend/ and backend/ dependencies
+cp backend/.env.example backend/.env         # SUPABASE_URL, SUPABASE_ANON_KEY, SUPABASE_SERVICE_ROLE_KEY
+cp frontend/.env.example frontend/.env       # VITE_SUPABASE_URL, VITE_SUPABASE_ANON_KEY
+npm run dev                                  # backend on :3001 + frontend on :5173
 ```
 
-Open <http://localhost:5173>. The status panel should show **Pass**. Vite proxies `/health` to the
-local backend, so there's no CORS setup locally. The backend runs through `src/server.ts` with
-reload on save; the Lambda handler isn't involved.
+Open <http://localhost:5173>. Vite proxies `/health` and `/api` to the local backend, so the browser
+sees one origin and no CORS is involved. Using the app needs a Supabase project with the migrations
+applied; without one, `GET /health` still passes and `GET /health/db` reports `unconfigured`.
 
-Without Supabase credentials, `GET /health/db` reports `unconfigured`. That's expected and doesn't
-affect `/health`.
+### Pages for looking at the app (dev only, never in the production build)
 
-### Testing the Lambda image locally (optional)
+jsdom has no layout, so a test suite can pass while a control overflows its column. These pages
+render the real components from fixtures, with no session and no API behind them:
 
-The production artifact is a container built from `backend/Dockerfile` on the AWS Lambda Node.js 22
-base image. That base image includes the Lambda Runtime Interface Emulator, so you can invoke the real
-handler (`dist/lambda.handler`) without AWS:
+| Page            | What it is                                                                                                                                                                                                                     |
+| --------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `/gallery.html` | Every screen state. `?only=<title>` narrows to matching cases, `?phone=1` puts each in a 390px stage, `?measure=1` adds measurements.                                                                                          |
+| `/lab.html`     | The water bench: scripted gestures (pour, drag, flick, shake, yank, lift). `?strip=<gesture>` shows one gesture over time, `?board=1` steps the real board frame by frame, `?bench=100` reports the cost of a hundred glasses. |
+| `/water.html`   | Four real glasses with move, pour and drain controls.                                                                                                                                                                          |
 
-```bash
-cd backend
-npm run docker:build          # buildx, linux/amd64, --provenance=false (same flags CI uses)
-npm run docker:run            # emulator on :9000 — leave running, use a second terminal:
-curl -s -X POST localhost:9000/2015-03-31/functions/function/invocations \
-  -d @events/function-url-health.json
-```
+How to screenshot them headlessly from WSL is in [`CLAUDE.md`](CLAUDE.md#screens-and-looking-at-them).
 
-The response body should contain `"version":"0.1.0-alpha"`. To test `/health/db` against Supabase
-here, add `--env-file .env` to the `docker run` command.
-
-> **Linux/WSL:** if Docker says `permission denied ... docker.sock`, add yourself to the `docker`
-> group (`sudo usermod -aG docker $USER`) and start a new shell.
-
-### Everyday commands (run from the repo root; each fans out to both packages)
+### Everyday commands (from the repo root; each fans out to both packages)
 
 | Command                | What it does                                 |
 | ---------------------- | -------------------------------------------- |
@@ -105,34 +117,64 @@ here, add `--env-file .env` to the `docker run` command.
 | `npm run build`        | Production builds                            |
 | `npm run format:check` | Prettier check (use `npm run format` to fix) |
 
+The frontend's particle-fluid experiment in `src/lab/` was not adopted; its tests take about two
+minutes and are excluded by default. `LAB_PARTICLES=1 npm test --prefix frontend` runs them.
+
+### Testing the Lambda image locally (optional)
+
+The production artifact is a container built from `backend/Dockerfile` on the AWS Lambda Node.js 22
+base image, which includes the Runtime Interface Emulator:
+
+```bash
+cd backend
+npm run docker:build          # buildx, linux/amd64, --provenance=false (same flags CI uses)
+npm run docker:run            # emulator on :9000 — leave running, use a second terminal:
+curl -s -X POST localhost:9000/2015-03-31/functions/function/invocations \
+  -d @events/function-url-health.json
+```
+
+The response body should contain the version in `backend/package.json`. Add `--env-file .env` to
+the `docker run` command to test `/health/db` against Supabase.
+
+> **Linux/WSL:** if Docker says `permission denied ... docker.sock`, add yourself to the `docker`
+> group (`sudo usermod -aG docker $USER`) and start a new shell.
+
 ## Deployment
 
 ### How it works
 
 Every pull request into `main` runs CI (`.github/workflows/ci.yml`): both packages are
 format-checked, linted, typechecked, tested and built; the backend's Lambda image is built (not
-pushed); and both Terraform roots are `fmt`-checked and validated.
+pushed); and both Terraform roots are `fmt`-checked and validated. **CI never applies Terraform.**
 
 Every push to `main` runs `.github/workflows/deploy.yml`, which re-runs all of CI and then:
 
 1. Authenticates to AWS with **GitHub OIDC** — a short-lived token exchanged for the IAM role in
-   `infra/main/github_oidc.tf`. There are no stored AWS keys, and the role trusts only pushes to
-   `main` of this repository.
+   `infra/main/github_oidc.tf`. The role trusts only pushes to `main` of this repository.
 2. Builds and pushes the backend image to ECR, tagged with the commit SHA.
 3. Points the Lambda at the new image, sets its `SUPABASE_*` environment from GitHub secrets, then
    smoke-tests `GET /health` and **fails the deploy unless the live `commit` matches the pushed
    commit**.
-4. Builds the frontend against the Function URL and uploads it to S3 — hashed assets first,
-   `index.html` last, stale objects deleted only at the end — then invalidates CloudFront.
+4. Checks that the Function URL's CORS configuration covers every method and header the frontend
+   sends, and sends a real preflight to confirm it — so a site that cannot call its own API is
+   never published.
+5. Builds the frontend against the Function URL and the public Supabase URL and anon key, uploads
+   it to S3 — hashed assets first, `index.html` last, stale objects deleted only at the end — then
+   invalidates CloudFront.
 
-Typical run: a few minutes. Deploys never run concurrently and are never cancelled midway.
+Deploys never run concurrently and are never cancelled midway.
+
+**Two kinds of change reach production only by hand, and must do so before the pull request that
+needs them merges:** anything under `infra/` (`terraform apply`), and Supabase migrations (see
+[`supabase/README.md`](supabase/README.md#applying-the-migrations)). Neither is visible to
+`GET /health`, so the deploy is otherwise the thing that finds out.
 
 ### First-time infrastructure setup
 
-Terraform has **not been applied** — the whole stack is still just code. Run these yourself, in
-order, from the repo root, with AWS CLI v2 signed in (SSO recommended) and Docker available.
-`infra/main/lambda.tf` explains why it takes two passes: a container-image Lambda cannot be
-created before an image exists in the repository that the same root creates.
+This has been done for the live stack; repeat it only for a new AWS account. Run from the repo
+root, with AWS CLI v2 signed in (SSO recommended) and Docker available. It takes two passes because
+a container-image Lambda cannot be created before an image exists in the repository that the same
+root creates (`infra/main/lambda.tf` explains).
 
 ```bash
 # 0. Remote state — once per AWS account
@@ -166,16 +208,16 @@ Losing it deletes nothing; the resources can be re-imported.
 
 ### Required GitHub secrets
 
-All nine must exist before the first push to `main`, or the deploy fails at role assumption. The
-AWS account ID is deliberately **not** stored — it's derived at runtime.
+All nine must exist, or the deploy fails at role assumption. The AWS account ID is deliberately
+**not** stored — it is derived at runtime.
 
 | Secret                                                                                                                         | Where it comes from                                                      |
 | ------------------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------------------ |
 | `AWS_REGION`, `AWS_ROLE_ARN`, `ECR_REPOSITORY_URI`, `LAMBDA_FUNCTION_NAME`, `S3_FRONTEND_BUCKET`, `CLOUDFRONT_DISTRIBUTION_ID` | `terraform -chdir=infra/main output -json github_secrets` (step 4 above) |
 | `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`                                                               | Supabase dashboard → Project Settings → API                              |
 
-The service-role key bypasses Row Level Security. It is only ever set on the Lambda and must never
-reach the browser.
+The anon key is public by design and is built into the frontend. The service-role key bypasses
+row-level security: it is only ever set on the Lambda and must never reach the browser.
 
 ### Recommended branch protection (set these by hand in GitHub's UI)
 
@@ -184,67 +226,53 @@ message to **"Pull request title"** (git-cliff reads those titles), and auto-del
 
 **Settings → Rules → Rulesets** targeting `main`: require a pull request (0 approvals is fine when
 you're solo — GitHub won't let you approve your own); require status checks `frontend`, `backend`,
-`repo`, `terraform`, `pr-title` (they only appear in the picker after running once, so open a
-throwaway PR first); require branches to be up to date; block force pushes; restrict deletions.
-Do **not** require signed commits — the release workflow's changelog commit would be rejected.
-Add a second ruleset targeting tag `v*` restricting who can create or delete tags.
+`repo`, `terraform`, `pr-title` (they only appear in the picker after running once); require
+branches to be up to date; block force pushes; restrict deletions. Do **not** require signed
+commits — the release workflow's changelog commit would be rejected. Add a second ruleset
+targeting tag `v*` restricting who can create or delete tags.
 
 **Settings → Actions → General:** require approval for all outside collaborators' workflow runs,
 and enable "Allow GitHub Actions to create and approve pull requests" so the changelog fallback
 pull request can be opened.
 
-## Release Process
+## Release process
 
 Versions follow SemVer, starting at `0.1.0-alpha`, and the version in `package.json` is what
-`GET /health` reports — so a release is a real, checkable claim about what is live.
+`GET /health` reports — so a release is a real, checkable claim about what is live. Work reaches
+`main` through squash-merged pull requests whose titles are Conventional Commits
+(`pr-title.yml` enforces it); git-cliff builds the changelog from those titles.
 
 ```bash
-git switch -c release/v0.1.1-alpha
-npm run release:prepare -- 0.1.1-alpha     # bumps all 3 packages + lockfiles, writes CHANGELOG.md
+git switch -c release/vX.Y.Z
+npm run release:prepare -- X.Y.Z     # bumps all 3 packages + lockfiles, writes CHANGELOG.md
 # review and edit the generated changelog section, then:
-git commit -am "chore(release): v0.1.1-alpha"
-gh pr create --title "chore(release): v0.1.1-alpha"
+git commit -am "chore(release): vX.Y.Z"
+gh pr create --title "chore(release): vX.Y.Z"
 # merge the PR — merging deploys it — then tag the merged commit:
 git switch main && git pull
-git tag v0.1.1-alpha && git push origin v0.1.1-alpha
+git tag vX.Y.Z && git push origin vX.Y.Z
 ```
 
 Pushing the tag runs `.github/workflows/release.yml`, which verifies the tag is valid SemVer,
 matches all three `package.json` versions, and points at a commit on `main` (i.e. one that was
-actually deployed), then publishes a GitHub Release using the `CHANGELOG.md` section — marked as a
-pre-release automatically while the version has an `-alpha` suffix.
+actually deployed), then publishes a GitHub Release from the `CHANGELOG.md` section — marked as a
+pre-release while the version has an `-alpha` suffix.
 
 **A tag does not deploy anything.** The commit went live when its pull request merged; the tag and
-Release are the record of what that version contains. If you tag without running
-`release:prepare`, the workflow still publishes notes generated from commit messages and opens a
-pull request to backfill the changelog.
+Release are the record of what that version contains.
 
-Changelog entries come from Conventional Commit messages. Because `main` uses squash merges, the
-**pull request title** is the commit message — `pr-title` enforces the format on every PR.
+## Known limitations
 
-## Alpha status & known limitations
+Roughly in priority order:
 
-This milestone deliberately proves the pipeline, not the product.
-
-**Not built yet (intentionally stubbed):** no authentication or login, no calendar or
-Google/Apple Calendar sync, no reminders or notifications, no task/project tracking, and no
-database schema. Supabase is wired up and reachable, but nothing reads or writes data.
-
-**Alpha infrastructure caveats, roughly in priority order:**
-
-| Limitation                                         | Detail                                                                                                                          | When to fix                                                                                                  |
-| -------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
-| **The API is public and unauthenticated**          | The Lambda Function URL uses `authorization_type = "NONE"`. CORS restricts browsers, not scripts.                               | **Before any real user data exists.** Move to IAM auth behind CloudFront, or API Gateway with an authorizer. |
-| **No spend guard**                                 | A flood of requests to the public URL could run up Lambda and CloudWatch charges. Expected cost otherwise is ~$0.05–0.25/month. | Set an AWS Budgets alert now; add reserved concurrency once the account's concurrency quota allows it.       |
-| **`/health/db` calls Supabase on every request**   | It is public and unthrottled, so it can burn Supabase quota.                                                                    | Cache the probe result, or require auth, before launch.                                                      |
-| **Supabase keys live in the Lambda's environment** | Readable by anyone with AWS console access to the function.                                                                     | Move to SSM Parameter Store or Secrets Manager when the account has more than one user.                      |
-| **No custom domain**                               | The app is served from a `*.cloudfront.net` URL and the API from a `*.lambda-url.*.on.aws` URL.                                 | Whenever you want a real address; needs an ACM certificate in us-east-1.                                     |
-| **No staging environment**                         | `main` deploys straight to the only environment.                                                                                | When breaking production starts to matter.                                                                   |
-| **Single region, no backups**                      | Everything is in one region; there is no state-bucket replication.                                                              | Post-alpha.                                                                                                  |
-| **CloudFront SPA fallback masks 404s**             | A missing asset returns `index.html` with a 200.                                                                                | Acceptable for a SPA; revisit if it hides real errors.                                                       |
-
-**Verified in this pass:** both apps run together locally, the backend's health endpoints behave
-correctly (including six Supabase failure modes), 31 tests pass, the Terraform validates, and all
-four workflows pass actionlint. **Not verified:** anything requiring real AWS or Docker — no
-Terraform has been applied, no image has ever been built or pushed, and the pipeline has never
-run.
+| Limitation                                            | Detail                                                                                                                                             |
+| ----------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **The service-role key is on the serving Lambda**     | Only the public `GET /health/db` probe uses it, but it bypasses RLS. Probing with the anon key would let it leave the Lambda entirely.             |
+| **The spend ceiling is not in Terraform**             | Abuse is bounded today by the account's Lambda concurrency cap of 10 and a $5 AWS Budgets alarm set up by hand. The cap rises as the account ages. |
+| **The Function URL is public at the AWS level**       | Data is protected by tokens and RLS, but any caller can invoke the function. CloudFront in front with IAM auth (or API Gateway) would close it.    |
+| **Images are tagged by commit SHA only**              | ECR keeps the 10 newest images, so the image behind an older release is eventually expired and cannot be rolled back to.                           |
+| **The 90-day expiry sweep must be scheduled by hand** | Nothing in the migrations schedules it; see [`supabase/README.md`](supabase/README.md).                                                            |
+| **`/health/db` calls Supabase on every request**      | It is public and unthrottled, so it can burn Supabase quota.                                                                                       |
+| **Supabase keys live in the Lambda's environment**    | Readable by anyone with AWS console access to the function. Move to SSM Parameter Store or Secrets Manager when the account has more users.        |
+| **No staging, no custom domain, single region**       | `main` deploys straight to the only environment, served from `*.cloudfront.net` and `*.lambda-url.*.on.aws`.                                       |
+| **CloudFront's SPA fallback masks 404s**              | A missing asset returns `index.html` with a 200 — the price of deep links working.                                                                 |

@@ -1,208 +1,197 @@
 /*
- * The liquid in a glass.
+ * The live liquid in a goal's glass.
  *
- * A canvas laid over the tile's own CSS water, driven by `WaterField`. It draws the body and the
- * surface; everything else about the vessel — walls, rim, shadow, the copy — stays in CSS.
+ * Mounted by `GoalGlass` in the slot between the glass's back and its front, so the walls and the
+ * rim are in front of it. The slot is exactly the vessel's inside; this measures it, builds the water
+ * the owner chose for it (`createGlass`: an 8 cm drinking glass, strength 0.5), and paints it with
+ * the production painter (`liquidPaint.ts`), clipped to the glass. The glass itself is the SVG's.
  *
- * It renders NOTHING in three cases, and each of them leaves the CSS water showing rather than an
- * empty glass:
- *   - the reader asked for less motion;
- *   - the browser gave us no 2D context;
- *   - the component has not measured itself yet.
- * That is why the CSS water is still maintained: it is the floor this stands on, not dead code.
+ * IT GOES LIVE ONLY ONCE IT HAS DRAWN. `GoalGlass` hides its still liquid when this host carries
+ * `goal-tile__water--live`, and the class is added after the first frame has actually been painted
+ * — never on mounting — so there is no instant with no water in the glass. It never goes live:
+ *   - for a reader who asked for less motion (and it lets go if they ask while it is running);
+ *   - in a browser that gives no 2D context;
+ *   - in jsdom, where the test setup returns no context, so the still liquid is what every test sees.
+ *
+ * ONE LOOP FOR THE WHOLE BOARD (`driver.ts`), which reads every glass's position before anything is
+ * drawn, and stops when nothing moves: a sleeping glass is neither stepped nor painted.
  */
 
 import { useEffect, useRef, useState } from 'react';
 import { join, wake } from '../lib/water/driver';
-import { WaterField } from '../lib/water/field';
-import { borrowGpu } from '../lib/water/pool';
-import { createCanvasRenderer } from '../lib/water/renderer';
-import { readWaterTints, type WaterTints } from '../lib/water/tints';
+import { createLiquidRenderer, liquidStops } from '../lib/water/liquidPaint';
+import type { Slosh } from '../lib/water/slosh';
+import { readLiquidTints, type WaterTints } from '../lib/water/tints';
+import { createGlass, readVesselBox, type LiquidVessel } from '../lib/water/vessel';
 import './GoalWater.css';
 
 export interface GoalWaterProps {
   /**
    * 0–1. The level the surface settles to, and the only thing this needs: "full" is not a second
-   * input, it is `level >= 1`, so the canvas and the tile's own full styling cannot disagree.
+   * input, it is `level >= 1`, so the canvas and the glass's own full styling cannot disagree.
    */
   level: number;
 }
 
+const LESS_MOTION = '(prefers-reduced-motion: reduce)';
+const DARK = '(prefers-color-scheme: dark)';
+
 /**
- * Has the reader asked for less motion?
- *
- * `matchMedia` is typed as always present and is not: jsdom has none, and neither does a worker.
- * Widening it here is what makes the check a real check rather than something the linter is right
- * to call dead — the same move `supabaseAuth.ts` makes for `localStorage`. Answering "no" when
- * there is nothing to ask is right: a test environment has no reader with a preference.
+ * A media query, or nothing where there is no `matchMedia` (jsdom, a worker). Widened here because
+ * the DOM types say it is always present and it is not.
  */
-function prefersLessMotion(): boolean {
-  const ask = (globalThis as { matchMedia?: (query: string) => MediaQueryList }).matchMedia;
-  return ask?.('(prefers-reduced-motion: reduce)').matches ?? false;
+function query(text: string): MediaQueryList | null {
+  const ask = (globalThis as { matchMedia?: (q: string) => MediaQueryList }).matchMedia;
+  return ask?.(text) ?? null;
 }
 
 export function GoalWater({ level }: GoalWaterProps) {
   const hostRef = useRef<HTMLSpanElement | null>(null);
-  const colorRef = useRef('rgb(100, 116, 139)');
-  /** The theme's own water tints, read from the tokens rather than hardcoded twice. */
-  const tintsRef = useRef<{ resting?: WaterTints; full?: WaterTints }>({});
-  /**
-   * Something other than the waves has changed — the level, the size, the theme — so the next
-   * frame must paint even if the water is perfectly still.
-   */
-  const dirty = useRef(true);
   const [live, setLive] = useState(false);
 
-  // `useState` with an initialiser rather than a ref, so the field is built exactly once and
-  // nothing reads a ref during render.
-  const [field] = useState(() => new WaterField());
+  /** The level as a prop, for whichever water exists when it changes or is (re)built. */
+  const levelRef = useRef(level);
+  /** Hands a level change to the running water. Null while there is none. */
+  const pourRef = useRef<((next: number) => void) | null>(null);
 
-  // The first level a tile is given is a FACT — this is how full the glass is — and every one
-  // after it is an EVENT, because something happened. A board that loads with a full glass on it
-  // shows a full glass; it does not perform a pour nobody caused.
-  const poured = useRef(false);
+  /*
+   * The first level a glass is given is a FACT — this is how full it is — and every one after it is
+   * an EVENT, because something happened: a tick pours in, an undo drains back out. A board that
+   * loads with a full glass on it shows a full glass; it does not perform a pour nobody caused.
+   */
   useEffect(() => {
-    field.setLevel(level, poured.current);
-    poured.current = true;
-    dirty.current = true;
-    wake();
-  }, [field, level]);
+    levelRef.current = level;
+    pourRef.current?.(level);
+  }, [level]);
 
   useEffect(() => {
     const host = hostRef.current;
     if (host === null) return;
 
-    // Asked for less motion: draw nothing, leave the CSS water in charge, cost nothing.
-    if (prefersLessMotion()) return;
+    const lessMotion = query(LESS_MOTION);
+    // Asked for less motion: draw nothing, leave the still liquid in the glass, cost nothing.
+    if (lessMotion?.matches === true) return;
 
-    /*
-     * A FRESH CANVAS EVERY TIME, made here rather than rendered by React.
-     *
-     * A canvas that has lost a WebGL context can never be given another one, and tearing a Pixi
-     * application down loses the context by design. React reuses DOM nodes across an effect's
-     * cleanup and re-run — which StrictMode does deliberately on every mount in development — so
-     * a rendered canvas was being handed to Pixi, destroyed, and handed over again dead. Pixi
-     * reported "this browser does not support WebGL", the pool believed it, and every tile on the
-     * board silently fell back to 2D on a machine that was perfectly capable.
-     */
+    // Made here rather than rendered by React, so a re-run of this effect never inherits a canvas
+    // some earlier run already drew into.
     const canvas = document.createElement('canvas');
     canvas.className = 'goal-tile__water-surface';
     host.appendChild(canvas);
+    const renderer = createLiquidRenderer(canvas);
+    if (renderer === null) {
+      // No 2D context: the still liquid stays, and nothing joins the loop.
+      canvas.remove();
+      return;
+    }
 
-    // Setting up is asynchronous, because asking for a GPU context is. The component can unmount
-    // in the middle of that — a board being filtered does it constantly — so everything below
-    // checks the signal before taking a resource, and hands back anything it already took.
-    // An AbortController rather than a boolean: `signal.aborted` is read fresh every time, where
-    // a captured `let` reads as permanently false to anything analysing this function.
-    const unmounted = new AbortController();
-    let teardown: (() => void) | null = null;
+    let model: Slosh | null = null;
+    let vessel: LiquidVessel | null = null;
+    let color = 'rgb(100, 116, 139)';
+    let tints: { resting?: WaterTints; full?: WaterTints } = {};
+    /** Something other than the water changed — size, theme, level — so the next frame paints. */
+    let dirty = true;
+    let drawn = false;
 
-    void (async () => {
-      const lease = await borrowGpu(canvas, unmounted.signal);
-      if (unmounted.signal.aborted) {
-        lease?.release();
-        return;
+    /**
+     * Read everything the drawing depends on that is not the water: the slot's box (the vessel),
+     * the area's colour (through the host's `color`, since canvas cannot read a custom property),
+     * and the liquid tints for the theme in force. Run on mounting, on every resize of the slot —
+     * which is what `+` / `−` on a tile is — and whenever the theme changes.
+     */
+    const measure = (): void => {
+      const width = host.offsetWidth;
+      const height = host.offsetHeight;
+      if (width === 0 || height === 0) return;
+      const styles = getComputedStyle(host);
+      const next = readVesselBox(styles, width, height);
+      if (vessel?.width !== width || vessel.height !== height) {
+        // A glass of a new size is a new glass: its scale (`realScale`) is its width. Built still,
+        // at the level it holds — resizing pours nothing — and the old one gives its droplets back.
+        const previous = model;
+        model = createGlass(next);
+        model.setLevel(levelRef.current, false);
+        previous?.dispose();
+        vessel = next;
       }
-
-      // No GPU going spare — most of a busy board — so draw the same picture in 2D.
-      const renderer = lease?.renderer ?? createCanvasRenderer(canvas);
-      if (renderer === null) return;
-
-      const tile = host.parentElement ?? host;
-      let radius = 18;
-
-      const measure = (): void => {
-        /*
-         * The HOST is measured, never the canvas: a canvas's size is an output of this call, not
-         * an input to it. Pixi starts every application at its own default of 800x600 and writes
-         * that onto the element's inline style, so measuring the canvas read Pixi's guess back and
-         * agreed with it, and every GPU tile drew its water below the visible tile.
-         *
-         * And `offsetWidth`, not `getBoundingClientRect`, because the two disagree under a
-         * transform. A picked-up tile carries `scale(1.015)`, so the rect is 1.5% larger than the
-         * box the water actually has to fill — resizing the canvas to it mid-drag re-rasterises
-         * the liquid at the wrong scale for as long as the tile is held.
-         */
-        const boxWidth = host.offsetWidth;
-        const boxHeight = host.offsetHeight;
-        if (boxWidth === 0 || boxHeight === 0) return;
-        renderer.resize(boxWidth, boxHeight, window.devicePixelRatio || 1);
-        // The area colour is a custom property and canvas cannot read one, so it is resolved here
-        // through the host's own `color`, once, rather than every frame.
-        const styles = getComputedStyle(host);
-        colorRef.current = styles.color.trim() || colorRef.current;
-        radius = Number.parseFloat(getComputedStyle(tile).borderBottomLeftRadius) || radius;
-
-        /*
-         * The water's depth comes from the theme, not from a constant in the renderer.
-         *
-         * `--tint-top` / `-bot` / `-deep` are what the CSS water uses and they differ between
-         * light and dark; the canvas had one recipe for both, so the liquid changed colour when
-         * anyone turned reduced motion on. Read here, once per measure, alongside the hue — the
-         * same reason and the same place.
-         */
-        tintsRef.current = readWaterTints(styles);
-
-        dirty.current = true;
-        setLive(true);
-      };
-
-      measure();
-
-      const observer = new ResizeObserver(() => {
-        measure();
-        wake();
-      });
-      observer.observe(host);
-
-      const leave = join({
-        element: tile,
-        moved(dx) {
-          // Raw pixels: how much of that reaches the water is the field's business, not ours.
-          field.tilt(dx);
-        },
-        render(elapsed) {
-          const moving = field.advance(elapsed);
-
-          /*
-           * Still water is not redrawn. The loop runs while ANY glass on the board is moving or a
-           * pointer is down, so without this a single tile being dragged repaints every other tile
-           * on the board sixty times a second, for a picture identical to the one already there.
-           */
-          if (!moving && !dirty.current) return false;
-          dirty.current = false;
-
-          const full = field.level >= 1;
-          const stops = full ? tintsRef.current.full : tintsRef.current.resting;
-          renderer.draw((at) => field.heightAt(at), {
-            color: colorRef.current,
-            full,
-            level: field.level,
-            radius,
-            ...(stops === undefined ? {} : { stops }),
-          });
-          return moving;
-        },
-      });
-
-      // No second abort check below: nothing awaits between the one above and this assignment, so
-      // the component cannot unmount in that window. React's cleanup does the rest.
-      teardown = () => {
-        leave();
-        observer.disconnect();
-        if (lease !== null) lease.release();
-        else renderer.destroy();
-        canvas.remove();
-        setLive(false);
-      };
-    })();
-
-    return () => {
-      unmounted.abort();
-      if (teardown === null) canvas.remove();
-      else teardown();
+      renderer.resize(next, window.devicePixelRatio || 1);
+      color = styles.color.trim() || color;
+      tints = readLiquidTints(styles);
+      dirty = true;
     };
-  }, [field]);
+
+    measure();
+
+    pourRef.current = (next) => {
+      if (model === null) return;
+      model.setLevel(next, true);
+      dirty = true;
+      wake();
+    };
+
+    const observer = new ResizeObserver(() => {
+      measure();
+      wake();
+    });
+    observer.observe(host);
+
+    const dark = query(DARK);
+    const onTheme = (): void => {
+      measure();
+      wake();
+    };
+    dark?.addEventListener('change', onTheme);
+
+    const leave = join({
+      element: host,
+      accelerated(ax, ay) {
+        if (model === null) return;
+        // A full glass holds still: at the brim there is nowhere for a slosh to go but over it.
+        const full = model.level >= 1;
+        model.drive(full ? 0 : ax, full ? 0 : ay);
+      },
+      render(elapsed, onScreen) {
+        if (model === null) return false;
+        const moving = model.advance(elapsed);
+        // Out of sight it keeps settling, and is painted when it is back.
+        if (!onScreen) {
+          if (moving) dirty = true;
+          return moving;
+        }
+        // Still water is not redrawn. The loop runs while ANY glass moves, and without this one
+        // tile being dragged would repaint every glass on the board for an identical picture.
+        if (!moving && !dirty) return false;
+        dirty = false;
+        renderer.draw(model, { color, stops: liquidStops(tints, model.level >= 1) });
+        if (!drawn) {
+          drawn = true;
+          setLive(true);
+        }
+        return moving;
+      },
+    });
+
+    let stopped = false;
+    const stop = (): void => {
+      if (stopped) return;
+      stopped = true;
+      pourRef.current = null;
+      leave();
+      observer.disconnect();
+      dark?.removeEventListener('change', onTheme);
+      lessMotion?.removeEventListener('change', onLessMotion);
+      model?.dispose();
+      renderer.destroy();
+      canvas.remove();
+      setLive(false);
+    };
+    // Asked for less motion while it runs: let go at once, and the still liquid comes back.
+    function onLessMotion(event: MediaQueryListEvent): void {
+      if (event.matches) stop();
+    }
+    lessMotion?.addEventListener('change', onLessMotion);
+
+    return stop;
+  }, []);
 
   return (
     <span

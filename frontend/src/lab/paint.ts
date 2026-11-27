@@ -32,7 +32,7 @@ import {
   tint,
   traceVessel,
   wallStripPx,
-} from '../lib/water/renderer';
+} from './shippedRecipe';
 import type { Fluid } from './fluid';
 import { Mesh } from './mesh';
 
